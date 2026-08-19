@@ -48,16 +48,16 @@ namespace MaterialLoading
             RenderAssets::MaterialInstanceHandle materialInstance;
             std::vector<Binding> bindings;
             std::vector<vec4> values;
-            f32 stableTime = 0.0f;
+            f64 stableTime = 0.0;
         };
 
         std::shared_ptr<const AnimationAsset> Load(FileFormat::AssetID assetID);
-        static vec4 Sample(const AnimationAsset& animation, const FileFormat::Material::MaterialAnimationTrack& track, f32 time, bool looping);
+        static vec4 Sample(const AnimationAsset& animation, const FileFormat::Material::MaterialAnimationTrack& track, f64 time, bool looping);
 
         PACT::PactStorage* _pactStorage = nullptr;
         MaterialStorage* _storage = nullptr;
         robin_hood::unordered_map<FileFormat::AssetID, std::shared_ptr<const AnimationAsset>> _animations;
         std::vector<AnimatedInstance> _instances;
-        f32 _sharedTime = 0.0f;
+        f64 _sharedTime = 0.0;
     };
 } // namespace MaterialLoading

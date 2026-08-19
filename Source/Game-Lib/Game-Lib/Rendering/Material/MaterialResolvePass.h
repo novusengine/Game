@@ -74,6 +74,7 @@ namespace MaterialRendering
         {
             ModelBindings model;
             Renderer::BufferID tileQueues[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
+            Renderer::BufferID counters[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
         };
 
         struct FinalizeBindings
@@ -106,6 +107,5 @@ namespace MaterialRendering
         FinalizeBindings _finalizeBindings;
         ResolveBindings _resolveBindings;
         u32 _resourceGeneration = 0;
-        u32 _descriptorWarmupFrames = 0;
     };
 } // namespace MaterialRendering

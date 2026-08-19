@@ -70,7 +70,9 @@ namespace ShadowRendering
         rasterDesc.debugName = "Model Shadow Solid One Sided";
         rasterDesc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(solidMesh)};
         rasterDesc.states.pixelShader = renderer->LoadShader(solidPixel);
-        rasterDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        // Legacy model shadows rasterized every caster two-sided. Model materials use sidedness
+        // for visible rendering, but existing assets do not guarantee shadow-safe winding.
+        rasterDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
         rasterDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
         rasterDesc.states.rasterizerState.depthClampEnabled = true;
         _solidOneSidedPipeline = renderer->CreatePipeline(rasterDesc);
@@ -81,7 +83,7 @@ namespace ShadowRendering
         rasterDesc.debugName = "Model Shadow Alpha Test One Sided";
         rasterDesc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(alphaMesh)};
         rasterDesc.states.pixelShader = renderer->LoadShader(alphaPixel);
-        rasterDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        rasterDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
         _alphaOneSidedPipeline = renderer->CreatePipeline(rasterDesc);
         rasterDesc.debugName = "Model Shadow Alpha Test Two Sided";
         rasterDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
@@ -116,44 +118,52 @@ namespace ShadowRendering
                                              const RenderScenes::RenderScene& scene, Renderer::BufferID svsmData)
     {
         bool changed = false;
-        auto bind = [&](Renderer::DescriptorSet& set, StringUtils::StringHash hash, Renderer::BufferID buffer) {
+        auto Bind = [&](Renderer::DescriptorSet& set, StringUtils::StringHash hash, Renderer::BufferID buffer) {
             Renderer::BufferID& current = _cullBindings[hash.computedHash];
-            changed |= Bind(set, hash, buffer, current);
+            changed |= this->Bind(set, hash, buffer, current);
         };
 
-        bind(_expandSet, "_shadowModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
-        bind(_expandSet, "_shadowModels"_h, geometry.GetRecords().GetBuffer());
-        bind(_expandSet, "_shadowMeshes"_h, geometry.GetMeshes().GetBuffer());
-        bind(_expandSet, "_shadowLODs"_h, geometry.GetMeshLODs().GetBuffer());
-        bind(_expandSet, "_shadowSubmeshes"_h, geometry.GetSubmeshes().GetBuffer());
-        bind(_expandSet, "_shadowGeometryGroupMasks"_h, scene.GetGeometryGroupMasks().GetMasks().GetBuffer());
-        bind(_expandSet, "_shadowMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
-        bind(_expandSet, "_shadowSVSMData"_h, svsmData);
-        bind(_cullSet, "_shadowCullInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
-        bind(_cullSet, "_shadowCullModels"_h, geometry.GetRecords().GetBuffer());
-        bind(_cullSet, "_shadowCullMeshlets"_h, geometry.GetMeshlets().GetBuffer());
-        bind(_cullSet, "_shadowCullSVSMData"_h, svsmData);
+        Bind(_expandSet, "_shadowModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
+        Bind(_expandSet, "_shadowModels"_h, geometry.GetRecords().GetBuffer());
+        Bind(_expandSet, "_shadowMeshes"_h, geometry.GetMeshes().GetBuffer());
+        Bind(_expandSet, "_shadowLODs"_h, geometry.GetMeshLODs().GetBuffer());
+        Bind(_expandSet, "_shadowSubmeshes"_h, geometry.GetSubmeshes().GetBuffer());
+        Bind(_expandSet, "_shadowGeometryGroupMasks"_h, scene.GetGeometryGroupMasks().GetMasks().GetBuffer());
+        Bind(_expandSet, "_shadowMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
+        Bind(_expandSet, "_shadowSVSMData"_h, svsmData);
+        Bind(_cullSet, "_shadowCullInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
+        Bind(_cullSet, "_shadowCullModels"_h, geometry.GetRecords().GetBuffer());
+        Bind(_cullSet, "_shadowCullMeshlets"_h, geometry.GetMeshlets().GetBuffer());
+        Bind(_cullSet, "_shadowCullSVSMData"_h, svsmData);
+
+        static constexpr StringUtils::StringHash CHUNKS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowChunks0"_h, "_shadowChunks1"_h};
+        static constexpr StringUtils::StringHash STATS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowStats0"_h, "_shadowStats1"_h};
+        static constexpr StringUtils::StringHash EXPAND_STATS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowExpandStats0"_h, "_shadowExpandStats1"_h};
+        static constexpr StringUtils::StringHash CHUNK_ARGUMENTS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowChunkArguments0"_h, "_shadowChunkArguments1"_h};
+        static constexpr StringUtils::StringHash CULL_CHUNKS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowCullChunks0"_h, "_shadowCullChunks1"_h};
+        static constexpr StringUtils::StringHash RECORDS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowRecords0"_h, "_shadowRecords1"_h};
+        static constexpr StringUtils::StringHash CULL_STATS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowCullStats0"_h, "_shadowCullStats1"_h};
+        static constexpr StringUtils::StringHash FINALIZE_STATS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowFinalizeStats0"_h, "_shadowFinalizeStats1"_h};
+        static constexpr StringUtils::StringHash ARGUMENTS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowArguments0"_h, "_shadowArguments1"_h};
+        static constexpr StringUtils::StringHash QUEUES[MODEL_SHADOW_FRAME_COUNT][MODEL_SHADOW_QUEUE_COUNT] = {
+            {"_shadowQueue0_0"_h, "_shadowQueue1_0"_h, "_shadowQueue2_0"_h, "_shadowQueue3_0"_h,
+             "_shadowQueue4_0"_h, "_shadowQueue5_0"_h, "_shadowQueue6_0"_h, "_shadowQueue7_0"_h},
+            {"_shadowQueue0_1"_h, "_shadowQueue1_1"_h, "_shadowQueue2_1"_h, "_shadowQueue3_1"_h,
+             "_shadowQueue4_1"_h, "_shadowQueue5_1"_h, "_shadowQueue6_1"_h, "_shadowQueue7_1"_h}};
 
         for (u32 frame = 0; frame < MODEL_SHADOW_FRAME_COUNT; ++frame)
         {
-            const std::string suffix = std::to_string(frame);
-            auto bindFrame = [&](Renderer::DescriptorSet& set, const std::string& name, Renderer::BufferID buffer) {
-                const StringUtils::StringHash hash = StringUtils::fnv1a_32(name.c_str(), name.size());
-                Renderer::BufferID& current = _cullBindings[hash.computedHash];
-                changed |= Bind(set, hash, buffer, current);
-            };
-            bindFrame(_expandSet, "_shadowChunks" + suffix, work.GetChunkQueue(frame));
-            bindFrame(_expandSet, "_shadowStats" + suffix, work.GetStatsBuffer(frame));
-            bindFrame(_expandFinalizeSet, "_shadowExpandStats" + suffix, work.GetStatsBuffer(frame));
-            bindFrame(_expandFinalizeSet, "_shadowChunkArguments" + suffix, work.GetChunkArguments(frame));
-            bindFrame(_cullSet, "_shadowCullChunks" + suffix, work.GetChunkQueue(frame));
-            bindFrame(_cullSet, "_shadowRecords" + suffix, work.GetRecords(frame));
-            bindFrame(_cullSet, "_shadowCullStats" + suffix, work.GetStatsBuffer(frame));
-            bindFrame(_finalizeSet, "_shadowFinalizeStats" + suffix, work.GetStatsBuffer(frame));
-            bindFrame(_finalizeSet, "_shadowArguments" + suffix, work.GetArguments(frame));
+            Bind(_expandSet, CHUNKS[frame], work.GetChunkQueue(frame));
+            Bind(_expandSet, STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_expandFinalizeSet, EXPAND_STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_expandFinalizeSet, CHUNK_ARGUMENTS[frame], work.GetChunkArguments(frame));
+            Bind(_cullSet, CULL_CHUNKS[frame], work.GetChunkQueue(frame));
+            Bind(_cullSet, RECORDS[frame], work.GetRecords(frame));
+            Bind(_cullSet, CULL_STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_finalizeSet, FINALIZE_STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_finalizeSet, ARGUMENTS[frame], work.GetArguments(frame));
             for (u32 queue = 0; queue < MODEL_SHADOW_QUEUE_COUNT; ++queue)
-                bindFrame(_cullSet, "_shadowQueue" + std::to_string(queue) + "_" + suffix,
-                          work.GetQueue(queue, frame));
+                Bind(_cullSet, QUEUES[frame][queue], work.GetQueue(queue, frame));
         }
 
         if (changed)
@@ -169,7 +179,7 @@ namespace ShadowRendering
                                       const MaterialLoading::MaterialStorage& materials,
                                       const RenderScenes::RenderScene& scene, Renderer::BufferID svsmData,
                                       u32 numClipmaps, bool dynamicSplit, u8 frameIndex, i32 forcedLOD,
-                                      f32 lodTargetTexels, bool coneCulling)
+                                      f32 lodTargetTexels)
     {
         const u32 instanceCapacity = scene.GetStats().instances.slotCapacity;
         struct Data
@@ -228,9 +238,9 @@ namespace ShadowRendering
                 data.finalizeSet = builder.Use(_finalizeSet);
                 return true;
             },
-            [this, &work, instanceCapacity, numClipmaps, dynamicSplit, frameIndex, forcedLOD, lodTargetTexels,
-             coneCulling](Data& data, Renderer::RenderGraphResources& graphResources,
-                          Renderer::CommandList& commandList) {
+            [this, &work, instanceCapacity, numClipmaps, dynamicSplit, frameIndex, forcedLOD,
+             lodTargetTexels](Data& data, Renderer::RenderGraphResources& graphResources,
+                              Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelShadowWork);
                 commandList.FillBuffer(data.stats, 0, sizeof(ModelShadowStats), 0);
                 commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::TRANSFER);
@@ -269,9 +279,9 @@ namespace ShadowRendering
                 commandList.EndPipeline(_expandFinalizePipeline);
                 commandList.BufferBarrier(data.chunkArguments, Renderer::BufferPassUsage::COMPUTE);
 
-                struct CullConstants { u32 queueCapacity; u32 frameIndex; u32 enableConeCulling; };
+                struct CullConstants { u32 queueCapacity; u32 frameIndex; };
                 CullConstants* cull = graphResources.FrameNew<CullConstants>();
-                *cull = {work.GetCapacity(), frameIndex, coneCulling ? 1u : 0u};
+                *cull = {work.GetCapacity(), frameIndex};
                 commandList.BeginPipeline(_cullPipeline);
                 commandList.PushConstant(cull, 0, sizeof(*cull));
                 commandList.BindDescriptorSet(data.globalSet, frameIndex);
@@ -297,34 +307,42 @@ namespace ShadowRendering
                                            Renderer::BufferID pageTable, bool& changed)
     {
         const u64 setKey = static_cast<u64>(setIndex) << 32u;
-        auto bind = [&](const std::string& name, Renderer::BufferID buffer) {
-            const StringUtils::StringHash hash(name);
+        auto Bind = [&](StringUtils::StringHash hash, Renderer::BufferID buffer) {
             Renderer::BufferID& current = _rasterBindings[setKey | hash.computedHash];
-            changed |= Bind(set, hash, buffer, current);
+            changed |= this->Bind(set, hash, buffer, current);
         };
+        static constexpr StringUtils::StringHash QUEUES[MODEL_SHADOW_FRAME_COUNT][MODEL_SHADOW_QUEUE_COUNT] = {
+            {"_shadowRasterQueue0_0"_h, "_shadowRasterQueue1_0"_h, "_shadowRasterQueue2_0"_h,
+             "_shadowRasterQueue3_0"_h, "_shadowRasterQueue4_0"_h, "_shadowRasterQueue5_0"_h,
+             "_shadowRasterQueue6_0"_h, "_shadowRasterQueue7_0"_h},
+            {"_shadowRasterQueue0_1"_h, "_shadowRasterQueue1_1"_h, "_shadowRasterQueue2_1"_h,
+             "_shadowRasterQueue3_1"_h, "_shadowRasterQueue4_1"_h, "_shadowRasterQueue5_1"_h,
+             "_shadowRasterQueue6_1"_h, "_shadowRasterQueue7_1"_h}};
+        static constexpr StringUtils::StringHash RECORDS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowRasterRecords0"_h, "_shadowRasterRecords1"_h};
+        static constexpr StringUtils::StringHash STATS[MODEL_SHADOW_FRAME_COUNT] = {"_shadowRasterStats0"_h, "_shadowRasterStats1"_h};
         for (u32 frame = 0; frame < MODEL_SHADOW_FRAME_COUNT; ++frame)
         {
-            const std::string suffix = std::to_string(frame);
             for (u32 queue = 0; queue < MODEL_SHADOW_QUEUE_COUNT; ++queue)
-                bind("_shadowRasterQueue" + std::to_string(queue) + "_" + suffix, work.GetQueue(queue, frame));
-            bind("_shadowRasterRecords" + suffix, work.GetRecords(frame));
+                Bind(QUEUES[frame][queue], work.GetQueue(queue, frame));
+            Bind(RECORDS[frame], work.GetRecords(frame));
+            Bind(STATS[frame], work.GetStatsBuffer(frame));
         }
-        bind("_shadowRasterInstances", scene.GetModelInstances().GetRecords().GetBuffer());
-        bind("_shadowRasterModels", geometry.GetRecords().GetBuffer());
-        bind("_shadowRasterMeshes", geometry.GetMeshes().GetBuffer());
-        bind("_shadowRasterLODs", geometry.GetMeshLODs().GetBuffer());
-        bind("_shadowRasterSubmeshes", geometry.GetSubmeshes().GetBuffer());
-        bind("_shadowRasterMeshlets", geometry.GetMeshlets().GetBuffer());
-        bind("_shadowRasterPositions", geometry.GetPositions().GetBuffer());
-        bind("_shadowRasterVertexIndices", geometry.GetMeshletVertexIndices().GetBuffer());
-        bind("_shadowRasterTriangles", geometry.GetMeshletTriangles().GetBuffer());
+        Bind("_shadowRasterInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
+        Bind("_shadowRasterModels"_h, geometry.GetRecords().GetBuffer());
+        Bind("_shadowRasterMeshes"_h, geometry.GetMeshes().GetBuffer());
+        Bind("_shadowRasterLODs"_h, geometry.GetMeshLODs().GetBuffer());
+        Bind("_shadowRasterSubmeshes"_h, geometry.GetSubmeshes().GetBuffer());
+        Bind("_shadowRasterMeshlets"_h, geometry.GetMeshlets().GetBuffer());
+        Bind("_shadowRasterPositions"_h, geometry.GetPositions().GetBuffer());
+        Bind("_shadowRasterVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer());
+        Bind("_shadowRasterTriangles"_h, geometry.GetMeshletTriangles().GetBuffer());
         if (alphaTest)
         {
-            bind("_shadowRasterVertexAttributes", geometry.GetVertexAttributes().GetBuffer());
-            bind("_shadowRasterMaterialTable", scene.GetModelMaterialTables().GetEntries().GetBuffer());
+            Bind("_shadowRasterVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer());
+            Bind("_shadowRasterMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
         }
-        bind("_shadowRasterSVSMData", svsmData);
-        bind("_shadowRasterPageTable", pageTable);
+        Bind("_shadowRasterSVSMData"_h, svsmData);
+        Bind("_shadowRasterPageTable"_h, pageTable);
     }
 
     bool ModelShadowPass::UploadRasterBindings(const ModelShadowWorkResources& work,
@@ -403,6 +421,7 @@ namespace ShadowRendering
                     for (u32 queue = 0; queue < MODEL_SHADOW_QUEUE_COUNT; ++queue)
                         builder.Read(work.GetQueue(queue, frame), Usage::GRAPHICS);
                     builder.Read(work.GetRecords(frame), Usage::GRAPHICS);
+                    builder.Read(work.GetStatsBuffer(frame), Usage::GRAPHICS);
                 }
                 data.arguments = builder.Read(work.GetArguments(frameIndex), Usage::GRAPHICS);
                 builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::GRAPHICS);
@@ -449,12 +468,19 @@ namespace ShadowRendering
                 commandList.SetScissorRect(0, virtualSize, 0, virtualSize);
                 commandList.BeginRenderPass(pass);
 
-                struct Constants { u32 queueIndex; u32 frameIndex; u32 dynamicCaster; u32 opacityDither; };
-                auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex, bool alphaTest,
+                struct Constants
+                {
+                    u32 queueIndex;
+                    u32 frameIndex;
+                    u32 dynamicCaster;
+                    u32 opacityDither;
+                    u32 queueCapacity;
+                };
+                auto Draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex, bool alphaTest,
                                 Renderer::DescriptorSetResource& set) {
                     Constants* constants = graphResources.FrameNew<Constants>();
                     *constants = {queueIndex, frameIndex, queueIndex >= MODEL_SHADOW_RASTER_CLASS_COUNT ? 1u : 0u,
-                                  opacityDither ? 1u : 0u};
+                                  opacityDither ? 1u : 0u, work.GetCapacity()};
                     commandList.BeginPipeline(pipeline);
                     commandList.PushConstant(constants, 0, sizeof(*constants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
@@ -465,16 +491,16 @@ namespace ShadowRendering
                                                       MODEL_SHADOW_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(pipeline);
                 };
-                draw(_solidOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidOneSided, false), false, data.staticSolidSet);
-                draw(_solidTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidTwoSided, false), false, data.staticSolidSet);
-                draw(_alphaOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestOneSided, false), true, data.staticAlphaSet);
-                draw(_alphaTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestTwoSided, false), true, data.staticAlphaSet);
+                Draw(_solidOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidOneSided, false), false, data.staticSolidSet);
+                Draw(_solidTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidTwoSided, false), false, data.staticSolidSet);
+                Draw(_alphaOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestOneSided, false), true, data.staticAlphaSet);
+                Draw(_alphaTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestTwoSided, false), true, data.staticAlphaSet);
                 if (dynamicSplit)
                 {
-                    draw(_solidOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidOneSided, true), false, data.dynamicSolidSet);
-                    draw(_solidTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidTwoSided, true), false, data.dynamicSolidSet);
-                    draw(_alphaOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestOneSided, true), true, data.dynamicAlphaSet);
-                    draw(_alphaTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestTwoSided, true), true, data.dynamicAlphaSet);
+                    Draw(_solidOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidOneSided, true), false, data.dynamicSolidSet);
+                    Draw(_solidTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::SolidTwoSided, true), false, data.dynamicSolidSet);
+                    Draw(_alphaOneSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestOneSided, true), true, data.dynamicAlphaSet);
+                    Draw(_alphaTwoSidedPipeline, ModelShadowQueueIndex(ModelShadowRasterClass::AlphaTestTwoSided, true), true, data.dynamicAlphaSet);
                 }
                 commandList.EndRenderPass(pass);
             });

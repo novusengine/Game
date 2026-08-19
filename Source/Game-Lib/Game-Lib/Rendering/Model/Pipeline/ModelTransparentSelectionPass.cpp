@@ -85,30 +85,25 @@ namespace ModelPipeline
             _generation = work.GetGeneration();
             _bindings.clear();
         }
-        bool changed = false;
+        static constexpr StringUtils::StringHash RECORDS[ModelView::MODEL_TRANSPARENT_FRAME_COUNT] = {"_transparentRecords0"_h, "_transparentRecords1"_h};
+        static constexpr StringUtils::StringHash STATS[ModelView::MODEL_TRANSPARENT_FRAME_COUNT] = {"_transparentStats0"_h, "_transparentStats1"_h};
         for (u32 frame = 0; frame < ModelView::MODEL_TRANSPARENT_FRAME_COUNT; ++frame)
         {
-            const std::string suffix = std::to_string(frame);
-            changed |= Bind(StringUtils::StringHash("_transparentRecords" + suffix),
-                            work.GetVisibilityRecords(frame));
-            changed |= Bind(StringUtils::StringHash("_transparentStats" + suffix), work.GetStatsBuffer(frame));
+            Bind(RECORDS[frame], work.GetVisibilityRecords(frame));
+            Bind(STATS[frame], work.GetStatsBuffer(frame));
         }
-        changed |= Bind("_transparentRasterInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
-        changed |= Bind("_transparentRasterModels"_h, geometry.GetRecords().GetBuffer());
-        changed |= Bind("_transparentRasterMeshes"_h, geometry.GetMeshes().GetBuffer());
-        changed |= Bind("_transparentRasterLODs"_h, geometry.GetMeshLODs().GetBuffer());
-        changed |= Bind("_transparentRasterSubmeshes"_h, geometry.GetSubmeshes().GetBuffer());
-        changed |= Bind("_transparentRasterMeshlets"_h, geometry.GetMeshlets().GetBuffer());
-        changed |= Bind("_transparentRasterPositions"_h, geometry.GetPositions().GetBuffer());
-        changed |= Bind("_transparentRasterVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer());
-        changed |= Bind("_transparentRasterVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer());
-        changed |= Bind("_transparentRasterTriangles"_h, geometry.GetMeshletTriangles().GetBuffer());
-        changed |= Bind("_transparentRasterMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
-        if (changed)
-            _descriptorWarmupFrames = _renderer->GetFrameIndexCount();
-        else if (_descriptorWarmupFrames > 0)
-            --_descriptorWarmupFrames;
-        return _descriptorWarmupFrames == 0;
+        Bind("_transparentRasterInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
+        Bind("_transparentRasterModels"_h, geometry.GetRecords().GetBuffer());
+        Bind("_transparentRasterMeshes"_h, geometry.GetMeshes().GetBuffer());
+        Bind("_transparentRasterLODs"_h, geometry.GetMeshLODs().GetBuffer());
+        Bind("_transparentRasterSubmeshes"_h, geometry.GetSubmeshes().GetBuffer());
+        Bind("_transparentRasterMeshlets"_h, geometry.GetMeshlets().GetBuffer());
+        Bind("_transparentRasterPositions"_h, geometry.GetPositions().GetBuffer());
+        Bind("_transparentRasterVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer());
+        Bind("_transparentRasterVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer());
+        Bind("_transparentRasterTriangles"_h, geometry.GetMeshletTriangles().GetBuffer());
+        Bind("_transparentRasterMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
+        return !_depthSet.HasPendingBufferWrites();
     }
 
     void ModelTransparentSelectionPass::AddDepthPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,

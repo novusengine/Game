@@ -14,6 +14,9 @@
 #include <Renderer/Descriptors/ComputeShaderDesc.h>
 #include <Renderer/Descriptors/ComputePipelineDesc.h>
 
+#include <algorithm>
+#include <bit>
+
 Renderer::SamplerID DepthPyramidUtils::_copySampler;
 Renderer::SamplerID DepthPyramidUtils::_pyramidSampler;
 Renderer::DescriptorSet DepthPyramidUtils::_copyDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS);
@@ -146,7 +149,8 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 
         params.pyramidDescriptorSet.Bind("imgSrc", params.depthPyramid, 0);
         params.pyramidDescriptorSet.Bind("imgDst", params.depthPyramid, 1, numWorkGroupsAndMips[1]);
-        params.pyramidDescriptorSet.Bind("imgDst5", params.depthPyramid, 6);
+        const u32 lastMip = std::bit_width(std::max(params.pyramidSize.x, params.pyramidSize.y)) - 1u;
+        params.pyramidDescriptorSet.Bind("imgDst5", params.depthPyramid, std::min(6u, lastMip));
 
         struct Constants
         {

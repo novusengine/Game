@@ -9,12 +9,13 @@ struct Constants
     uint frameIndex;
     uint dynamicCaster;
     uint opacityDither;
+    uint queueCapacity;
 };
 [[vk::push_constant]] Constants _constants;
 
-[[vk::binding(29, PER_PASS)]] StructuredBuffer<SVSMData> _shadowRasterSVSMData;
-[[vk::binding(30, PER_PASS)]] StructuredBuffer<uint> _shadowRasterPageTable;
-[[vk::binding(31, PER_PASS)]] RWTexture2D<uint> _shadowRasterPagePool;
+[[vk::binding(31, PER_PASS)]] StructuredBuffer<SVSMData> _shadowRasterSVSMData;
+[[vk::binding(32, PER_PASS)]] StructuredBuffer<uint> _shadowRasterPageTable;
+[[vk::binding(33, PER_PASS)]] RWTexture2D<uint> _shadowRasterPagePool;
 
 struct PSInput
 {

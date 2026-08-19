@@ -3,6 +3,7 @@
 #include <Base/Types.h>
 
 #include <vector>
+#include <span>
 
 namespace RenderScenes
 {
@@ -21,6 +22,8 @@ namespace RenderScenes
       public:
         StableRange Allocate(u32 count);
         void Free(StableRange range);
+        void Free(std::span<const StableRange> ranges);
+        void FlushFrees();
 
         u32 GetAddressSpaceSize() const { return _addressSpaceSize; }
         u32 GetFreeCount() const;
@@ -31,5 +34,6 @@ namespace RenderScenes
 
         std::vector<StableRange> _freeRanges;
         u32 _addressSpaceSize = 0;
+        bool _freesDirty = false;
     };
 } // namespace RenderScenes

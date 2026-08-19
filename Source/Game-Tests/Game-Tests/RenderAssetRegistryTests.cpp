@@ -47,6 +47,11 @@ TEST_CASE("Render asset registries publish stable fallbacks once per failed asse
     CHECK(modelStats.failures == 1);
     CHECK(modelStats.cacheHits == 1);
     CHECK(modelStats.references == 2);
+
+    REQUIRE(modelRegistry.Release(FileFormat::INVALID_ASSET_ID));
+    REQUIRE(modelRegistry.Release(FileFormat::INVALID_ASSET_ID));
+    CHECK(modelRegistry.GetStats().references == 0);
+    CHECK(modelRegistry.GetStats().residentModels == modelStats.residentModels);
 }
 
 TEST_CASE("Material texture registry caches a failed load transition at the fallback index",

@@ -113,21 +113,7 @@ namespace ModelPipeline
                       _bindings.frames[1].visibilityRecords);
         BindIfChanged("_modelVisibilityStats1"_h, work.GetStatsBuffer(1), _bindings.frames[1].workStats);
 
-        BindIfChanged("_modelVisibilityInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
-                      _bindings.modelInstances);
-        BindIfChanged("_modelVisibilityModels"_h, geometry.GetRecords().GetBuffer(), _bindings.models);
-        BindIfChanged("_modelVisibilityMeshes"_h, geometry.GetMeshes().GetBuffer(), _bindings.meshes);
-        BindIfChanged("_modelVisibilityLODs"_h, geometry.GetMeshLODs().GetBuffer(), _bindings.lods);
-        BindIfChanged("_modelVisibilitySubmeshes"_h, geometry.GetSubmeshes().GetBuffer(), _bindings.submeshes);
-        BindIfChanged("_modelVisibilityMeshlets"_h, geometry.GetMeshlets().GetBuffer(), _bindings.meshlets);
-        BindIfChanged("_modelVisibilityPositions"_h, geometry.GetPositions().GetBuffer(), _bindings.positions);
-        BindIfChanged("_modelVisibilityVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer(),
-                      _bindings.vertexAttributes);
-        BindIfChanged("_modelVisibilityVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(),
-                      _bindings.vertexIndices);
-        BindIfChanged("_modelVisibilityTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), _bindings.triangles);
-        BindIfChanged("_modelVisibilityMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
-                      _bindings.materialTable);
+        _geometryBindings.Bind(_descriptorSet, geometry, scene);
     }
 
     void ModelVisibilityPass::AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -170,17 +156,7 @@ namespace ModelPipeline
                     builder.Read(work.GetStatsBuffer(frame), Usage::GRAPHICS);
                 }
                 data.arguments = builder.Read(work.GetArguments(frameIndex), Usage::GRAPHICS);
-                builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetRecords().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshes().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshLODs().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetSubmeshes().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshlets().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetPositions().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetVertexAttributes().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshletTriangles().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::GRAPHICS);
+                ModelGeometryBindings::RegisterUsage(builder, geometry, scene, Usage::GRAPHICS);
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::GRAPHICS);
@@ -209,7 +185,7 @@ namespace ModelPipeline
                     u32 viewIndex;
                     u32 resourceIndex;
                 };
-                auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex, bool usesMaterials) {
+                auto Draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex, bool usesMaterials) {
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->queueIndex = queueIndex;
                     constants->viewIndex = view.GetCameraIndex();
@@ -226,14 +202,14 @@ namespace ModelPipeline
                 };
                 if (ModelRendering::ShowModelCullReasons())
                 {
-                    draw(_cullReasonDebugPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
+                    Draw(_cullReasonDebugPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
                 }
                 else
                 {
-                    draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED, false);
-                    draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
-                    draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED, true);
-                    draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED, true);
+                    Draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED, false);
+                    Draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
+                    Draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED, true);
+                    Draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED, true);
                 }
                 commandList.EndRenderPass(pass);
             });

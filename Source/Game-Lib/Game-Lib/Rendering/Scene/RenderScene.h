@@ -65,10 +65,10 @@ namespace RenderScenes
 
         void ReserveModelResources(const Map::ModelAllocationHints& hints);
         ModelInstanceHandle CreateModelInstance(const ModelInstanceDesc& desc);
-        bool DestroyModelInstance(ModelInstanceHandle handle, u64 retireValue);
+        bool DestroyModelInstance(ModelInstanceHandle handle);
         bool SetModelTransform(ModelInstanceHandle handle, const mat4x4& transform, bool teleported = false);
         bool SetModelVisible(ModelInstanceHandle handle, bool visible);
-        bool SetModelHighlight(ModelInstanceHandle handle, f32 intensity, u32 packedColor = 0xFFFFFFFFu) { return _instances.SetHighlight(handle, intensity, packedColor); }
+        bool SetModelHighlight(ModelInstanceHandle handle, f32 intensity, u32 packedColor = 0xFFFFFFFFu);
         bool SetModelOpacity(ModelInstanceHandle handle, f32 opacity, bool forceTransparent = false);
         bool SetModelCastsShadows(ModelInstanceHandle handle, bool castsShadows);
         bool SetModelMaterial(ModelInstanceHandle handle, u32 slot, RenderAssets::MaterialInstanceHandle material);
@@ -76,6 +76,7 @@ namespace RenderScenes
                                std::span<const RenderAssets::MaterialInstanceHandle> materials);
         bool ResetModelMaterials(ModelInstanceHandle handle);
         bool SetGeometryGroupEnabled(ModelInstanceHandle handle, u32 groupID, bool enabled);
+        bool SetGeometryGroupRangeEnabled(ModelInstanceHandle handle, u32 firstGroupID, u32 lastGroupID, bool enabled);
         bool SetAllGeometryGroups(ModelInstanceHandle handle, bool enabled);
         bool SetModelShadowDynamic(ModelInstanceHandle handle, bool dynamic) { return _instances.SetShadowDynamic(handle, dynamic); }
 
@@ -88,7 +89,13 @@ namespace RenderScenes
 
         SceneClearRequests GetPendingClearRequests() const;
         void AcknowledgeClearsAndPublish();
+        std::span<const u32> GetModelMembershipChanges() const { return _instances.GetMembershipChanges(); }
+        void AcknowledgeModelMembershipChanges() { _instances.AcknowledgeMembershipChanges(); }
+        std::span<const u32> GetTransparentRoutingChanges() const { return _instances.GetRoutingChanges(); }
+        void AcknowledgeTransparentRoutingChanges() { _instances.AcknowledgeRoutingChanges(); }
         void ReleaseRetiredHistory(u64 completedValue);
+        void FlushModelResourceFrees();
+        void SetHistoryRetireValue(u64 submissionValue) { _historyRetireValue = submissionValue; }
         void AdvanceFrame();
         void SyncToGPU(Renderer::Renderer* renderer);
 
@@ -112,14 +119,18 @@ namespace RenderScenes
         void RequestModelHistoryClear(ModelInstanceHandle handle);
 
         u64 _sceneID = 0;
+        u64 _historyRetireValue = 0;
         const ModelLoading::ModelGeometryStorage* _geometryStorage = nullptr;
         const MaterialLoading::MaterialStorage* _materialStorage = nullptr;
         mutable ModelScene::ModelMaterialTableStore _materialTables;
+        mutable std::vector<ModelMaterialTableHandle> _defaultMaterialTables;
         ModelScene::GeometryGroupMaskStore _geometryGroupMasks;
         ModelScene::MeshletHistoryAllocator _meshletHistory;
         ModelScene::ModelInstanceStore _instances;
         ShadowRendering::SceneShadowState _shadowState;
         mutable std::vector<ModelInstanceHandle> _highlightedModelScratch;
+        mutable bool _transparentHighlightsDirty = true;
+        mutable bool _hasTransparentHighlights = false;
         u64 _transparentRoutingRevision = 0;
     };
 } // namespace RenderScenes

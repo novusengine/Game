@@ -60,26 +60,105 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
     }
 
     uint recordIndex = _constants.binIndex * _constants.binCapacity + queueIndex;
+    uint recordCount, recordStride;
+    if (_constants.resourceIndex == 0u) _transparentRecords0.GetDimensions(recordCount, recordStride);
+    else _transparentRecords1.GetDimensions(recordCount, recordStride);
+    if (recordIndex < queueIndex || recordIndex >= recordCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
     ModelVisibilityRecord packedRecord = _constants.resourceIndex == 0u ? _transparentRecords0[recordIndex]
                                                                          : _transparentRecords1[recordIndex];
     DecodedModelVisibilityRecord record = DecodeModelVisibilityRecord(packedRecord);
+    uint instanceCount, instanceStride;
+    uint modelCount, modelStride;
+    uint meshCount, meshStride;
+    uint lodCount, lodStride;
+    uint submeshCount, submeshStride;
+    uint meshletCount, meshletStride;
+    uint materialCount, materialStride;
+    _transparentRasterInstances.GetDimensions(instanceCount, instanceStride);
+    _transparentRasterModels.GetDimensions(modelCount, modelStride);
+    _transparentRasterMeshes.GetDimensions(meshCount, meshStride);
+    _transparentRasterLODs.GetDimensions(lodCount, lodStride);
+    _transparentRasterSubmeshes.GetDimensions(submeshCount, submeshStride);
+    _transparentRasterMeshlets.GetDimensions(meshletCount, meshletStride);
+    _transparentRasterMaterialTable.GetDimensions(materialCount, materialStride);
+    if (record.instanceIndex >= instanceCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
     ModelInstanceRecord instance = _transparentRasterInstances[record.instanceIndex];
+    if (instance.modelIndex >= modelCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
     ModelRecord model = _transparentRasterModels[instance.modelIndex];
-    ModelMesh mesh = _transparentRasterMeshes[model.meshBase + record.meshIndex];
-    ModelLOD lod = _transparentRasterLODs[model.meshLODBase + mesh.lodOffset + record.lodIndex];
-    ModelSubmesh submesh = _transparentRasterSubmeshes[model.submeshBase + lod.submeshOffset + record.submeshIndex];
-    ModelMeshlet meshlet = _transparentRasterMeshlets[model.meshletBase + record.meshletIndex];
-    uint materialInstanceIndex = _transparentRasterMaterialTable[instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex];
+    uint meshIndex = model.meshBase + record.meshIndex;
+    if (meshIndex < model.meshBase || meshIndex >= meshCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
+    ModelMesh mesh = _transparentRasterMeshes[meshIndex];
+    uint lodIndex = model.meshLODBase + mesh.lodOffset + record.lodIndex;
+    if (lodIndex < model.meshLODBase || lodIndex >= lodCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
+    ModelLOD lod = _transparentRasterLODs[lodIndex];
+    uint submeshIndex = model.submeshBase + lod.submeshOffset + record.submeshIndex;
+    uint meshletIndex = model.meshletBase + record.meshletIndex;
+    if (submeshIndex < model.submeshBase || submeshIndex >= submeshCount ||
+        meshletIndex < model.meshletBase || meshletIndex >= meshletCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
+    ModelSubmesh submesh = _transparentRasterSubmeshes[submeshIndex];
+    ModelMeshlet meshlet = _transparentRasterMeshlets[meshletIndex];
+    uint materialIndex = instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex;
+    if (materialIndex < instance.materialTableOffset || materialIndex >= materialCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
+    uint materialInstanceIndex = _transparentRasterMaterialTable[materialIndex];
     uint vertexCount = ModelMeshletVertexCount(meshlet);
     uint triangleCount = ModelMeshletTriangleCount(meshlet);
+    uint vertexIndexCount, vertexIndexStride;
+    uint positionCount, positionStride;
+    uint attributeCount, attributeStride;
+    uint triangleBufferCount, triangleStride;
+    _transparentRasterVertexIndices.GetDimensions(vertexIndexCount, vertexIndexStride);
+    _transparentRasterPositions.GetDimensions(positionCount, positionStride);
+    _transparentRasterVertexAttributes.GetDimensions(attributeCount, attributeStride);
+    _transparentRasterTriangles.GetDimensions(triangleBufferCount, triangleStride);
+    uint vertexBase = model.meshletVertexIndexBase + meshlet.vertexOffset;
+    uint triangleBase = model.meshletTriangleBase + meshlet.triangleOffset;
+    if (vertexCount > 64u || triangleCount > 124u || vertexBase < model.meshletVertexIndexBase ||
+        vertexBase + vertexCount < vertexBase || vertexBase + vertexCount > vertexIndexCount ||
+        triangleBase < model.meshletTriangleBase || triangleBase + triangleCount < triangleBase ||
+        triangleBase + triangleCount > triangleBufferCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
     SetMeshOutputCounts(vertexCount, triangleCount);
 
     if (threadID.x < vertexCount)
     {
-        uint vertexIndex = _transparentRasterVertexIndices[model.meshletVertexIndexBase + meshlet.vertexOffset + threadID.x];
-        float3 localPosition = DecodePosition(_transparentRasterPositions[model.positionBase + lod.vertexOffset + vertexIndex],
-                                              mesh.positionDecodeOffset, mesh.positionDecodeExtent);
-        uint4 attributes = _transparentRasterVertexAttributes[model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex];
+        uint vertexIndex = _transparentRasterVertexIndices[vertexBase + threadID.x];
+        uint positionIndex = model.positionBase + lod.vertexOffset + vertexIndex;
+        uint attributeIndex = model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex;
+        bool validVertex = positionIndex >= model.positionBase && positionIndex < positionCount &&
+                           attributeIndex >= model.vertexAttributeBase && attributeIndex < attributeCount;
+        float3 localPosition = validVertex ? DecodePosition(_transparentRasterPositions[positionIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent) : float3(0.0f, 0.0f, 0.0f);
+        uint4 attributes = validVertex ? _transparentRasterVertexAttributes[attributeIndex] : uint4(0u);
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[_constants.viewIndex].worldToClip);
         vertices[threadID.x].worldPosition = worldPosition.xyz;
@@ -92,7 +171,7 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
 
     for (uint triangleIndex = threadID.x; triangleIndex < triangleCount; triangleIndex += 64u)
     {
-        uint packedTriangle = _transparentRasterTriangles[model.meshletTriangleBase + meshlet.triangleOffset + triangleIndex];
+        uint packedTriangle = _transparentRasterTriangles[triangleBase + triangleIndex];
         triangles[triangleIndex] = DecodeModelMeshletTriangle(packedTriangle);
     }
 }

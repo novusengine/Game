@@ -54,22 +54,19 @@ namespace MaterialLoading
             for (u32 bindingIndex = 0; bindingIndex < instance.bindings.size(); ++bindingIndex)
             {
                 const Binding& binding = instance.bindings[bindingIndex];
-                const f32 time = binding.timeSource == FileFormat::Material::AnimationTimeSource::SharedClock ? _sharedTime : instance.stableTime;
+                const f64 time = binding.timeSource == FileFormat::Material::AnimationTimeSource::SharedClock ? _sharedTime : instance.stableTime;
                 const FileFormat::Material::MaterialAnimationTrack& track = binding.animation->tracks[binding.trackIndex];
                 const bool looping = (binding.flags & FileFormat::Material::MaterialAnimationBindingFlags_Looping) != 0 ||
                     (track.flags & FileFormat::Material::MaterialAnimationTrackFlags_Looping) != 0;
                 instance.values[bindingIndex] = Sample(*binding.animation, track, time, looping);
             }
 
-            for (u32 first = 0; first < instance.bindings.size();)
+            for (u32 bindingIndex = 0; bindingIndex < instance.bindings.size(); ++bindingIndex)
             {
-                u32 end = first + 1;
-                while (end < instance.bindings.size() && instance.bindings[end].parameterOffset == instance.bindings[end - 1].parameterOffset + sizeof(vec4))
-                    ++end;
-                const std::span<const vec4> values(instance.values.data() + first, end - first);
-                _storage->WriteMaterialParameters(instance.materialInstance, instance.bindings[first].parameterOffset,
-                    {reinterpret_cast<const u8*>(values.data()), values.size_bytes()});
-                first = end;
+                const Binding& binding = instance.bindings[bindingIndex];
+                const FileFormat::Material::MaterialAnimationTrack& track = binding.animation->tracks[binding.trackIndex];
+                const size_t byteCount = static_cast<size_t>(track.componentCount) * sizeof(f32);
+                _storage->WriteMaterialParameters(instance.materialInstance, binding.parameterOffset, {reinterpret_cast<const u8*>(&instance.values[bindingIndex]), byteCount});
             }
         }
     }
@@ -94,22 +91,32 @@ namespace MaterialLoading
         return animation;
     }
 
-    vec4 MaterialAnimator::Sample(const AnimationAsset& animation, const FileFormat::Material::MaterialAnimationTrack& track, f32 time, bool looping)
+    vec4 MaterialAnimator::Sample(const AnimationAsset& animation, const FileFormat::Material::MaterialAnimationTrack& track, f64 time, bool looping)
     {
         if (track.mode == FileFormat::Material::MaterialAnimationMode::Constant)
             return track.baseValue;
         if (track.mode == FileFormat::Material::MaterialAnimationMode::LinearRate)
-            return track.baseValue + track.ratePerSecond * time;
+            return track.baseValue + track.ratePerSecond * static_cast<f32>(time);
         if (track.numSamples == 0 || track.sampleRateHz == 0)
             return track.baseValue;
 
-        f32 sampleTime = time;
+        f64 sampleTime = time;
         if (looping && animation.root.durationSeconds > 0.0f)
-            sampleTime = std::fmod(std::max(sampleTime, 0.0f), animation.root.durationSeconds);
-        const f32 samplePosition = std::max(sampleTime, 0.0f) * track.sampleRateHz;
-        const u32 left = std::min(static_cast<u32>(samplePosition), track.numSamples - 1u);
-        const u32 right = left + 1u < track.numSamples ? left + 1u : looping ? 0u : left;
-        const f32 factor = left == right ? 0.0f : samplePosition - std::floor(samplePosition);
+            sampleTime = std::fmod(std::max(sampleTime, 0.0), static_cast<f64>(animation.root.durationSeconds));
+        const f64 samplePosition = std::max(sampleTime, 0.0) * static_cast<f64>(track.sampleRateHz);
+        const u32 last = track.numSamples - 1u;
+        const u32 left = std::min(static_cast<u32>(samplePosition), last);
+        const u32 right = left < last ? left + 1u : looping ? 0u : left;
+        f32 factor = left == right ? 0.0f : static_cast<f32>(samplePosition - std::floor(samplePosition));
+        if (looping && left == last)
+        {
+            const f64 loopEnd = static_cast<f64>(animation.root.durationSeconds) * static_cast<f64>(track.sampleRateHz);
+            if (loopEnd > static_cast<f64>(last))
+            {
+                const f64 loopFactor = (samplePosition - static_cast<f64>(last)) / (loopEnd - static_cast<f64>(last));
+                factor = static_cast<f32>(std::clamp(loopFactor, 0.0, 1.0));
+            }
+        }
         return glm::mix(animation.samples[track.sampleOffset + left], animation.samples[track.sampleOffset + right], factor);
     }
 } // namespace MaterialLoading

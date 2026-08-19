@@ -137,6 +137,10 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
     bool temporalSkip = false;
     uint cullReason = MODEL_CULL_REASON_VISIBLE;
     ModelMeshlet meshlet;
+    uint boundMeshletCount;
+    uint boundMeshletStride;
+    _modelMeshlets.GetDimensions(boundMeshletCount, boundMeshletStride);
+    visible = visible && meshletIndex < boundMeshletCount;
     if (visible)
     {
         meshlet = _modelMeshlets[meshletIndex];

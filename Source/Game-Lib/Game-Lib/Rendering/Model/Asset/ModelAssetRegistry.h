@@ -6,6 +6,8 @@
 
 #include <robinhood/robinhood.h>
 
+#include <memory>
+
 namespace PACT
 {
     class PactStorage;
@@ -23,10 +25,19 @@ namespace ModelLoading
 
     enum class EmbeddedModelLoadStatus : u8
     {
+        Pending,
         Loaded,
         InvalidReference,
+        // Reserved for an explicit converter-authored non-renderable dependency contract.
+        // A missing runtime .model file is a failure and must use the visible fallback.
         MissingRenderableGeometry,
         Failed
+    };
+
+    enum class ModelLoadStatus : u8
+    {
+        Pending,
+        Ready
     };
 
     struct ModelAssetRegistryStats
@@ -46,14 +57,17 @@ namespace ModelLoading
         ModelAssetRegistry(PACT::PactStorage* pactStorage, ModelGeometryStorage* geometryStorage,
                            MaterialLoading::MaterialStorage* materialStorage,
                            MaterialLoading::MaterialRegistry* materialRegistry);
+        ~ModelAssetRegistry();
 
         bool InitializeFallback();
         void Reserve(u32 modelCount)
         {
             _entries.reserve(_entries.size() + modelCount);
-            _missingEmbeddedModels.reserve(_missingEmbeddedModels.size() + modelCount);
         }
         RenderAssets::ModelHandle Load(FileFormat::AssetID assetID);
+        ModelLoadStatus BeginLoad(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
+        ModelLoadStatus PollLoad(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
+        bool Release(FileFormat::AssetID assetID);
         EmbeddedModelLoadStatus LoadEmbedded(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
         RenderAssets::ModelHandle GetFallbackModel() const { return _fallbackModel; }
         ModelAssetRegistryStats GetStats() const;
@@ -66,6 +80,7 @@ namespace ModelLoading
             bool usedFallback = false;
             bool sourceFileMissing = false;
         };
+        struct PendingLoad;
 
         RenderAssets::ModelHandle RecordFailure(FileFormat::AssetID assetID, const char* reason,
                                                 bool sourceFileMissing = false);
@@ -76,10 +91,11 @@ namespace ModelLoading
         MaterialLoading::MaterialStorage* _materialStorage = nullptr;
         MaterialLoading::MaterialRegistry* _materialRegistry = nullptr;
         robin_hood::unordered_map<FileFormat::AssetID, Entry> _entries;
-        robin_hood::unordered_set<FileFormat::AssetID> _missingEmbeddedModels;
+        robin_hood::unordered_map<FileFormat::AssetID, std::unique_ptr<PendingLoad>> _pendingLoads;
         RenderAssets::ModelHandle _fallbackModel;
         u32 _cacheHits = 0;
         u32 _failures = 0;
+        u32 _releaseUnderflows = 0;
         ModelAssetLimitations _limitations;
     };
 } // namespace ModelLoading

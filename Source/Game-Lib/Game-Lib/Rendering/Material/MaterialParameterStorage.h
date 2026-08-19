@@ -32,6 +32,7 @@ namespace MaterialLoading
 
         bool Append(std::span<const u8> bytes, u32 alignment, u32& outOffset);
         bool AppendMutable(std::span<const u8> bytes, u32 alignment, u32& outOffset);
+        bool IsMutableRange(u32 offset, u32 size) const;
         bool Write(u32 offset, std::span<const u8> bytes);
         void SyncToGPU(Renderer::Renderer* renderer);
 
@@ -48,6 +49,7 @@ namespace MaterialLoading
 
         Renderer::GPUVector<u8, 256> _bytes;
         robin_hood::unordered_map<u64, std::vector<Block>> _hashToBlocks;
+        std::vector<Block> _mutableBlocks;
         u32 _uniqueBlocks = 0;
         u32 _dedupHits = 0;
         u32 _bufferGrowths = 0;

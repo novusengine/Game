@@ -204,8 +204,8 @@ namespace MaterialLoading
                 }
             }
         }
-        record.textureOffset = _textureIndices.AddCount(record.textureCount);
-        record.samplerOffset = _samplerIDs.AddCount(record.textureCount);
+        record.textureOffset = _textureIndices.AddCountUninitialized(record.textureCount);
+        record.samplerOffset = _samplerIDs.AddCountUninitialized(record.textureCount);
         for (u32 index = 0; index < record.textureCount; ++index)
         {
             _textureIndices[record.textureOffset + index] = textureIndices[index];
@@ -233,7 +233,7 @@ namespace MaterialLoading
                 return false;
         }
 
-        outOffset = _materialTable.AddCount(static_cast<u32>(materials.size()));
+        outOffset = _materialTable.AddCountUninitialized(static_cast<u32>(materials.size()));
         for (u32 index = 0; index < materials.size(); ++index)
             _materialTable[outOffset + index] = static_cast<RenderAssets::MaterialInstanceHandle::type>(materials[index]);
         return true;

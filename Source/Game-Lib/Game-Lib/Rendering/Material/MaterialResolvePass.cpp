@@ -77,7 +77,7 @@ namespace MaterialRendering
                                                  const ModelLoading::ModelGeometryStorage& geometry,
                                                  const RenderScenes::RenderScene& scene, bool& changed)
     {
-        auto bind = [&set, &changed](StringUtils::StringHash name, Renderer::BufferID buffer,
+        auto Bind = [&set, &changed](StringUtils::StringHash name, Renderer::BufferID buffer,
                                      Renderer::BufferID& current) {
             if (buffer == current)
                 return;
@@ -85,21 +85,21 @@ namespace MaterialRendering
             current = buffer;
             changed = true;
         };
-        bind("_resolvedModelVisibilityRecords0"_h, work.GetVisibilityRecords(0), bindings.visibilityRecords[0]);
-        bind("_resolvedModelVisibilityStats0"_h, work.GetStatsBuffer(0), bindings.stats[0]);
-        bind("_resolvedModelVisibilityRecords1"_h, work.GetVisibilityRecords(1), bindings.visibilityRecords[1]);
-        bind("_resolvedModelVisibilityStats1"_h, work.GetStatsBuffer(1), bindings.stats[1]);
-        bind("_resolvedModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(), bindings.instances);
-        bind("_resolvedModels"_h, geometry.GetRecords().GetBuffer(), bindings.models);
-        bind("_resolvedModelMeshes"_h, geometry.GetMeshes().GetBuffer(), bindings.meshes);
-        bind("_resolvedModelLODs"_h, geometry.GetMeshLODs().GetBuffer(), bindings.lods);
-        bind("_resolvedModelSubmeshes"_h, geometry.GetSubmeshes().GetBuffer(), bindings.submeshes);
-        bind("_resolvedModelMeshlets"_h, geometry.GetMeshlets().GetBuffer(), bindings.meshlets);
-        bind("_resolvedModelPositions"_h, geometry.GetPositions().GetBuffer(), bindings.positions);
-        bind("_resolvedModelVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer(), bindings.attributes);
-        bind("_resolvedModelVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(), bindings.indices);
-        bind("_resolvedModelTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), bindings.triangles);
-        bind("_resolvedModelMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
+        Bind("_resolvedModelVisibilityRecords0"_h, work.GetVisibilityRecords(0), bindings.visibilityRecords[0]);
+        Bind("_resolvedModelVisibilityStats0"_h, work.GetStatsBuffer(0), bindings.stats[0]);
+        Bind("_resolvedModelVisibilityRecords1"_h, work.GetVisibilityRecords(1), bindings.visibilityRecords[1]);
+        Bind("_resolvedModelVisibilityStats1"_h, work.GetStatsBuffer(1), bindings.stats[1]);
+        Bind("_resolvedModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(), bindings.instances);
+        Bind("_resolvedModels"_h, geometry.GetRecords().GetBuffer(), bindings.models);
+        Bind("_resolvedModelMeshes"_h, geometry.GetMeshes().GetBuffer(), bindings.meshes);
+        Bind("_resolvedModelLODs"_h, geometry.GetMeshLODs().GetBuffer(), bindings.lods);
+        Bind("_resolvedModelSubmeshes"_h, geometry.GetSubmeshes().GetBuffer(), bindings.submeshes);
+        Bind("_resolvedModelMeshlets"_h, geometry.GetMeshlets().GetBuffer(), bindings.meshlets);
+        Bind("_resolvedModelPositions"_h, geometry.GetPositions().GetBuffer(), bindings.positions);
+        Bind("_resolvedModelVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer(), bindings.attributes);
+        Bind("_resolvedModelVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(), bindings.indices);
+        Bind("_resolvedModelTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), bindings.triangles);
+        Bind("_resolvedModelMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
              bindings.materialTable);
     }
 
@@ -119,7 +119,7 @@ namespace MaterialRendering
                            changed);
         BindModelResources(_resolveSet, _resolveBindings.model, work, geometry, scene, changed);
 
-        auto bind = [&changed](Renderer::DescriptorSet& set, StringUtils::StringHash name, Renderer::BufferID buffer,
+        auto Bind = [&changed](Renderer::DescriptorSet& set, StringUtils::StringHash name, Renderer::BufferID buffer,
                                Renderer::BufferID& current) {
             if (buffer == current)
                 return;
@@ -135,23 +135,22 @@ namespace MaterialRendering
             "_materialArguments0"_h, "_materialArguments1"_h};
         for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
         {
-            bind(_classificationSet, TILE_QUEUE_NAMES[frame], resources.GetTileQueue(frame),
+            Bind(_classificationSet, TILE_QUEUE_NAMES[frame], resources.GetTileQueue(frame),
                  _classificationBindings.tileQueues[frame]);
-            bind(_classificationSet, COUNTER_NAMES[frame], resources.GetCounters(frame),
+            Bind(_classificationSet, COUNTER_NAMES[frame], resources.GetCounters(frame),
                  _classificationBindings.counters[frame]);
-            bind(_finalizeSet, COUNTER_NAMES[frame], resources.GetCounters(frame),
+            Bind(_finalizeSet, COUNTER_NAMES[frame], resources.GetCounters(frame),
                  _finalizeBindings.counters[frame]);
-            bind(_finalizeSet, ARGUMENT_NAMES[frame], resources.GetArguments(frame),
+            Bind(_finalizeSet, ARGUMENT_NAMES[frame], resources.GetArguments(frame),
                  _finalizeBindings.arguments[frame]);
-            bind(_resolveSet, TILE_QUEUE_NAMES[frame], resources.GetTileQueue(frame),
+            Bind(_resolveSet, TILE_QUEUE_NAMES[frame], resources.GetTileQueue(frame),
                  _resolveBindings.tileQueues[frame]);
+            Bind(_resolveSet, COUNTER_NAMES[frame], resources.GetCounters(frame), _resolveBindings.counters[frame]);
         }
 
-        if (changed)
-            _descriptorWarmupFrames = _renderer->GetFrameIndexCount();
-        else if (_descriptorWarmupFrames > 0)
-            --_descriptorWarmupFrames;
-        return _descriptorWarmupFrames == 0;
+        return !_classificationSet.HasPendingBufferWrites() &&
+               !_finalizeSet.HasPendingBufferWrites() &&
+               !_resolveSet.HasPendingBufferWrites();
     }
 
     void MaterialResolvePass::RegisterModelUsage(Renderer::RenderGraphBuilder& builder,
@@ -302,6 +301,7 @@ namespace MaterialRendering
             Renderer::ImageResource svsmDynamicPagePool;
             Renderer::ImageMutableResource color;
             Renderer::BufferResource arguments;
+            Renderer::BufferResource counters;
             Renderer::DescriptorSetResource globalSet;
             Renderer::DescriptorSetResource lightSet;
             Renderer::DescriptorSetResource materialSet;
@@ -329,7 +329,12 @@ namespace MaterialRendering
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::COMPUTE);
                 for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
+                {
                     builder.Read(resources.GetTileQueue(frame), Usage::COMPUTE);
+                    const Renderer::BufferResource counters = builder.Read(resources.GetCounters(frame), Usage::COMPUTE);
+                    if (frame == frameIndex)
+                        data.counters = counters;
+                }
                 data.arguments = builder.Read(resources.GetArguments(frameIndex), Usage::COMPUTE);
                 data.globalSet = builder.Use(renderResources.globalDescriptorSet);
                 data.lightSet = builder.Use(renderResources.lightDescriptorSet);
@@ -346,6 +351,8 @@ namespace MaterialRendering
                 {
                     vec4 renderInfo;
                     vec4 shadowSettings;
+                    vec4 fogColor;
+                    vec4 fogSettings;
                     u32 resourceIndex;
                     u32 viewIndex;
                     u32 tileCapacity;
@@ -377,6 +384,8 @@ namespace MaterialRendering
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->renderInfo = vec4(renderSize, 1.0f / vec2(renderSize));
                     constants->shadowSettings = vec4(shadowStrength, shadowNormalOffsetBias, svsmConstantBias, 0.0f);
+                    constants->fogColor = _gameRenderer->GetMaterialRenderer()->GetFogColor();
+                    constants->fogSettings = _gameRenderer->GetMaterialRenderer()->GetFogSettings();
                     constants->resourceIndex = frameIndex;
                     constants->viewIndex = view.GetCameraIndex();
                     constants->tileCapacity = resources.GetTileCapacity();

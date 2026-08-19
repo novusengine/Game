@@ -70,6 +70,7 @@
 #include <imgui/backends/imgui_impl_glfw.h>
 
 #include <limits>
+#include <cstdlib>
 
 #include <gli/gli.hpp>
 #include <GLFW/glfw3.h>
@@ -241,7 +242,11 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _meshShaderSmoke = new MeshShaderSmoke(_renderer, this);
 
     _renderAssetResources = new RenderAssets::RenderAssetResources(_renderer, ServiceLocator::GetPactStorage(), &_resources.materialDescriptorSet, CVAR_RenderAssetValidateTransfers.Get() != 0);
-    NC_ASSERT(_renderAssetResources->Initialize(), "Failed to initialize render asset fallback resources");
+    if (!_renderAssetResources->Initialize())
+    {
+        NC_LOG_CRITICAL("RENDER_BOOTSTRAP render_asset_initialization_failed");
+        std::abort();
+    }
     _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetModelGeometryStorage(), &_renderAssetResources->GetMaterialStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
     _displayResolver = new ModelLoading::DisplayResolver(_renderAssetResources);
     _modelParameterOverrides = new ModelLoading::ModelParameterOverrides(_renderAssetResources);
@@ -333,12 +338,18 @@ RenderScenes::RenderView* GameRenderer::CreateRenderView(RenderScenes::RenderVie
             }
         }
         if (!allocatedCamera)
+        {
+            NC_LOG_ERROR("RENDER_VIEW auxiliary_camera_exhausted view={}", desc.debugName);
             return nullptr;
+        }
     }
     else if (desc.cameraIndex >= Renderer::Settings::FIRST_AUXILIARY_VIEW)
     {
         if (desc.cameraIndex >= Renderer::Settings::MAX_VIEWS || !_allocatedAuxiliaryCameras.insert(desc.cameraIndex).second)
+        {
+            NC_LOG_ERROR("RENDER_VIEW auxiliary_camera_unavailable view={} camera={}", desc.debugName, desc.cameraIndex);
             return nullptr;
+        }
         allocatedCamera = true;
     }
 
@@ -481,6 +492,7 @@ f32 GameRenderer::Render()
     Renderer::RenderGraph& renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
 
     f32 timeWaited = _renderer->FlipFrame(_frameIndex);
+    _modelRenderSystem->CompleteFrame(_frameIndex);
 
     if (renderSize.x != _lastWindowSize.x || renderSize.y != _lastWindowSize.y)
     {
@@ -676,7 +688,7 @@ f32 GameRenderer::Render()
     _renderer->UnlockUploads();
 
     // Flip the frameIndex between 0 and 1
-    _modelRenderSystem->AdvanceFrame();
+    _modelRenderSystem->AdvanceFrame(_frameIndex);
     _frameIndex = !_frameIndex;
     return timeWaited;
 }

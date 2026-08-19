@@ -43,7 +43,8 @@ namespace ModelPipeline
           _cullDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS),
           _finalizeDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS),
           _replayDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS),
-          _beginPhase2DescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+          _beginPhase2DescriptorSet(Renderer::DescriptorSetSlot::PER_PASS),
+          _historyClearDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     {
         Renderer::ComputePipelineDesc desc;
         Renderer::ComputeShaderDesc shader;
@@ -92,6 +93,13 @@ namespace ModelPipeline
         _replayDescriptorSet.Init(renderer);
         _beginPhase2DescriptorSet.RegisterPipeline(renderer, _beginPhase2Pipeline);
         _beginPhase2DescriptorSet.Init(renderer);
+
+        shader.shaderEntry = gameRenderer->GetShaderEntry("Model/ViewHistoryClear.cs"_h, "Model/ViewHistoryClear.cs");
+        desc.debugName = "Model View Targeted History Clear";
+        desc.computeShader = renderer->LoadShader(shader);
+        _historyClearPipeline = renderer->CreatePipeline(desc);
+        _historyClearDescriptorSet.RegisterPipeline(renderer, _historyClearPipeline);
+        _historyClearDescriptorSet.Init(renderer);
     }
 
     bool ModelViewWorkPass::Bind(Renderer::DescriptorSet& descriptorSet, StringUtils::StringHash name,
@@ -155,138 +163,231 @@ namespace ModelPipeline
                                    const RenderScenes::RenderScene& scene)
     {
 
-        bool bindingsChanged = false;
-        auto bind = [&bindingsChanged, this](Renderer::DescriptorSet& set, StringUtils::StringHash name,
-                                              Renderer::BufferID buffer, Renderer::BufferID& current) {
-            bindingsChanged |= Bind(set, name, buffer, current);
-        };
-        auto finish = [&]() {
-            if (bindingsChanged)
-                _descriptorWarmupFrames = _renderer->GetFrameIndexCount();
-            else if (_descriptorWarmupFrames > 0)
-                --_descriptorWarmupFrames;
-            return _descriptorWarmupFrames == 0;
+        auto Finish = [&]() {
+            return !_expandDescriptorSet.HasPendingBufferWrites() &&
+                   !_expandFinalizeDescriptorSet.HasPendingBufferWrites() &&
+                   !_cullDescriptorSet.HasPendingBufferWrites() &&
+                   !_finalizeDescriptorSet.HasPendingBufferWrites() &&
+                   !_replayDescriptorSet.HasPendingBufferWrites() &&
+                   !_beginPhase2DescriptorSet.HasPendingBufferWrites() &&
+                   !_historyClearDescriptorSet.HasPendingBufferWrites();
         };
 
-        bind(_expandDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _expandBindings.frames[0].chunkQueue);
-        bind(_expandDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _expandBindings.frames[0].workStats);
-        bind(_expandDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _expandBindings.frames[1].chunkQueue);
-        bind(_expandDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _expandBindings.frames[1].workStats);
-        bind(_expandDescriptorSet, "_instanceVisibility0"_h, work.GetInstanceVisibility(0),
+        Bind(_expandDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _expandBindings.frames[0].chunkQueue);
+        Bind(_expandDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _expandBindings.frames[0].workStats);
+        Bind(_expandDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _expandBindings.frames[1].chunkQueue);
+        Bind(_expandDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _expandBindings.frames[1].workStats);
+        Bind(_expandDescriptorSet, "_instanceVisibility0"_h, work.GetInstanceVisibility(0),
              _expandBindings.frames[0].instanceVisibility);
-        bind(_expandDescriptorSet, "_instanceVisibility1"_h, work.GetInstanceVisibility(1),
+        Bind(_expandDescriptorSet, "_instanceVisibility1"_h, work.GetInstanceVisibility(1),
              _expandBindings.frames[1].instanceVisibility);
+        Bind(_historyClearDescriptorSet, "_clearInstanceVisibility0"_h, work.GetInstanceVisibility(0), _historyClearInstanceVisibility[0]);
+        Bind(_historyClearDescriptorSet, "_clearInstanceVisibility1"_h, work.GetInstanceVisibility(1), _historyClearInstanceVisibility[1]);
+        Bind(_historyClearDescriptorSet, "_clearMeshletHistory0"_h, work.GetMeshletHistory(0), _historyClearMeshletHistory[0]);
+        Bind(_historyClearDescriptorSet, "_clearMeshletHistory1"_h, work.GetMeshletHistory(1), _historyClearMeshletHistory[1]);
 
-        bind(_expandFinalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0),
+        Bind(_expandFinalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0),
              _expandFinalizeBindings[0].workStats);
-        bind(_expandFinalizeDescriptorSet, "_chunkArguments0"_h, work.GetChunkArguments(0),
+        Bind(_expandFinalizeDescriptorSet, "_chunkArguments0"_h, work.GetChunkArguments(0),
              _expandFinalizeBindings[0].chunkArguments);
-        bind(_expandFinalizeDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1),
+        Bind(_expandFinalizeDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1),
              _expandFinalizeBindings[1].workStats);
-        bind(_expandFinalizeDescriptorSet, "_chunkArguments1"_h, work.GetChunkArguments(1),
+        Bind(_expandFinalizeDescriptorSet, "_chunkArguments1"_h, work.GetChunkArguments(1),
              _expandFinalizeBindings[1].chunkArguments);
 
-        bind(_cullDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _cullBindings.frames[0].chunkQueue);
+        Bind(_cullDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _cullBindings.frames[0].chunkQueue);
         static constexpr StringUtils::StringHash QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT]
                                                                  [ModelView::MODEL_RASTER_CLASS_COUNT] = {
             {"_oneSidedQueue0"_h, "_twoSidedQueue0"_h, "_alphaTestOneSidedQueue0"_h, "_alphaTestTwoSidedQueue0"_h},
             {"_oneSidedQueue1"_h, "_twoSidedQueue1"_h, "_alphaTestOneSidedQueue1"_h, "_alphaTestTwoSidedQueue1"_h}};
         for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
             for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
-                bind(_cullDescriptorSet, QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
+                Bind(_cullDescriptorSet, QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
                      _cullBindings.frames[frame].rasterQueues[rasterClass]);
-        bind(_cullDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _cullBindings.frames[0].workStats);
-        bind(_cullDescriptorSet, "_visibilityRecords0"_h, work.GetVisibilityRecords(0),
+        Bind(_cullDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _cullBindings.frames[0].workStats);
+        Bind(_cullDescriptorSet, "_visibilityRecords0"_h, work.GetVisibilityRecords(0),
              _cullBindings.frames[0].visibilityRecords);
-        bind(_cullDescriptorSet, "_cullReasons0"_h, work.GetCullReasons(0), _cullBindings.frames[0].cullReasons);
-        bind(_cullDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _cullBindings.frames[1].chunkQueue);
-        bind(_cullDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _cullBindings.frames[1].workStats);
-        bind(_cullDescriptorSet, "_visibilityRecords1"_h, work.GetVisibilityRecords(1),
+        Bind(_cullDescriptorSet, "_cullReasons0"_h, work.GetCullReasons(0), _cullBindings.frames[0].cullReasons);
+        Bind(_cullDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _cullBindings.frames[1].chunkQueue);
+        Bind(_cullDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _cullBindings.frames[1].workStats);
+        Bind(_cullDescriptorSet, "_visibilityRecords1"_h, work.GetVisibilityRecords(1),
              _cullBindings.frames[1].visibilityRecords);
-        bind(_cullDescriptorSet, "_cullReasons1"_h, work.GetCullReasons(1), _cullBindings.frames[1].cullReasons);
-        bind(_cullDescriptorSet, "_meshletHistory0"_h, work.GetMeshletHistory(0),
+        Bind(_cullDescriptorSet, "_cullReasons1"_h, work.GetCullReasons(1), _cullBindings.frames[1].cullReasons);
+        Bind(_cullDescriptorSet, "_meshletHistory0"_h, work.GetMeshletHistory(0),
              _cullBindings.frames[0].meshletHistory);
-        bind(_cullDescriptorSet, "_meshletHistory1"_h, work.GetMeshletHistory(1),
+        Bind(_cullDescriptorSet, "_meshletHistory1"_h, work.GetMeshletHistory(1),
              _cullBindings.frames[1].meshletHistory);
-        bind(_cullDescriptorSet, "_survivors0"_h, work.GetSurvivorQueue(0),
+        Bind(_cullDescriptorSet, "_survivors0"_h, work.GetSurvivorQueue(0),
              _cullBindings.frames[0].survivorQueue);
-        bind(_cullDescriptorSet, "_survivors1"_h, work.GetSurvivorQueue(1),
+        Bind(_cullDescriptorSet, "_survivors1"_h, work.GetSurvivorQueue(1),
              _cullBindings.frames[1].survivorQueue);
 
-        bind(_finalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _finalizeBindings[0].workStats);
-        bind(_finalizeDescriptorSet, "_indirectArguments0"_h, work.GetArguments(0),
+        Bind(_finalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _finalizeBindings[0].workStats);
+        Bind(_finalizeDescriptorSet, "_indirectArguments0"_h, work.GetArguments(0),
              _finalizeBindings[0].indirectArguments);
-        bind(_finalizeDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _finalizeBindings[1].workStats);
-        bind(_finalizeDescriptorSet, "_indirectArguments1"_h, work.GetArguments(1),
+        Bind(_finalizeDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _finalizeBindings[1].workStats);
+        Bind(_finalizeDescriptorSet, "_indirectArguments1"_h, work.GetArguments(1),
              _finalizeBindings[1].indirectArguments);
-        bind(_finalizeDescriptorSet, "_survivorArguments0"_h, work.GetSurvivorArguments(0),
+        Bind(_finalizeDescriptorSet, "_survivorArguments0"_h, work.GetSurvivorArguments(0),
              _finalizeBindings[0].survivorArguments);
-        bind(_finalizeDescriptorSet, "_survivorArguments1"_h, work.GetSurvivorArguments(1),
+        Bind(_finalizeDescriptorSet, "_survivorArguments1"_h, work.GetSurvivorArguments(1),
              _finalizeBindings[1].survivorArguments);
 
-        bind(_beginPhase2DescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _beginPhase2Bindings[0].workStats);
-        bind(_beginPhase2DescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _beginPhase2Bindings[1].workStats);
-        bind(_beginPhase2DescriptorSet, "_indirectArguments0"_h, work.GetArguments(0),
+        Bind(_beginPhase2DescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _beginPhase2Bindings[0].workStats);
+        Bind(_beginPhase2DescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _beginPhase2Bindings[1].workStats);
+        Bind(_beginPhase2DescriptorSet, "_indirectArguments0"_h, work.GetArguments(0),
              _beginPhase2Bindings[0].indirectArguments);
-        bind(_beginPhase2DescriptorSet, "_indirectArguments1"_h, work.GetArguments(1),
+        Bind(_beginPhase2DescriptorSet, "_indirectArguments1"_h, work.GetArguments(1),
              _beginPhase2Bindings[1].indirectArguments);
 
-        bind(_replayDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
+        Bind(_replayDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
              _replayBindings.modelInstances);
-        bind(_replayDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(), _replayBindings.modelRecords);
-        bind(_replayDescriptorSet, "_modelMeshlets"_h, geometry.GetMeshlets().GetBuffer(), _replayBindings.modelMeshlets);
-        bind(_replayDescriptorSet, "_lodHistory"_h, viewState.GetLODHistory().GetBuffer(), _replayBindings.lodHistory);
+        Bind(_replayDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(), _replayBindings.modelRecords);
+        Bind(_replayDescriptorSet, "_modelMeshlets"_h, geometry.GetMeshlets().GetBuffer(), _replayBindings.modelMeshlets);
+        Bind(_replayDescriptorSet, "_lodHistory"_h, viewState.GetLODHistory().GetBuffer(), _replayBindings.lodHistory);
         static constexpr StringUtils::StringHash REPLAY_QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT]
                                                                     [ModelView::MODEL_RASTER_CLASS_COUNT] = {
             {"_oneSidedQueue0"_h, "_twoSidedQueue0"_h, "_alphaTestOneSidedQueue0"_h, "_alphaTestTwoSidedQueue0"_h},
             {"_oneSidedQueue1"_h, "_twoSidedQueue1"_h, "_alphaTestOneSidedQueue1"_h, "_alphaTestTwoSidedQueue1"_h}};
         for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
         {
-            bind(_replayDescriptorSet, frame == 0 ? "_instanceVisibility0"_h : "_instanceVisibility1"_h,
+            Bind(_replayDescriptorSet, frame == 0 ? "_instanceVisibility0"_h : "_instanceVisibility1"_h,
                  work.GetInstanceVisibility(frame), _replayBindings.instanceVisibility[frame]);
-            bind(_replayDescriptorSet, frame == 0 ? "_meshletHistory0"_h : "_meshletHistory1"_h,
+            Bind(_replayDescriptorSet, frame == 0 ? "_meshletHistory0"_h : "_meshletHistory1"_h,
                  work.GetMeshletHistory(frame), _replayBindings.meshletHistory[frame]);
-            bind(_replayDescriptorSet, frame == 0 ? "_survivors0"_h : "_survivors1"_h,
+            Bind(_replayDescriptorSet, frame == 0 ? "_survivors0"_h : "_survivors1"_h,
                  work.GetSurvivorQueue(frame), _replayBindings.survivorQueues[frame]);
-            bind(_replayDescriptorSet, frame == 0 ? "_visibilityRecords0"_h : "_visibilityRecords1"_h,
+            Bind(_replayDescriptorSet, frame == 0 ? "_visibilityRecords0"_h : "_visibilityRecords1"_h,
                  work.GetVisibilityRecords(frame), _replayBindings.visibilityRecords[frame]);
-            bind(_replayDescriptorSet, frame == 0 ? "_workStats0"_h : "_workStats1"_h,
+            Bind(_replayDescriptorSet, frame == 0 ? "_workStats0"_h : "_workStats1"_h,
                  work.GetStatsBuffer(frame), _replayBindings.workStats[frame]);
             for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
-                bind(_replayDescriptorSet, REPLAY_QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
+                Bind(_replayDescriptorSet, REPLAY_QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
                      _replayBindings.rasterQueues[frame][rasterClass]);
         }
 
         if (viewState.GetInputs().IsEmpty())
-            return finish();
+            return Finish();
 
-        bind(_expandDescriptorSet, "_viewInputs"_h, viewState.GetInputs().GetBuffer(),
+        Bind(_expandDescriptorSet, "_viewInputs"_h, viewState.GetInputs().GetBuffer(),
              _expandBindings.viewInputs);
-        bind(_expandDescriptorSet, "_lodHistory"_h, viewState.GetLODHistory().GetBuffer(),
+        Bind(_expandDescriptorSet, "_lodHistory"_h, viewState.GetLODHistory().GetBuffer(),
              _expandBindings.lodHistory);
-        bind(_expandDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
+        Bind(_expandDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
              _expandBindings.modelInstances);
-        bind(_expandDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(),
+        Bind(_expandDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(),
              _expandBindings.modelRecords);
-        bind(_expandDescriptorSet, "_modelMeshes"_h, geometry.GetMeshes().GetBuffer(),
+        Bind(_expandDescriptorSet, "_modelMeshes"_h, geometry.GetMeshes().GetBuffer(),
              _expandBindings.modelMeshes);
-        bind(_expandDescriptorSet, "_modelLODs"_h, geometry.GetMeshLODs().GetBuffer(),
+        Bind(_expandDescriptorSet, "_modelLODs"_h, geometry.GetMeshLODs().GetBuffer(),
              _expandBindings.modelLODs);
-        bind(_expandDescriptorSet, "_modelSubmeshes"_h, geometry.GetSubmeshes().GetBuffer(),
+        Bind(_expandDescriptorSet, "_modelSubmeshes"_h, geometry.GetSubmeshes().GetBuffer(),
              _expandBindings.modelSubmeshes);
-        bind(_expandDescriptorSet, "_geometryGroupMasks"_h, scene.GetGeometryGroupMasks().GetMasks().GetBuffer(),
+        Bind(_expandDescriptorSet, "_geometryGroupMasks"_h, scene.GetGeometryGroupMasks().GetMasks().GetBuffer(),
              _expandBindings.geometryGroupMasks);
-        bind(_expandDescriptorSet, "_materialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
+        Bind(_expandDescriptorSet, "_materialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
              _expandBindings.materialTable);
-        bind(_cullDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
+        Bind(_cullDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
              _cullBindings.modelInstances);
-        bind(_cullDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(),
+        Bind(_cullDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(),
              _cullBindings.modelRecords);
-        bind(_cullDescriptorSet, "_modelMeshes"_h, geometry.GetMeshes().GetBuffer(),
+        Bind(_cullDescriptorSet, "_modelMeshes"_h, geometry.GetMeshes().GetBuffer(),
              _cullBindings.modelMeshes);
-        bind(_cullDescriptorSet, "_modelMeshlets"_h, geometry.GetMeshlets().GetBuffer(),
+        Bind(_cullDescriptorSet, "_modelMeshlets"_h, geometry.GetMeshlets().GetBuffer(),
              _cullBindings.modelMeshlets);
-        return finish();
+        return Finish();
+    }
+
+    void ModelViewWorkPass::AddHistoryClearPass(Renderer::RenderGraph* renderGraph, const RenderScenes::RenderView& view,
+                                                ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work)
+    {
+        std::vector<u32> instanceSlots(viewState.GetPendingInstanceClears().begin(), viewState.GetPendingInstanceClears().end());
+        std::vector<ModelScene::MeshletHistoryRange> meshletRanges(viewState.GetPendingMeshletClears().begin(), viewState.GetPendingMeshletClears().end());
+        if (instanceSlots.empty() && meshletRanges.empty())
+            return;
+
+        std::sort(instanceSlots.begin(), instanceSlots.end());
+        std::vector<RenderScenes::StableRange> instanceRanges;
+        instanceRanges.reserve(instanceSlots.size());
+        for (const u32 slot : instanceSlots)
+        {
+            if (!instanceRanges.empty() && instanceRanges.back().offset + instanceRanges.back().count == slot)
+                ++instanceRanges.back().count;
+            else if (instanceRanges.empty() || instanceRanges.back().offset != slot)
+                instanceRanges.push_back({slot, 1});
+        }
+
+        std::sort(meshletRanges.begin(), meshletRanges.end(),
+                  [](const ModelScene::MeshletHistoryRange& left,
+                     const ModelScene::MeshletHistoryRange& right) {
+                      return left.wordOffset < right.wordOffset;
+                  });
+        size_t meshletWrite = 0;
+        for (const ModelScene::MeshletHistoryRange range : meshletRanges)
+        {
+            if (range.wordCount == 0)
+                continue;
+            if (meshletWrite != 0 && meshletRanges[meshletWrite - 1].wordOffset + meshletRanges[meshletWrite - 1].wordCount >= range.wordOffset)
+            {
+                auto& previous = meshletRanges[meshletWrite - 1];
+                previous.wordCount = std::max(previous.wordCount, range.wordOffset + range.wordCount - previous.wordOffset);
+            }
+            else
+            {
+                meshletRanges[meshletWrite++] = range;
+            }
+        }
+        meshletRanges.resize(meshletWrite);
+
+        struct Data
+        {
+            Renderer::BufferMutableResource instanceVisibility[ModelView::MODEL_VIEW_FRAME_COUNT];
+            Renderer::BufferMutableResource meshletHistory[ModelView::MODEL_VIEW_FRAME_COUNT];
+            Renderer::DescriptorSetResource descriptorSet;
+        };
+
+        renderGraph->AddPass<Data>("Model History Clear: " + view.GetDebugName(),
+            [this, &work](Data& data, Renderer::RenderGraphBuilder& builder) {
+                using Usage = Renderer::BufferPassUsage;
+                for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
+                {
+                    data.instanceVisibility[frame] = builder.Write(work.GetInstanceVisibility(frame), Usage::COMPUTE);
+                    data.meshletHistory[frame] = builder.Write(work.GetMeshletHistory(frame), Usage::COMPUTE);
+                }
+                data.descriptorSet = builder.Use(_historyClearDescriptorSet);
+                return true;
+            },
+            [this, instanceRanges, meshletRanges](Data& data, Renderer::RenderGraphResources& graphResources,
+                                                 Renderer::CommandList& commandList) {
+                struct Constants
+                {
+                    u32 mode;
+                    u32 offset;
+                    u32 count;
+                };
+
+                commandList.BeginPipeline(_historyClearPipeline);
+                commandList.BindDescriptorSet(data.descriptorSet, 0);
+                for (const RenderScenes::StableRange range : instanceRanges)
+                {
+                    Constants* constants = graphResources.FrameNew<Constants>();
+                    *constants = {0, range.offset, range.count};
+                    commandList.PushConstant(constants, 0, sizeof(Constants));
+                    commandList.Dispatch((range.count + 63u) / 64u, 1, 1);
+                }
+                for (const ModelScene::MeshletHistoryRange range : meshletRanges)
+                {
+                    if (range.wordCount == 0)
+                        continue;
+                    Constants* constants = graphResources.FrameNew<Constants>();
+                    *constants = {1, range.wordOffset, range.wordCount};
+                    commandList.PushConstant(constants, 0, sizeof(Constants));
+                    commandList.Dispatch((range.wordCount + 63u) / 64u, 1, 1);
+                }
+                commandList.EndPipeline(_historyClearPipeline);
+            });
+
+        viewState.AcknowledgeTemporalClears();
     }
 
     void ModelViewWorkPass::AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -297,7 +398,7 @@ namespace ModelPipeline
                                     const RenderScenes::RenderScene& scene, u8 frameIndex, bool resetHistory,
                                     i32 forcedLOD)
     {
-        const u32 inputCount = viewState.GetInputs().Count();
+        const u32 inputCount = viewState.GetDispatchInputCount();
         const i32 configuredQueueLimit = CVAR_ModelMeshletQueueLimit.Get();
         const u32 configuredQueueCapacity =
             static_cast<u32>(std::max(CVAR_ModelMeshletQueueCapacity.Get(), 1));
@@ -348,7 +449,6 @@ namespace ModelPipeline
                     builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::COMPUTE);
                     builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                     data.chunks = builder.Write(work.GetChunkQueue(frameIndex), Usage::COMPUTE);
-                    data.chunkArguments = builder.Write(work.GetChunkArguments(frameIndex), Usage::COMPUTE);
                     for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
                         data.rasterQueues[rasterClass] = builder.Write(work.GetQueue(rasterClass, frameIndex), Usage::COMPUTE);
                     data.visibilityRecords = builder.Write(work.GetVisibilityRecords(frameIndex), Usage::COMPUTE);
@@ -357,7 +457,6 @@ namespace ModelPipeline
                     builder.Write(work.GetSurvivorQueue(frameIndex), Usage::COMPUTE);
                     // Both generations are RW shader bindings; resourceIndex selects the active generation.
                     builder.Write(work.GetChunkQueue(inactiveFrameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetChunkArguments(inactiveFrameIndex), Usage::COMPUTE);
                     for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
                         builder.Write(work.GetQueue(rasterClass, inactiveFrameIndex), Usage::COMPUTE);
                     builder.Write(work.GetVisibilityRecords(inactiveFrameIndex), Usage::COMPUTE);
@@ -367,9 +466,10 @@ namespace ModelPipeline
                     data.globalSet = builder.Use(resources.globalDescriptorSet);
                     data.materialSet = builder.Use(resources.materialDescriptorSet);
                     data.expandSet = builder.Use(_expandDescriptorSet);
-                    data.expandFinalizeSet = builder.Use(_expandFinalizeDescriptorSet);
                     data.cullSet = builder.Use(_cullDescriptorSet);
                 }
+                data.chunkArguments = builder.Write(work.GetChunkArguments(frameIndex), Usage::COMPUTE);
+                builder.Write(work.GetChunkArguments(inactiveFrameIndex), Usage::COMPUTE);
                 data.stats = builder.Write(work.GetStatsBuffer(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 data.arguments = builder.Write(work.GetArguments(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 // Both generations are RW shader bindings; resourceIndex selects the active generation.
@@ -378,6 +478,7 @@ namespace ModelPipeline
                 builder.Write(work.GetSurvivorArguments(frameIndex), Usage::COMPUTE);
                 builder.Write(work.GetSurvivorArguments(!frameIndex), Usage::COMPUTE);
                 data.readback = builder.Write(work.GetStatsReadback(frameIndex), Usage::TRANSFER);
+                data.expandFinalizeSet = builder.Use(_expandFinalizeDescriptorSet);
                 data.finalizeSet = builder.Use(_finalizeDescriptorSet);
                 return true;
             },
@@ -428,22 +529,24 @@ namespace ModelPipeline
 
                     commandList.BufferBarrier(data.chunks, Renderer::BufferPassUsage::COMPUTE);
                     commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::COMPUTE);
-                    struct ExpandFinalizeConstants
-                    {
-                        u32 queueCapacity;
-                        u32 resourceIndex;
-                    };
-                    ExpandFinalizeConstants* expandFinalizeConstants =
-                        graphResources.FrameNew<ExpandFinalizeConstants>();
-                    expandFinalizeConstants->queueCapacity = queueCapacity;
-                    expandFinalizeConstants->resourceIndex = frameIndex;
-                    commandList.BeginPipeline(_expandFinalizePipeline);
-                    commandList.PushConstant(expandFinalizeConstants, 0, sizeof(ExpandFinalizeConstants));
-                    commandList.BindDescriptorSet(data.expandFinalizeSet, frameIndex);
-                    commandList.Dispatch(1, 1, 1);
-                    commandList.EndPipeline(_expandFinalizePipeline);
+                }
+                struct ExpandFinalizeConstants
+                {
+                    u32 queueCapacity;
+                    u32 resourceIndex;
+                };
+                ExpandFinalizeConstants* expandFinalizeConstants = graphResources.FrameNew<ExpandFinalizeConstants>();
+                expandFinalizeConstants->queueCapacity = queueCapacity;
+                expandFinalizeConstants->resourceIndex = frameIndex;
+                commandList.BeginPipeline(_expandFinalizePipeline);
+                commandList.PushConstant(expandFinalizeConstants, 0, sizeof(ExpandFinalizeConstants));
+                commandList.BindDescriptorSet(data.expandFinalizeSet, frameIndex);
+                commandList.Dispatch(1, 1, 1);
+                commandList.EndPipeline(_expandFinalizePipeline);
 
-                    commandList.BufferBarrier(data.chunkArguments, Renderer::BufferPassUsage::COMPUTE);
+                commandList.BufferBarrier(data.chunkArguments, Renderer::BufferPassUsage::COMPUTE);
+                if (inputCount > 0)
+                {
                     struct CullConstants
                     {
                         u32 viewIndex;
@@ -499,7 +602,7 @@ namespace ModelPipeline
                                           const RenderScenes::RenderScene& scene, u8 frameIndex, bool resetHistory,
                                           i32 forcedLOD)
     {
-        const u32 inputCount = viewState.GetInputs().Count();
+        const u32 inputCount = viewState.GetDispatchInputCount();
         const u32 inactiveFrameIndex = (frameIndex + 1u) % ModelView::MODEL_VIEW_FRAME_COUNT;
         const u32 configuredCapacity = static_cast<u32>(std::max(CVAR_ModelMeshletQueueCapacity.Get(), 1));
         u32 queueCapacity = std::min(work.GetQueueCapacity(), configuredCapacity);
@@ -520,6 +623,7 @@ namespace ModelPipeline
             Renderer::BufferMutableResource stats;
             Renderer::BufferMutableResource arguments;
             Renderer::BufferMutableResource survivorQueue;
+            Renderer::BufferMutableResource survivorArguments;
             Renderer::BufferMutableResource previousSurvivorArguments;
             Renderer::DescriptorSetResource globalSet;
             Renderer::DescriptorSetResource materialSet;
@@ -534,25 +638,32 @@ namespace ModelPipeline
             [&resources, &viewState, &work, &geometry, &materials, &scene, frameIndex, inactiveFrameIndex, inputCount,
              this](Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
-                builder.Read(resources.cameras.GetBuffer(), Usage::COMPUTE);
-                builder.Read(viewState.GetInputs().GetBuffer(), Usage::COMPUTE);
-                data.lodHistory = builder.Write(viewState.GetLODHistory().GetBuffer(), Usage::COMPUTE);
-                builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::COMPUTE);
-                builder.Read(geometry.GetRecords().GetBuffer(), Usage::COMPUTE);
-                builder.Read(geometry.GetMeshes().GetBuffer(), Usage::COMPUTE);
-                builder.Read(geometry.GetMeshLODs().GetBuffer(), Usage::COMPUTE);
-                builder.Read(geometry.GetSubmeshes().GetBuffer(), Usage::COMPUTE);
-                builder.Read(geometry.GetMeshlets().GetBuffer(), Usage::COMPUTE);
-                builder.Read(scene.GetGeometryGroupMasks().GetMasks().GetBuffer(), Usage::COMPUTE);
-                builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::COMPUTE);
-                builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::COMPUTE);
-                builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
+                if (inputCount > 0)
+                {
+                    builder.Read(resources.cameras.GetBuffer(), Usage::COMPUTE);
+                    builder.Read(viewState.GetInputs().GetBuffer(), Usage::COMPUTE);
+                    data.lodHistory = builder.Write(viewState.GetLODHistory().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(geometry.GetRecords().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(geometry.GetMeshes().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(geometry.GetMeshLODs().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(geometry.GetSubmeshes().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(geometry.GetMeshlets().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(scene.GetGeometryGroupMasks().GetMasks().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::COMPUTE);
+                    builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
+                    data.globalSet = builder.Use(resources.globalDescriptorSet);
+                    data.materialSet = builder.Use(resources.materialDescriptorSet);
+                    data.expandSet = builder.Use(_expandDescriptorSet);
+                    data.replaySet = builder.Use(_replayDescriptorSet);
+                }
                 data.instanceVisibility = builder.Write(work.GetInstanceVisibility(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 data.inactiveInstanceVisibility = builder.Write(work.GetInstanceVisibility(inactiveFrameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 data.meshletHistory = builder.Write(work.GetMeshletHistory(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 data.inactiveMeshletHistory = builder.Write(work.GetMeshletHistory(inactiveFrameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 data.chunks = builder.Write(work.GetChunkQueue(frameIndex), Usage::COMPUTE);
-                data.chunkArguments = builder.Write(work.GetChunkArguments(frameIndex), Usage::COMPUTE);
+                data.chunkArguments = builder.Write(work.GetChunkArguments(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 builder.Write(work.GetChunkQueue(inactiveFrameIndex), Usage::COMPUTE);
                 builder.Write(work.GetChunkArguments(inactiveFrameIndex), Usage::COMPUTE);
                 for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
@@ -566,18 +677,17 @@ namespace ModelPipeline
                 builder.Write(work.GetCullReasons(inactiveFrameIndex), Usage::COMPUTE);
                 data.stats = builder.Write(work.GetStatsBuffer(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 builder.Write(work.GetStatsBuffer(inactiveFrameIndex), Usage::COMPUTE);
-                data.arguments = builder.Write(work.GetArguments(frameIndex), Usage::COMPUTE);
+                data.arguments = builder.Write(work.GetArguments(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                 builder.Write(work.GetArguments(inactiveFrameIndex), Usage::COMPUTE);
                 data.survivorQueue = builder.Write(work.GetSurvivorQueue(frameIndex), Usage::COMPUTE);
                 builder.Write(work.GetSurvivorQueue(inactiveFrameIndex), Usage::COMPUTE);
                 data.previousSurvivorArguments = builder.Write(work.GetSurvivorArguments(inactiveFrameIndex), Usage::COMPUTE);
-                builder.Write(work.GetSurvivorArguments(frameIndex), Usage::COMPUTE);
-                data.globalSet = builder.Use(resources.globalDescriptorSet);
-                data.materialSet = builder.Use(resources.materialDescriptorSet);
-                data.expandSet = builder.Use(_expandDescriptorSet);
-                data.expandFinalizeSet = builder.Use(_expandFinalizeDescriptorSet);
-                data.replaySet = builder.Use(_replayDescriptorSet);
-                data.finalizeSet = builder.Use(_finalizeDescriptorSet);
+                data.survivorArguments = builder.Write(work.GetSurvivorArguments(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
+                if (inputCount > 0)
+                {
+                    data.expandFinalizeSet = builder.Use(_expandFinalizeDescriptorSet);
+                    data.finalizeSet = builder.Use(_finalizeDescriptorSet);
+                }
                 return true;
             },
             [this, &view, &work, inputCount, queueCapacity, frameIndex, resetHistory, forcedLOD](
@@ -601,7 +711,18 @@ namespace ModelPipeline
                     commandList.BufferBarrier(data.inactiveInstanceVisibility, Renderer::BufferPassUsage::TRANSFER);
                     commandList.BufferBarrier(data.inactiveMeshletHistory, Renderer::BufferPassUsage::TRANSFER);
                 }
-
+                if (inputCount == 0)
+                {
+                    commandList.FillBuffer(data.chunkArguments, 0, sizeof(u32) * ModelView::MODEL_DISPATCH_ARGUMENT_COUNT, 0);
+                    commandList.FillBuffer(data.arguments, 0,
+                                           sizeof(u32) * ModelView::MODEL_RASTER_CLASS_COUNT *
+                                               ModelView::MODEL_DISPATCH_ARGUMENT_COUNT, 0);
+                    commandList.FillBuffer(data.survivorArguments, 0, sizeof(u32) * ModelView::MODEL_DISPATCH_ARGUMENT_COUNT, 0);
+                    commandList.BufferBarrier(data.chunkArguments, Renderer::BufferPassUsage::TRANSFER);
+                    commandList.BufferBarrier(data.arguments, Renderer::BufferPassUsage::TRANSFER);
+                    commandList.BufferBarrier(data.survivorArguments, Renderer::BufferPassUsage::TRANSFER);
+                    return;
+                }
                 struct WorkConstants
                 {
                     u32 viewIndex;
@@ -639,29 +760,32 @@ namespace ModelPipeline
 
                     commandList.BufferBarrier(data.chunks, Renderer::BufferPassUsage::COMPUTE);
                     commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::COMPUTE);
-                    struct ExpandFinalizeConstants { u32 queueCapacity; u32 resourceIndex; };
-                    ExpandFinalizeConstants* expand = graphResources.FrameNew<ExpandFinalizeConstants>();
-                    expand->queueCapacity = queueCapacity;
-                    expand->resourceIndex = frameIndex;
-                    commandList.BeginPipeline(_expandFinalizePipeline);
-                    commandList.PushConstant(expand, 0, sizeof(ExpandFinalizeConstants));
-                    commandList.BindDescriptorSet(data.expandFinalizeSet, frameIndex);
-                    commandList.Dispatch(1, 1, 1);
-                    commandList.EndPipeline(_expandFinalizePipeline);
                 }
+                struct ExpandFinalizeConstants { u32 queueCapacity; u32 resourceIndex; };
+                ExpandFinalizeConstants* expand = graphResources.FrameNew<ExpandFinalizeConstants>();
+                expand->queueCapacity = queueCapacity;
+                expand->resourceIndex = frameIndex;
+                commandList.BeginPipeline(_expandFinalizePipeline);
+                commandList.PushConstant(expand, 0, sizeof(ExpandFinalizeConstants));
+                commandList.BindDescriptorSet(data.expandFinalizeSet, frameIndex);
+                commandList.Dispatch(1, 1, 1);
+                commandList.EndPipeline(_expandFinalizePipeline);
 
-                commandList.BufferBarrier(data.instanceVisibility, Renderer::BufferPassUsage::COMPUTE);
-                struct ReplayConstants { u32 queueCapacity; u32 resourceIndex; u32 resetHistory; u32 reserved; };
-                ReplayConstants* replay = graphResources.FrameNew<ReplayConstants>();
-                replay->queueCapacity = queueCapacity;
-                replay->resourceIndex = frameIndex;
-                replay->resetHistory = resetHistory || ModelRendering::ShowModelCullReasons() ? 1u : 0u;
-                replay->reserved = 0;
-                commandList.BeginPipeline(_replayPipeline);
-                commandList.PushConstant(replay, 0, sizeof(ReplayConstants));
-                commandList.BindDescriptorSet(data.replaySet, frameIndex);
-                commandList.DispatchIndirect(data.previousSurvivorArguments, 0);
-                commandList.EndPipeline(_replayPipeline);
+                if (inputCount > 0 && !resetHistory)
+                {
+                    commandList.BufferBarrier(data.instanceVisibility, Renderer::BufferPassUsage::COMPUTE);
+                    struct ReplayConstants { u32 queueCapacity; u32 resourceIndex; u32 resetHistory; u32 reserved; };
+                    ReplayConstants* replay = graphResources.FrameNew<ReplayConstants>();
+                    replay->queueCapacity = queueCapacity;
+                    replay->resourceIndex = frameIndex;
+                    replay->resetHistory = resetHistory || ModelRendering::ShowModelCullReasons() ? 1u : 0u;
+                    replay->reserved = 0;
+                    commandList.BeginPipeline(_replayPipeline);
+                    commandList.PushConstant(replay, 0, sizeof(ReplayConstants));
+                    commandList.BindDescriptorSet(data.replaySet, frameIndex);
+                    commandList.DispatchIndirect(data.previousSurvivorArguments, 0);
+                    commandList.EndPipeline(_replayPipeline);
+                }
 
                 commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::COMPUTE);
                 commandList.BeginPipeline(_finalizePipeline);
@@ -802,7 +926,7 @@ namespace ModelPipeline
                 };
                 WorkConstants* constants = graphResources.FrameNew<WorkConstants>();
                 constants->viewIndex = view.GetCameraIndex();
-                constants->inputCount = viewState.GetInputs().Count();
+                constants->inputCount = viewState.GetDispatchInputCount();
                 constants->queueCapacity = queueCapacity;
                 constants->forcedLOD = -1;
                 constants->viewportHeight = static_cast<f32>(view.GetDimensions().y);

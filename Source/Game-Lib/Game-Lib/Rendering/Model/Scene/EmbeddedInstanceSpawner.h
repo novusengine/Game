@@ -77,7 +77,7 @@ namespace ModelScene
                                                   SpawnedEmbeddedInstances& instances,
                                                   u32 maxInstances, u32& outProcessed);
         bool SetInstanceSet(SpawnedEmbeddedInstances& instances, u32 requestedSet);
-        void Destroy(SpawnedEmbeddedInstances& instances, u64 retireValue);
+        void Destroy(SpawnedEmbeddedInstances& instances);
 
         const EmbeddedInstanceSpawnerStats& GetStats() const { return _stats; }
 

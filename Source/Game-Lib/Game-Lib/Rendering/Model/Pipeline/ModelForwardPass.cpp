@@ -74,21 +74,8 @@ namespace ModelPipeline
                 frame.visibilityRecords = Renderer::BufferID::Invalid();
                 frame.workStats = Renderer::BufferID::Invalid();
             }
-            _bindings.modelInstances = Renderer::BufferID::Invalid();
-            _bindings.models = Renderer::BufferID::Invalid();
-            _bindings.meshes = Renderer::BufferID::Invalid();
-            _bindings.lods = Renderer::BufferID::Invalid();
-            _bindings.submeshes = Renderer::BufferID::Invalid();
-            _bindings.meshlets = Renderer::BufferID::Invalid();
-            _bindings.positions = Renderer::BufferID::Invalid();
-            _bindings.vertexAttributes = Renderer::BufferID::Invalid();
-            _bindings.vertexIndices = Renderer::BufferID::Invalid();
-            _bindings.triangles = Renderer::BufferID::Invalid();
-            _bindings.materialTable = Renderer::BufferID::Invalid();
-            _descriptorWarmupFrames = ModelView::MODEL_VIEW_FRAME_COUNT;
         }
 
-        bool changed = false;
         static constexpr StringUtils::StringHash
             QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT][ModelView::MODEL_RASTER_CLASS_COUNT] = {
                 {"_modelRasterQueueSolidOneSided0"_h, "_modelRasterQueueSolidTwoSided0"_h,
@@ -98,32 +85,14 @@ namespace ModelPipeline
         for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
         {
             for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
-                changed |= Bind(QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
-                                _bindings.frames[frame].rasterQueues[rasterClass]);
+                Bind(QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame), _bindings.frames[frame].rasterQueues[rasterClass]);
         }
-        changed |= Bind("_modelVisibilityRecords0"_h, work.GetVisibilityRecords(0), _bindings.frames[0].visibilityRecords);
-        changed |= Bind("_modelVisibilityStats0"_h, work.GetStatsBuffer(0), _bindings.frames[0].workStats);
-        changed |= Bind("_modelVisibilityRecords1"_h, work.GetVisibilityRecords(1), _bindings.frames[1].visibilityRecords);
-        changed |= Bind("_modelVisibilityStats1"_h, work.GetStatsBuffer(1), _bindings.frames[1].workStats);
-        changed |= Bind("_modelVisibilityInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(), _bindings.modelInstances);
-        changed |= Bind("_modelVisibilityModels"_h, geometry.GetRecords().GetBuffer(), _bindings.models);
-        changed |= Bind("_modelVisibilityMeshes"_h, geometry.GetMeshes().GetBuffer(), _bindings.meshes);
-        changed |= Bind("_modelVisibilityLODs"_h, geometry.GetMeshLODs().GetBuffer(), _bindings.lods);
-        changed |= Bind("_modelVisibilitySubmeshes"_h, geometry.GetSubmeshes().GetBuffer(), _bindings.submeshes);
-        changed |= Bind("_modelVisibilityMeshlets"_h, geometry.GetMeshlets().GetBuffer(), _bindings.meshlets);
-        changed |= Bind("_modelVisibilityPositions"_h, geometry.GetPositions().GetBuffer(), _bindings.positions);
-        changed |= Bind("_modelVisibilityVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer(), _bindings.vertexAttributes);
-        changed |= Bind("_modelVisibilityVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(), _bindings.vertexIndices);
-        changed |= Bind("_modelVisibilityTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), _bindings.triangles);
-        changed |= Bind("_modelVisibilityMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(), _bindings.materialTable);
-        if (changed)
-            _descriptorWarmupFrames = ModelView::MODEL_VIEW_FRAME_COUNT;
-        if (_descriptorWarmupFrames > 0)
-        {
-            --_descriptorWarmupFrames;
-            return false;
-        }
-        return true;
+        Bind("_modelVisibilityRecords0"_h, work.GetVisibilityRecords(0), _bindings.frames[0].visibilityRecords);
+        Bind("_modelVisibilityStats0"_h, work.GetStatsBuffer(0), _bindings.frames[0].workStats);
+        Bind("_modelVisibilityRecords1"_h, work.GetVisibilityRecords(1), _bindings.frames[1].visibilityRecords);
+        Bind("_modelVisibilityStats1"_h, work.GetStatsBuffer(1), _bindings.frames[1].workStats);
+        _geometryBindings.Bind(_descriptorSet, geometry, scene);
+        return !_descriptorSet.HasPendingBufferWrites();
     }
 
     void ModelForwardPass::AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -176,17 +145,7 @@ namespace ModelPipeline
                     builder.Read(work.GetStatsBuffer(frame), Usage::GRAPHICS);
                 }
                 data.arguments = builder.Read(work.GetArguments(frameIndex), Usage::GRAPHICS);
-                builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetRecords().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshes().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshLODs().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetSubmeshes().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshlets().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetPositions().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetVertexAttributes().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(geometry.GetMeshletTriangles().GetBuffer(), Usage::GRAPHICS);
-                builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::GRAPHICS);
+                ModelGeometryBindings::RegisterUsage(builder, geometry, scene, Usage::GRAPHICS);
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::GRAPHICS);
@@ -227,7 +186,7 @@ namespace ModelPipeline
                     u32 reserved0;
                     u32 reserved1;
                 };
-                auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex) {
+                auto Draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex) {
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->shadowSettings = vec4(shadowStrength,
                         *cvars->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias"),
@@ -249,10 +208,10 @@ namespace ModelPipeline
                     commandList.DrawMeshTasksIndirect(data.arguments, queueIndex * sizeof(u32) * ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(pipeline);
                 };
-                draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED);
-                draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED);
-                draw(_oneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED);
-                draw(_twoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED);
+                Draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED);
+                Draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED);
+                Draw(_oneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED);
+                Draw(_twoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED);
                 commandList.EndRenderPass(pass);
             });
     }

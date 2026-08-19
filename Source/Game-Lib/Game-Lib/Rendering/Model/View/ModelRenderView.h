@@ -13,6 +13,8 @@
 #include "Game-Lib/Rendering/Model/View/ModelTransparentWorkResources.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
 
+#include <memory>
+
 struct RenderResources;
 class GameRenderer;
 
@@ -62,18 +64,20 @@ namespace ModelRendering
         ModelView::ModelViewState _state;
         ModelView::ModelViewWorkResources _work;
         ModelView::ModelTransparentWorkResources _transparentWork;
-        MaterialRendering::MaterialResolveResources _materialResources;
+        std::unique_ptr<MaterialRendering::MaterialResolveResources> _materialResources;
         ModelPipeline::ModelViewWorkPass _viewWorkPass;
-        ModelPipeline::ModelVisibilityPass _visibilityPass;
-        ModelPipeline::ModelForwardPass _forwardPass;
+        std::unique_ptr<ModelPipeline::ModelVisibilityPass> _visibilityPass;
+        std::unique_ptr<ModelPipeline::ModelForwardPass> _forwardPass;
         ModelPipeline::ModelTransparentPass _transparentPass;
         ModelPipeline::ModelTransparentSelectionPass _transparentSelectionPass;
-        MaterialRendering::MaterialResolvePass _materialResolvePass;
-        ModelPipeline::ModelVisibilityResolvePass _visibilityResolvePass;
+        std::unique_ptr<MaterialRendering::MaterialResolvePass> _materialResolvePass;
+        std::unique_ptr<ModelPipeline::ModelVisibilityResolvePass> _visibilityResolvePass;
         i32 _forcedLOD = -1;
         u32 _handledTemporalReset = 0;
         bool _readyThisFrame = false;
         bool _phase1Ready = false;
+        bool _viewWorkDescriptorsReady = false;
+        bool _rasterDescriptorsReady = false;
         bool _transparentDescriptorsReady = false;
         bool _transparentSelectionDescriptorsReady = false;
         Renderer::DepthImageID _transparentSelectionDepth = Renderer::DepthImageID::Invalid();

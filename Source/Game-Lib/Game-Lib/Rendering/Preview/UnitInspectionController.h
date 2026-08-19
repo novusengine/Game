@@ -45,6 +45,8 @@ namespace PreviewRendering
         void ApplyDevelopmentGalleryAppearance(entt::registry& registry, u32 appearanceIndex);
         bool CaptureDevelopmentGalleryAppearance(entt::registry& registry, u32 appearanceIndex);
         void RestoreDevelopmentGallerySource(entt::registry& registry);
+        void ConnectDirtySignals(entt::registry& registry);
+        void OnAppearanceChanged(entt::registry&, entt::entity entity);
 
         struct DevelopmentGallery
         {
@@ -64,6 +66,8 @@ namespace PreviewRendering
         std::vector<Renderer::TextureID> _developmentGalleryTextures;
         DevelopmentGallery _developmentGallery;
         entt::entity _unit = entt::null;
+        entt::registry* _connectedRegistry = nullptr;
+        bool _descriptionDirty = true;
         bool _reportedMissingSource = false;
     };
 } // namespace PreviewRendering

@@ -53,3 +53,18 @@ TEST_CASE("Mutable material parameter blocks remain independent and accept updat
     CHECK(storage.GetByte(firstOffset + 4) == 1);
     CHECK(storage.GetByte(secondOffset + 4) == 0);
 }
+
+TEST_CASE("Sub-vector animation writes preserve adjacent material parameters", "[Rendering][MaterialParameterStorage]")
+{
+    MaterialLoading::MaterialParameterStorage storage;
+    const std::array<u8, 16> initial = {10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33, 40, 41, 42, 43};
+    u32 offset = 0;
+    REQUIRE(storage.AppendMutable(initial, 16, offset));
+
+    const std::array<u8, 8> vec2Sample = {1, 2, 3, 4, 5, 6, 7, 8};
+    REQUIRE(storage.Write(offset, vec2Sample));
+    for (u32 index = 0; index < vec2Sample.size(); ++index)
+        CHECK(storage.GetByte(offset + index) == vec2Sample[index]);
+    for (u32 index = static_cast<u32>(vec2Sample.size()); index < initial.size(); ++index)
+        CHECK(storage.GetByte(offset + index) == initial[index]);
+}

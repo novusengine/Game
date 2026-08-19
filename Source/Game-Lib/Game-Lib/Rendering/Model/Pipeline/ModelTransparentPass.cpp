@@ -30,22 +30,22 @@ namespace ModelPipeline
     {
         Renderer::ComputeShaderDesc shader;
         Renderer::ComputePipelineDesc computeDesc;
-        auto createCompute = [&](const char* path, StringUtils::StringHash hash, const char* name) {
+        auto CreateCompute = [&](const char* path, StringUtils::StringHash hash, const char* name) {
             shader.shaderEntry = gameRenderer->GetShaderEntry(hash, path);
             computeDesc.computeShader = renderer->LoadShader(shader);
             computeDesc.debugName = name;
             return renderer->CreatePipeline(computeDesc);
         };
-        _beginPipeline = createCompute("Model/TransparentBegin.cs", "Model/TransparentBegin.cs"_h,
+        _beginPipeline = CreateCompute("Model/TransparentBegin.cs", "Model/TransparentBegin.cs"_h,
                                        "Model Transparent Begin");
-        _expandPipeline = createCompute("Model/TransparentExpand.cs", "Model/TransparentExpand.cs"_h,
+        _expandPipeline = CreateCompute("Model/TransparentExpand.cs", "Model/TransparentExpand.cs"_h,
                                         "Model Transparent Expand");
-        _expandFinalizePipeline = createCompute("Model/TransparentExpandFinalize.cs",
+        _expandFinalizePipeline = CreateCompute("Model/TransparentExpandFinalize.cs",
                                                 "Model/TransparentExpandFinalize.cs"_h,
                                                 "Model Transparent Expand Finalize");
-        _cullPipeline = createCompute("Model/TransparentCull.cs", "Model/TransparentCull.cs"_h,
+        _cullPipeline = CreateCompute("Model/TransparentCull.cs", "Model/TransparentCull.cs"_h,
                                       "Model Transparent Cull");
-        _finalizePipeline = createCompute("Model/TransparentFinalize.cs", "Model/TransparentFinalize.cs"_h,
+        _finalizePipeline = CreateCompute("Model/TransparentFinalize.cs", "Model/TransparentFinalize.cs"_h,
                                           "Model Transparent Finalize");
 
         _beginSet.RegisterPipeline(renderer, _beginPipeline);
@@ -132,60 +132,63 @@ namespace ModelPipeline
             _generation = work.GetGeneration();
             _bindings.clear();
         }
-        bool changed = false;
-        auto bind = [&](Renderer::DescriptorSet& set, const char* name, Renderer::BufferID buffer) {
-            const StringUtils::StringHash hash(name);
+        auto Bind = [&](Renderer::DescriptorSet& set, StringUtils::StringHash hash, Renderer::BufferID buffer) {
             const u64 key = (static_cast<u64>(&set == &_beginSet ? 0 : &set == &_expandSet ? 1 :
                                               &set == &_expandFinalizeSet ? 2 : &set == &_cullSet ? 3 :
                                               &set == &_finalizeSet ? 4 : 5) << 32u) | hash.computedHash;
-            changed |= Bind(set, hash, buffer, _bindings[key]);
+            this->Bind(set, hash, buffer, _bindings[key]);
         };
+        static constexpr StringUtils::StringHash STATS[ModelView::MODEL_TRANSPARENT_FRAME_COUNT] = {"_transparentStats0"_h, "_transparentStats1"_h};
+        static constexpr StringUtils::StringHash CHUNK_ARGUMENTS[ModelView::MODEL_TRANSPARENT_FRAME_COUNT] = {"_transparentChunkArguments0"_h, "_transparentChunkArguments1"_h};
+        static constexpr StringUtils::StringHash ARGUMENTS[ModelView::MODEL_TRANSPARENT_FRAME_COUNT] = {"_transparentArguments0"_h, "_transparentArguments1"_h};
+        static constexpr StringUtils::StringHash CHUNKS[ModelView::MODEL_TRANSPARENT_FRAME_COUNT] = {"_transparentChunks0"_h, "_transparentChunks1"_h};
+        static constexpr StringUtils::StringHash RECORDS[ModelView::MODEL_TRANSPARENT_FRAME_COUNT] = {"_transparentRecords0"_h, "_transparentRecords1"_h};
         for (u32 frame = 0; frame < ModelView::MODEL_TRANSPARENT_FRAME_COUNT; ++frame)
         {
-            const std::string suffix = std::to_string(frame);
-            bind(_beginSet, ("_transparentStats" + suffix).c_str(), work.GetStatsBuffer(frame));
-            bind(_beginSet, ("_transparentChunkArguments" + suffix).c_str(), work.GetChunkArguments(frame));
-            bind(_beginSet, ("_transparentArguments" + suffix).c_str(), work.GetArguments(frame));
-            bind(_expandSet, ("_transparentChunks" + suffix).c_str(), work.GetChunkQueue(frame));
-            bind(_expandSet, ("_transparentStats" + suffix).c_str(), work.GetStatsBuffer(frame));
-            bind(_expandFinalizeSet, ("_transparentStats" + suffix).c_str(), work.GetStatsBuffer(frame));
-            bind(_expandFinalizeSet, ("_transparentChunkArguments" + suffix).c_str(), work.GetChunkArguments(frame));
-            bind(_cullSet, ("_transparentChunks" + suffix).c_str(), work.GetChunkQueue(frame));
-            bind(_cullSet, ("_transparentRecords" + suffix).c_str(), work.GetVisibilityRecords(frame));
-            bind(_cullSet, ("_transparentStats" + suffix).c_str(), work.GetStatsBuffer(frame));
-            bind(_finalizeSet, ("_transparentStats" + suffix).c_str(), work.GetStatsBuffer(frame));
-            bind(_finalizeSet, ("_transparentArguments" + suffix).c_str(), work.GetArguments(frame));
-            bind(_rasterSet, ("_transparentRecords" + suffix).c_str(), work.GetVisibilityRecords(frame));
-            bind(_rasterSet, ("_transparentStats" + suffix).c_str(), work.GetStatsBuffer(frame));
+            Bind(_beginSet, STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_beginSet, CHUNK_ARGUMENTS[frame], work.GetChunkArguments(frame));
+            Bind(_beginSet, ARGUMENTS[frame], work.GetArguments(frame));
+            Bind(_expandSet, CHUNKS[frame], work.GetChunkQueue(frame));
+            Bind(_expandSet, STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_expandFinalizeSet, STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_expandFinalizeSet, CHUNK_ARGUMENTS[frame], work.GetChunkArguments(frame));
+            Bind(_cullSet, CHUNKS[frame], work.GetChunkQueue(frame));
+            Bind(_cullSet, RECORDS[frame], work.GetVisibilityRecords(frame));
+            Bind(_cullSet, STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_finalizeSet, STATS[frame], work.GetStatsBuffer(frame));
+            Bind(_finalizeSet, ARGUMENTS[frame], work.GetArguments(frame));
+            Bind(_rasterSet, RECORDS[frame], work.GetVisibilityRecords(frame));
+            Bind(_rasterSet, STATS[frame], work.GetStatsBuffer(frame));
         }
-        bind(_expandSet, "_transparentViewInputs", viewState.GetInputs().GetBuffer());
-        bind(_expandSet, "_transparentLODHistory", viewState.GetLODHistory().GetBuffer());
-        bind(_expandSet, "_transparentInstances", scene.GetModelInstances().GetRecords().GetBuffer());
-        bind(_expandSet, "_transparentModels", geometry.GetRecords().GetBuffer());
-        bind(_expandSet, "_transparentMeshes", geometry.GetMeshes().GetBuffer());
-        bind(_expandSet, "_transparentLODs", geometry.GetMeshLODs().GetBuffer());
-        bind(_expandSet, "_transparentSubmeshes", geometry.GetSubmeshes().GetBuffer());
-        bind(_expandSet, "_transparentGeometryGroups", scene.GetGeometryGroupMasks().GetMasks().GetBuffer());
-        bind(_expandSet, "_transparentMaterialTable", scene.GetModelMaterialTables().GetEntries().GetBuffer());
-        bind(_cullSet, "_transparentCullInstances", scene.GetModelInstances().GetRecords().GetBuffer());
-        bind(_cullSet, "_transparentCullModels", geometry.GetRecords().GetBuffer());
-        bind(_cullSet, "_transparentCullMeshlets", geometry.GetMeshlets().GetBuffer());
-        bind(_rasterSet, "_transparentRasterInstances", scene.GetModelInstances().GetRecords().GetBuffer());
-        bind(_rasterSet, "_transparentRasterModels", geometry.GetRecords().GetBuffer());
-        bind(_rasterSet, "_transparentRasterMeshes", geometry.GetMeshes().GetBuffer());
-        bind(_rasterSet, "_transparentRasterLODs", geometry.GetMeshLODs().GetBuffer());
-        bind(_rasterSet, "_transparentRasterSubmeshes", geometry.GetSubmeshes().GetBuffer());
-        bind(_rasterSet, "_transparentRasterMeshlets", geometry.GetMeshlets().GetBuffer());
-        bind(_rasterSet, "_transparentRasterPositions", geometry.GetPositions().GetBuffer());
-        bind(_rasterSet, "_transparentRasterVertexAttributes", geometry.GetVertexAttributes().GetBuffer());
-        bind(_rasterSet, "_transparentRasterVertexIndices", geometry.GetMeshletVertexIndices().GetBuffer());
-        bind(_rasterSet, "_transparentRasterTriangles", geometry.GetMeshletTriangles().GetBuffer());
-        bind(_rasterSet, "_transparentRasterMaterialTable", scene.GetModelMaterialTables().GetEntries().GetBuffer());
-        if (changed)
-            _descriptorWarmupFrames = _renderer->GetFrameIndexCount();
-        else if (_descriptorWarmupFrames > 0)
-            --_descriptorWarmupFrames;
-        return _descriptorWarmupFrames == 0;
+        Bind(_expandSet, "_transparentViewInputs"_h, viewState.GetInputs().GetBuffer());
+        Bind(_expandSet, "_transparentLODHistory"_h, viewState.GetLODHistory().GetBuffer());
+        Bind(_expandSet, "_transparentInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
+        Bind(_expandSet, "_transparentModels"_h, geometry.GetRecords().GetBuffer());
+        Bind(_expandSet, "_transparentMeshes"_h, geometry.GetMeshes().GetBuffer());
+        Bind(_expandSet, "_transparentLODs"_h, geometry.GetMeshLODs().GetBuffer());
+        Bind(_expandSet, "_transparentSubmeshes"_h, geometry.GetSubmeshes().GetBuffer());
+        Bind(_expandSet, "_transparentGeometryGroups"_h, scene.GetGeometryGroupMasks().GetMasks().GetBuffer());
+        Bind(_expandSet, "_transparentMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
+        Bind(_cullSet, "_transparentCullInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
+        Bind(_cullSet, "_transparentCullModels"_h, geometry.GetRecords().GetBuffer());
+        Bind(_cullSet, "_transparentCullMeshlets"_h, geometry.GetMeshlets().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterModels"_h, geometry.GetRecords().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterMeshes"_h, geometry.GetMeshes().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterLODs"_h, geometry.GetMeshLODs().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterSubmeshes"_h, geometry.GetSubmeshes().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterMeshlets"_h, geometry.GetMeshlets().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterPositions"_h, geometry.GetPositions().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterTriangles"_h, geometry.GetMeshletTriangles().GetBuffer());
+        Bind(_rasterSet, "_transparentRasterMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
+        return !_beginSet.HasPendingBufferWrites() &&
+               !_expandSet.HasPendingBufferWrites() &&
+               !_expandFinalizeSet.HasPendingBufferWrites() &&
+               !_cullSet.HasPendingBufferWrites() &&
+               !_finalizeSet.HasPendingBufferWrites() &&
+               !_rasterSet.HasPendingBufferWrites();
     }
 
     void ModelTransparentPass::AddCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -196,7 +199,7 @@ namespace ModelPipeline
                                            const MaterialLoading::MaterialStorage& materials,
                                            const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        const u32 inputCount = viewState.GetInputs().Count();
+        const u32 inputCount = viewState.GetDispatchInputCount();
         struct Data
         {
             Renderer::ImageResource depthPyramid;

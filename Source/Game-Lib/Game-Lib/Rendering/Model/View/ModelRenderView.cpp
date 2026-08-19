@@ -14,13 +14,20 @@ namespace ModelRendering
                                      RenderAssets::RenderAssetResources* assets,
                                      const RenderScenes::RenderViewDesc& desc, bool validateTransfers)
         : _renderer(renderer), _assets(assets), _view(desc), _state(validateTransfers), _work(renderer),
-          _transparentWork(renderer),
-          _materialResources(renderer, desc.dimensions, desc.dimensionType), _viewWorkPass(renderer, gameRenderer), _visibilityPass(renderer, gameRenderer),
-          _forwardPass(renderer, gameRenderer),
-          _transparentPass(renderer, gameRenderer), _transparentSelectionPass(renderer, gameRenderer),
-          _materialResolvePass(renderer, gameRenderer),
-          _visibilityResolvePass(renderer, gameRenderer)
+          _transparentWork(renderer), _viewWorkPass(renderer, gameRenderer),
+          _transparentPass(renderer, gameRenderer), _transparentSelectionPass(renderer, gameRenderer)
     {
+        if (_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
+        {
+            _materialResources = std::make_unique<MaterialRendering::MaterialResolveResources>(renderer, desc.dimensions, desc.dimensionType);
+            _visibilityPass = std::make_unique<ModelPipeline::ModelVisibilityPass>(renderer, gameRenderer);
+            _materialResolvePass = std::make_unique<MaterialRendering::MaterialResolvePass>(renderer, gameRenderer);
+            _visibilityResolvePass = std::make_unique<ModelPipeline::ModelVisibilityResolvePass>(renderer, gameRenderer);
+        }
+        else
+        {
+            _forwardPass = std::make_unique<ModelPipeline::ModelForwardPass>(renderer, gameRenderer);
+        }
     }
 
     ModelRenderView::~ModelRenderView()
@@ -62,18 +69,23 @@ namespace ModelRendering
 
         UpdateSelectionTarget();
 
+        const bool sceneMembershipChanged = _state.GetPreparedSceneRevision() != scene->GetModelInstances().GetMembershipRevision();
         if (_state.IsWorkDirty() ||
-            _state.GetPreparedSceneRevision() != scene->GetModelInstances().GetMembershipRevision())
+            (sceneMembershipChanged && !_state.GetDiagnosticSelection().empty()))
         {
-            if (_state.GetPreparedSceneRevision() != scene->GetModelInstances().GetMembershipRevision())
-                _view.RequestTemporalReset();
             _state.PrepareInputs(*scene, _assets->GetModelGeometryStorage());
             _state.PrepareTransparentStats(*scene, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage());
             _view.MarkDirty();
         }
+        else if (sceneMembershipChanged)
+        {
+            _state.PrepareChangedInputs(*scene, _assets->GetModelGeometryStorage(), scene->GetModelMembershipChanges());
+            _state.PrepareChangedTransparentStats(*scene, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene->GetModelMembershipChanges());
+            _view.MarkDirty();
+        }
 
         if (_state.GetPreparedTransparentRoutingRevision() != scene->GetTransparentRoutingRevision())
-            _state.PrepareTransparentStats(*scene, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage());
+            _state.PrepareChangedTransparentStats(*scene, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene->GetTransparentRoutingChanges());
 
         if (_forcedLOD != forcedLOD)
         {
@@ -90,6 +102,17 @@ namespace ModelRendering
         if (RenderScenes::RenderScene* scene = _view.GetScene())
         {
             _viewWorkPass.PrepareResources(_state, _work, *scene);
+            _viewWorkDescriptorsReady = _viewWorkPass.Upload(_state, _work, _assets->GetModelGeometryStorage(), *scene);
+            if (_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
+            {
+                _visibilityPass->Upload(_work, _assets->GetModelGeometryStorage(), *scene);
+                _visibilityResolvePass->Upload(_work, _assets->GetModelGeometryStorage(), *scene);
+                _rasterDescriptorsReady = _materialResolvePass->Upload(_view, _work, *_materialResources, _assets->GetModelGeometryStorage(), *scene);
+            }
+            else
+            {
+                _rasterDescriptorsReady = _forwardPass->Upload(_work, _assets->GetModelGeometryStorage(), *scene);
+            }
             _transparentWork.EnsureCapacity(_state.GetQueueCapacity());
             _transparentDescriptorsReady = _transparentPass.Upload(_state, _transparentWork,
                 _assets->GetModelGeometryStorage(), *scene);
@@ -165,23 +188,22 @@ namespace ModelRendering
 
         _work.ReadbackStats(frameIndex);
         _transparentWork.ReadbackStats(frameIndex);
-        _materialResources.ReadbackStats(frameIndex);
+        _materialResources->ReadbackStats(frameIndex);
         ReportErrors();
 
-        const bool descriptorsReady = _viewWorkPass.Upload(_state, _work, _assets->GetModelGeometryStorage(), *scene);
-        _visibilityPass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-        _visibilityResolvePass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-        const bool materialDescriptorsReady = _materialResolvePass.Upload(
-            _view, _work, _materialResources, _assets->GetModelGeometryStorage(), *scene);
-        if (!descriptorsReady || !materialDescriptorsReady)
+        if (!_viewWorkDescriptorsReady || !_rasterDescriptorsReady)
+        {
+            _view.RequestTemporalReset();
             return;
+        }
 
         const u32 temporalReset = _view.GetTemporalResetGeneration();
+        _viewWorkPass.AddHistoryClearPass(renderGraph, _view, _state, _work);
         _viewWorkPass.AddPhase1Pass(renderGraph, resources, _view, _state, _work,
                                     _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *scene,
                                     frameIndex, temporalReset != _handledTemporalReset, _forcedLOD);
         _handledTemporalReset = temporalReset;
-        _visibilityPass.AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
+        _visibilityPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
                                 _assets->GetMaterialStorage(), *scene, frameIndex, 1);
         _phase1Ready = true;
     }
@@ -197,7 +219,7 @@ namespace ModelRendering
             _viewWorkPass.AddPhase2Pass(renderGraph, resources, _view, _state, _work,
                                         _assets->GetModelGeometryStorage(), scene, resources.depthPyramid, frameIndex);
             _work.MarkSubmitted(frameIndex);
-            _visibilityPass.AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
+            _visibilityPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
                                     _assets->GetMaterialStorage(), scene, frameIndex, 2);
         }
         else
@@ -213,24 +235,15 @@ namespace ModelRendering
             _work.ReadbackStats(frameIndex);
             _transparentWork.ReadbackStats(frameIndex);
             ReportErrors();
-            const bool descriptorsReady =
-                _viewWorkPass.Upload(_state, _work, _assets->GetModelGeometryStorage(), *scene);
-            bool rasterDescriptorsReady = false;
             if (visibilityModels)
+                _materialResources->ReadbackStats(frameIndex);
+            if (!_viewWorkDescriptorsReady || !_rasterDescriptorsReady)
             {
-                _materialResources.ReadbackStats(frameIndex);
-                _visibilityPass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-                _visibilityResolvePass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-                rasterDescriptorsReady = _materialResolvePass.Upload(
-                    _view, _work, _materialResources, _assets->GetModelGeometryStorage(), *scene);
-            }
-            else
-            {
-                rasterDescriptorsReady = _forwardPass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-            }
-            if (!descriptorsReady || !rasterDescriptorsReady)
+                _view.RequestTemporalReset();
                 return;
+            }
             const u32 temporalReset = _view.GetTemporalResetGeneration();
+            _viewWorkPass.AddHistoryClearPass(renderGraph, _view, _state, _work);
             _viewWorkPass.AddPass(renderGraph, resources, _view, _state, _work, _assets->GetModelGeometryStorage(),
                                   _assets->GetMaterialStorage(), *scene, frameIndex,
                                   temporalReset != _handledTemporalReset, _forcedLOD);
@@ -238,12 +251,12 @@ namespace ModelRendering
             _handledTemporalReset = temporalReset;
             if (visibilityModels)
             {
-                _visibilityPass.AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
+                _visibilityPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
                                         _assets->GetMaterialStorage(), *scene, frameIndex);
             }
             else
             {
-                _forwardPass.AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
+                _forwardPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
                                      _assets->GetMaterialStorage(), *scene, frameIndex);
             }
         }
@@ -253,7 +266,7 @@ namespace ModelRendering
             return;
         }
         RenderScenes::RenderScene& scene = *_view.GetScene();
-        _materialResolvePass.AddClassificationPass(renderGraph, resources, _view, _work, _materialResources,
+        _materialResolvePass->AddClassificationPass(renderGraph, resources, _view, _work, *_materialResources,
                                                    _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(),
                                                    scene, frameIndex);
         _readyThisFrame = true;
@@ -265,7 +278,7 @@ namespace ModelRendering
         if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
-        _visibilityResolvePass.AddPreEffectsPass(renderGraph, resources, _view, _work,
+        _visibilityResolvePass->AddPreEffectsPass(renderGraph, resources, _view, _work,
                                                  _assets->GetModelGeometryStorage(), scene, frameIndex);
     }
 
@@ -275,10 +288,10 @@ namespace ModelRendering
         if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
-        _materialResolvePass.AddResolvePass(renderGraph, resources, _view, _work, _materialResources,
+        _materialResolvePass->AddResolvePass(renderGraph, resources, _view, _work, *_materialResources,
                                             _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
                                             frameIndex);
-        _visibilityResolvePass.AddOpaqueHighlightPass(renderGraph, _view, _work, scene, frameIndex);
+        _visibilityResolvePass->AddOpaqueHighlightPass(renderGraph, _view, _work, scene, frameIndex);
     }
 
     void ModelRenderView::AddRetainedOutputPass(Renderer::RenderGraph* renderGraph)
@@ -290,7 +303,7 @@ namespace ModelRendering
             _view.MarkRendered();
             return;
         }
-        _materialResolvePass.AddRetainedOutputPass(renderGraph, _view);
+        _materialResolvePass->AddRetainedOutputPass(renderGraph, _view);
         _view.MarkRendered();
     }
 
@@ -342,7 +355,7 @@ namespace ModelRendering
         if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
-        _visibilityResolvePass.AddDiagnosticPass(renderGraph, resources, _view, _work,
+        _visibilityResolvePass->AddDiagnosticPass(renderGraph, resources, _view, _work,
                                                  _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(),
                                                  scene, frameIndex);
     }

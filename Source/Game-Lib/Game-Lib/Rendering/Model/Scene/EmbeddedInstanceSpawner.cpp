@@ -87,12 +87,15 @@ namespace ModelScene
         const auto& embeddedInstances = _geometryStorage->GetEmbeddedInstances();
         while (cursor.nextSourceIndex < parent.numEmbeddedInstances && outProcessed < maxInstances)
         {
-            const u32 sourceIndex = cursor.nextSourceIndex++;
-            ++outProcessed;
+            const u32 sourceIndex = cursor.nextSourceIndex;
             const FileFormat::Model::EmbeddedInstance source =
                 embeddedInstances[parent.embeddedInstanceBase + sourceIndex];
             RenderAssets::ModelHandle childModel;
             const ModelLoading::EmbeddedModelLoadStatus status = _resolveModel(source.modelAssetID, childModel);
+            if (status == ModelLoading::EmbeddedModelLoadStatus::Pending)
+                return EmbeddedInstanceSpawnStatus::InProgress;
+            ++cursor.nextSourceIndex;
+            ++outProcessed;
             if (status == ModelLoading::EmbeddedModelLoadStatus::InvalidReference)
             {
                 ++_stats.invalidReferenceSkips;
@@ -151,12 +154,12 @@ namespace ModelScene
         return succeeded && setValid;
     }
 
-    void EmbeddedInstanceSpawner::Destroy(SpawnedEmbeddedInstances& instances, u64 retireValue)
+    void EmbeddedInstanceSpawner::Destroy(SpawnedEmbeddedInstances& instances)
     {
         ZoneScopedN("EmbeddedInstanceSpawner::Destroy");
 
         for (const SpawnedEmbeddedInstance& instance : instances.instances)
-            _scene->DestroyModelInstance(instance.handle, retireValue);
+            _scene->DestroyModelInstance(instance.handle);
         instances = {};
     }
 

@@ -21,10 +21,6 @@ AutoCVar_Int CVAR_ModelShadowForceLOD(CVarCategory::Client | CVarCategory::Rende
 AutoCVar_Float CVAR_ModelShadowLODTargetTexels(
     CVarCategory::Client | CVarCategory::Rendering, "modelShadowLODTargetTexels",
     "Maximum projected geometric error in SVSM texels before selecting a finer model LOD", 1.0f);
-AutoCVar_Int CVAR_ModelShadowConeCulling(
-    CVarCategory::Client | CVarCategory::Rendering, "modelShadowConeCulling",
-    "Cull one-sided model meshlets whose normal cones face away from the shadow camera", 1,
-    CVarFlags::EditCheckbox);
 // TODO: Remove this comparison control after the Phase 15 opacity-shadow verification.
 AutoCVar_Int CVAR_ModelShadowOpacityDither(
     CVarCategory::Client | CVarCategory::Rendering, "modelShadowOpacityDither",
@@ -48,19 +44,7 @@ namespace ShadowRendering
 
         _preparedMembershipRevision = revision;
         _numClipmaps = numClipmaps;
-        std::vector<RenderScenes::ModelInstanceHandle> handles;
-        _scene->GetModelInstances().CollectActiveHandles(handles);
-        u64 required = 1;
-        const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
-        for (RenderScenes::ModelInstanceHandle handle : handles)
-        {
-            const ModelScene::ModelInstanceGPURecord* instance = _scene->GetModelInstance(handle);
-            if (!instance)
-                continue;
-            const RenderAssets::ModelHandle model(instance->modelIndex);
-            if (geometry.HasModel(model))
-                required += static_cast<u64>(geometry.GetRecord(model).numMeshlets) * numClipmaps;
-        }
+        const u64 required = 1 + _scene->GetModelInstances().GetActiveMeshletCount() * numClipmaps;
         const u32 configured = static_cast<u32>(std::max(CVAR_ModelShadowMeshletQueueCapacity.Get(), 1));
         _work.EnsureCapacity(static_cast<u32>(std::min<u64>(required, configured)));
     }
@@ -85,8 +69,7 @@ namespace ShadowRendering
         const MaterialLoading::MaterialStorage& materials = _assets->GetMaterialStorage();
         _pass.AddCullPass(renderGraph, resources, _work, geometry, materials, *_scene, svsmData, numClipmaps,
                           dynamicSplit, frameIndex, std::max(CVAR_ModelShadowForceLOD.Get(), -1),
-                          std::max(CVAR_ModelShadowLODTargetTexels.GetFloat(), 0.01f),
-                          CVAR_ModelShadowConeCulling.Get() != 0);
+                          std::max(CVAR_ModelShadowLODTargetTexels.GetFloat(), 0.01f));
         _pass.AddRasterPass(renderGraph, resources, _work, geometry, materials, *_scene, svsmData, staticPageTable,
                             dynamicPageTable, staticPagePool, dynamicPagePool, virtualSize, dynamicSplit,
                             CVAR_ModelShadowOpacityDither.Get() != 0, frameIndex);

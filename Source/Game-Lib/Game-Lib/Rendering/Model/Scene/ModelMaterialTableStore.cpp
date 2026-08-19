@@ -7,6 +7,15 @@
 
 namespace ModelScene
 {
+    bool ModelMaterialTableStore::AddReference(RenderScenes::ModelMaterialTableHandle table)
+    {
+        Table* stored = GetTable(table);
+        if (!stored || stored->isPrivate)
+            return false;
+        ++stored->referenceCount;
+        return true;
+    }
+
     ModelMaterialTableStore::ModelMaterialTableStore(bool validateTransfers)
         : _entries(validateTransfers)
     {

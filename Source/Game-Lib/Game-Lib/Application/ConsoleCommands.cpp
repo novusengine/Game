@@ -85,6 +85,18 @@ void ConsoleCommands::CommandRefreshDB(Application& app, std::vector<std::string
     app.PassMessage(message);
 }
 
+void ConsoleCommands::CommandGpuPassTimes(Application&, std::vector<std::string>&)
+{
+    Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+    const std::vector<Renderer::TimeQueryID> frameTimeQueries = renderer->GetFrameTimeQueries();
+    for (Renderer::TimeQueryID timeQueryID : frameTimeQueries)
+    {
+        const std::string& name = renderer->GetTimeQueryName(timeQueryID);
+        f32 durationMS = renderer->GetLastTimeQueryDuration(timeQueryID);
+        NC_LOG_INFO("GPU_PASS {};{:.3f}", name, durationMS);
+    }
+}
+
 void ConsoleCommands::CommandDescriptorPoolStats(Application&, std::vector<std::string>&)
 {
     const Renderer::DescriptorPoolStats stats = ServiceLocator::GetGameRenderer()->GetRenderer()->GetDescriptorPoolStats();

@@ -2,6 +2,7 @@
 
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
@@ -67,7 +68,22 @@ namespace PreviewRendering
                                                                validateTransfers);
     }
 
-    UnitInspectionController::~UnitInspectionController() = default;
+    UnitInspectionController::~UnitInspectionController()
+    {
+        if (_connectedRegistry)
+        {
+            _connectedRegistry->on_construct<ECS::Components::UnitCustomization>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_update<ECS::Components::UnitCustomization>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_destroy<ECS::Components::UnitCustomization>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitEquipment>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_update<ECS::Components::UnitEquipment>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_destroy<ECS::Components::UnitEquipment>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitEquipmentDirty>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitVisualEquipmentDirty>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitRebuildSkinTexture>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitRebuildGeosets>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        }
+    }
 
     bool UnitInspectionController::SetTarget(Renderer::TextureID target)
     {
@@ -79,6 +95,7 @@ namespace PreviewRendering
         if (_unit == unit)
             return;
         _unit = unit;
+        _descriptionDirty = true;
         _developmentGallery.retained = false;
         _reportedMissingSource = false;
         _preview->Clear();
@@ -151,6 +168,7 @@ namespace PreviewRendering
 
     void UnitInspectionController::Update(entt::registry& registry)
     {
+        ConnectDirtySignals(registry);
         if (_developmentGallery.active)
         {
             if (_developmentGallery.waitFrames > 0)
@@ -183,10 +201,13 @@ namespace PreviewRendering
             return;
         if (_unit == entt::null)
             return;
+        if (!_descriptionDirty)
+            return;
 
         UnitRenderDescription description;
         if (!BuildDescription(registry, _unit, description))
         {
+            _descriptionDirty = false;
             if (!_reportedMissingSource)
             {
                 NC_LOG_WARNING("UNIT_INSPECTION no_renderable_source unit={}", entt::to_integral(_unit));
@@ -196,6 +217,43 @@ namespace PreviewRendering
         }
         _reportedMissingSource = false;
         _preview->SetContent(description.scene);
+        _descriptionDirty = false;
+    }
+
+    void UnitInspectionController::ConnectDirtySignals(entt::registry& registry)
+    {
+        if (_connectedRegistry == &registry)
+            return;
+        if (_connectedRegistry)
+        {
+            _connectedRegistry->on_construct<ECS::Components::UnitCustomization>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_update<ECS::Components::UnitCustomization>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_destroy<ECS::Components::UnitCustomization>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitEquipment>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_update<ECS::Components::UnitEquipment>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_destroy<ECS::Components::UnitEquipment>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitEquipmentDirty>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitVisualEquipmentDirty>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitRebuildSkinTexture>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+            _connectedRegistry->on_construct<ECS::Components::UnitRebuildGeosets>().disconnect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        }
+        _connectedRegistry = &registry;
+        registry.on_construct<ECS::Components::UnitCustomization>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_update<ECS::Components::UnitCustomization>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_destroy<ECS::Components::UnitCustomization>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_construct<ECS::Components::UnitEquipment>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_update<ECS::Components::UnitEquipment>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_destroy<ECS::Components::UnitEquipment>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_construct<ECS::Components::UnitEquipmentDirty>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_construct<ECS::Components::UnitVisualEquipmentDirty>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_construct<ECS::Components::UnitRebuildSkinTexture>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+        registry.on_construct<ECS::Components::UnitRebuildGeosets>().connect<&UnitInspectionController::OnAppearanceChanged>(*this);
+    }
+
+    void UnitInspectionController::OnAppearanceChanged(entt::registry&, entt::entity entity)
+    {
+        if (entity == _unit)
+            _descriptionDirty = true;
     }
 
     bool UnitInspectionController::BeginDevelopmentGallery(entt::registry& registry, entt::entity unit)
@@ -221,14 +279,14 @@ namespace PreviewRendering
             if (sectionsIt == itemData.itemDisplayInfoToComponentSectionData.end())
                 return true;
             const auto& sections = sectionsIt->second.componentSectionToTextureHash;
-            auto hasSection = [&](Database::Unit::TextureSectionType section) { return sections.contains(static_cast<u8>(section)); };
-            if (hasSection(Database::Unit::TextureSectionType::Hand))
+            auto HasSection = [&](Database::Unit::TextureSectionType section) { return sections.contains(static_cast<u8>(section)); };
+            if (HasSection(Database::Unit::TextureSectionType::Hand))
                 candidates[static_cast<u32>(Database::Item::ItemEquipSlot::Gloves)].push_back(displayID);
-            if (hasSection(Database::Unit::TextureSectionType::TorsoUpper))
+            if (HasSection(Database::Unit::TextureSectionType::TorsoUpper))
                 candidates[static_cast<u32>(Database::Item::ItemEquipSlot::Chest)].push_back(displayID);
-            if (hasSection(Database::Unit::TextureSectionType::LegUpper))
+            if (HasSection(Database::Unit::TextureSectionType::LegUpper))
                 candidates[static_cast<u32>(Database::Item::ItemEquipSlot::Pants)].push_back(displayID);
-            if (hasSection(Database::Unit::TextureSectionType::Foot))
+            if (HasSection(Database::Unit::TextureSectionType::Foot))
                 candidates[static_cast<u32>(Database::Item::ItemEquipSlot::Boots)].push_back(displayID);
             return true;
         });

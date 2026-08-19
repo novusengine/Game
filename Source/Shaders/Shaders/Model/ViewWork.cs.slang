@@ -55,6 +55,12 @@ void StoreChunk(uint index, ModelMeshletChunk chunk)
 void MarkInstanceVisible(uint instanceIndex)
 {
     uint wordIndex = instanceIndex >> 5u;
+    uint boundWordCount;
+    uint boundWordStride;
+    if (_constants.resourceIndex == 0u) _instanceVisibility0.GetDimensions(boundWordCount, boundWordStride);
+    else _instanceVisibility1.GetDimensions(boundWordCount, boundWordStride);
+    if (wordIndex >= boundWordCount)
+        return;
     uint bit = 1u << (instanceIndex & 31u);
     if (_constants.resourceIndex == 0u) InterlockedOr(_instanceVisibility0[wordIndex], bit);
     else InterlockedOr(_instanceVisibility1[wordIndex], bit);
@@ -108,8 +114,13 @@ uint SelectLOD(ModelMesh mesh, ModelRecord model, ModelInstanceRecord instance, 
 bool GeometryGroupEnabled(ModelInstanceRecord instance, uint groupID)
 {
     uint word = groupID >> 5u;
-    return word < instance.geometryGroupWordCount &&
-           (_geometryGroupMasks[instance.geometryGroupWordOffset + word] & (1u << (groupID & 31u))) != 0u;
+    uint boundWordCount;
+    uint boundWordStride;
+    _geometryGroupMasks.GetDimensions(boundWordCount, boundWordStride);
+    uint absoluteWord = instance.geometryGroupWordOffset + word;
+    return word < instance.geometryGroupWordCount && absoluteWord >= instance.geometryGroupWordOffset &&
+           absoluteWord < boundWordCount &&
+           (_geometryGroupMasks[absoluteWord] & (1u << (groupID & 31u))) != 0u;
 }
 
 [shader("compute")]
@@ -120,6 +131,13 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
 
     ViewInstanceInput input = _viewInputs[DispatchThreadID.x];
+    if (input.instanceIndex == 0xFFFFFFFFu)
+        return;
+    uint boundInstanceCount;
+    uint boundInstanceStride;
+    _modelInstances.GetDimensions(boundInstanceCount, boundInstanceStride);
+    if (input.instanceIndex >= boundInstanceCount)
+        return;
     ModelInstanceRecord instance = _modelInstances[input.instanceIndex];
     AddStat(MODEL_WORK_STAT_TESTED_INSTANCES, 1u);
     if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u ||
@@ -129,6 +147,11 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
+    uint boundModelCount;
+    uint boundModelStride;
+    _modelRecords.GetDimensions(boundModelCount, boundModelStride);
+    if (instance.modelIndex >= boundModelCount)
+        return;
     ModelRecord model = _modelRecords[instance.modelIndex];
     Camera camera = _cameras[_constants.viewIndex];
     float4 worldBounds = TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld);
@@ -139,14 +162,40 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     MarkInstanceVisible(input.instanceIndex);
 
-    for (uint meshIndex = 0u; meshIndex < model.numMeshes; ++meshIndex)
+    uint boundMeshCount;
+    uint boundMeshStride;
+    _modelMeshes.GetDimensions(boundMeshCount, boundMeshStride);
+    uint boundLODCount;
+    uint boundLODStride;
+    _modelLODs.GetDimensions(boundLODCount, boundLODStride);
+    uint boundSubmeshCount;
+    uint boundSubmeshStride;
+    _modelSubmeshes.GetDimensions(boundSubmeshCount, boundSubmeshStride);
+    uint boundLODHistoryCount;
+    uint boundLODHistoryStride;
+    _lodHistory.GetDimensions(boundLODHistoryCount, boundLODHistoryStride);
+    uint boundMaterialTableCount;
+    uint boundMaterialTableStride;
+    _materialTable.GetDimensions(boundMaterialTableCount, boundMaterialTableStride);
+    uint safeMeshCount = min(model.numMeshes, boundMeshCount - min(model.meshBase, boundMeshCount));
+    for (uint meshIndex = 0u; meshIndex < safeMeshCount; ++meshIndex)
     {
-        ModelMesh mesh = _modelMeshes[model.meshBase + meshIndex];
+        uint absoluteMeshIndex = model.meshBase + meshIndex;
+        if (absoluteMeshIndex < model.meshBase || absoluteMeshIndex >= boundMeshCount)
+            continue;
+        ModelMesh mesh = _modelMeshes[absoluteMeshIndex];
         if (mesh.numLODs == 0u)
             continue;
 
+        uint lodBase = model.meshLODBase + mesh.lodOffset;
+        uint lodEnd = lodBase + mesh.numLODs;
+        uint historyIndex = input.lodHistoryOffset + meshIndex;
+        if (lodBase < model.meshLODBase || lodEnd < lodBase || lodEnd > boundLODCount ||
+            historyIndex < input.lodHistoryOffset || historyIndex >= boundLODHistoryCount)
+            continue;
+
         uint localLOD = SelectLOD(mesh, model, instance, camera, meshIndex, input.lodHistoryOffset);
-        ModelLOD lod = _modelLODs[model.meshLODBase + mesh.lodOffset + localLOD];
+        ModelLOD lod = _modelLODs[lodBase + localLOD];
         if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u &&
             (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u)
         {
@@ -155,9 +204,16 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
         }
         AddStat(MODEL_WORK_STAT_LOD_SELECTION_BASE + min(localLOD, MODEL_WORK_STAT_LOD_SELECTION_COUNT - 1u), 1u);
 
-        for (uint submeshIndex = 0u; submeshIndex < lod.numSubmeshes; ++submeshIndex)
+        uint submeshBase = model.submeshBase + lod.submeshOffset;
+        uint safeSubmeshCount = submeshBase < model.submeshBase ? 0u :
+            min(lod.numSubmeshes, boundSubmeshCount - min(submeshBase, boundSubmeshCount));
+        for (uint submeshIndex = 0u; submeshIndex < safeSubmeshCount; ++submeshIndex)
         {
-            ModelSubmesh submesh = _modelSubmeshes[model.submeshBase + lod.submeshOffset + submeshIndex];
+            uint absoluteSubmeshIndex = submeshBase + submeshIndex;
+            if (submeshBase < model.submeshBase || absoluteSubmeshIndex < submeshBase ||
+                absoluteSubmeshIndex >= boundSubmeshCount)
+                continue;
+            ModelSubmesh submesh = _modelSubmeshes[absoluteSubmeshIndex];
             if (meshIndex >= (1u << MODEL_VISIBILITY_MESH_BITS) ||
                 localLOD >= (1u << MODEL_VISIBILITY_LOD_BITS) ||
                 submeshIndex >= (1u << MODEL_VISIBILITY_SUBMESH_BITS) ||
@@ -172,8 +228,10 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
                 continue;
             }
 
-            uint materialInstanceIndex =
-                _materialTable[instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex];
+            uint materialIndex = instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex;
+            if (materialIndex < instance.materialTableOffset || materialIndex >= boundMaterialTableCount)
+                continue;
+            uint materialInstanceIndex = _materialTable[materialIndex];
             MaterialInstanceRecord materialInstance = _materialInstances[materialInstanceIndex];
             uint materialRasterClass = MaterialRasterClass(materialInstance);
             if (materialRasterClass > 1u)

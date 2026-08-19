@@ -79,8 +79,7 @@ namespace RenderScenes
     void ScenePreview::Clear()
     {
         for (ModelInstanceHandle instance : _instances)
-            _scene->DestroyModelInstance(instance, 0);
-        _scene->ReleaseRetiredHistory(0);
+            _scene->DestroyModelInstance(instance);
         _instances.clear();
         _contentRevision = 0;
         if (_renderView->GetView())

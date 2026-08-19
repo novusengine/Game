@@ -52,8 +52,10 @@ namespace ShadowRendering
         if (visible)
             QueueInvalidation(bounds, transform);
         if (_dynamicCasters.erase(HandleKey(handle)) != 0)
+        {
             ++_transitionsOut;
-        RebuildDynamicAABBs();
+            _dynamicAABBsDirty = true;
+        }
     }
 
     bool SceneShadowState::ModelTransformChanged(RenderScenes::ModelInstanceHandle handle,
@@ -72,7 +74,7 @@ namespace ShadowRendering
         }
         TransformBounds(bounds, newTransform, it->second.min, it->second.max);
         it->second.quietFrames = 0;
-        RebuildDynamicAABBs();
+        _dynamicAABBsDirty = true;
         return inserted;
     }
 
@@ -86,7 +88,7 @@ namespace ShadowRendering
         if (!newVisible && _dynamicCasters.erase(HandleKey(handle)) != 0)
         {
             ++_transitionsOut;
-            RebuildDynamicAABBs();
+            _dynamicAABBsDirty = true;
             return true;
         }
         return false;
@@ -117,7 +119,14 @@ namespace ShadowRendering
             ++_transitionsOut;
         }
         if (!_retiredCasterKeys.empty())
+        {
+            _dynamicAABBsDirty = true;
             RebuildDynamicAABBs();
+        }
+        else if (_dynamicAABBsDirty)
+        {
+            RebuildDynamicAABBs();
+        }
     }
 
     u32 SceneShadowState::DrainInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs)
@@ -137,7 +146,14 @@ namespace ShadowRendering
                 .transitionsOut = _transitionsOut};
     }
 
-    void SceneShadowState::RebuildDynamicAABBs()
+    std::span<const vec4> SceneShadowState::GetDynamicAABBs() const
+    {
+        if (_dynamicAABBsDirty)
+            RebuildDynamicAABBs();
+        return _dynamicAABBs;
+    }
+
+    void SceneShadowState::RebuildDynamicAABBs() const
     {
         _dynamicAABBs.clear();
         _dynamicAABBs.reserve(_dynamicCasters.size() * 2);
@@ -146,5 +162,6 @@ namespace ShadowRendering
             _dynamicAABBs.emplace_back(caster.min, 0.0f);
             _dynamicAABBs.emplace_back(caster.max, 0.0f);
         }
+        _dynamicAABBsDirty = false;
     }
 } // namespace ShadowRendering

@@ -48,6 +48,5 @@ namespace ModelPipeline
         Renderer::ComputePipelineID _outlinePipeline = Renderer::ComputePipelineID::Invalid();
         robin_hood::unordered_flat_map<u64, Renderer::BufferID> _bindings;
         u32 _generation = 0;
-        u32 _descriptorWarmupFrames = 0;
     };
 } // namespace ModelPipeline

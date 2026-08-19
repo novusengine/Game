@@ -4,6 +4,7 @@
 
 #include <Renderer/GPUVector.h>
 
+#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -32,6 +33,8 @@ namespace ModelLoading
         u32 numSubmeshes = 0;
         u32 meshletBase = 0;
         u32 numMeshlets = 0;
+        u32 lod0Meshlets = 0;
+        u32 lod0Triangles = 0;
         u32 positionBase = 0;
         u32 numPositions = 0;
         u32 vertexAttributeBase = 0;
@@ -55,7 +58,18 @@ namespace ModelLoading
         u32 defaultMaterialTableCount = 0;
         u32 flags = 0;
         u32 geometryGroupCount = 0;
+        u32 reserved0 = 0;
+        u32 reserved1 = 0;
     };
+
+    // GPU ABI: keep in lockstep with ModelRecord in Model/ModelViewWork.inc.slang.
+    // Slang's std430 StructuredBuffer stride is rounded to the record's 16-byte
+    // alignment because ModelBounds contains float3 members.
+    static_assert(sizeof(ModelGPURecord) == 176);
+    static_assert(alignof(ModelGPURecord) == 8);
+    static_assert(offsetof(ModelGPURecord, lod0Meshlets) == 72);
+    static_assert(offsetof(ModelGPURecord, positionBase) == 80);
+    static_assert(offsetof(ModelGPURecord, reserved0) == 168);
 
     struct ModelGeometryStorageStats
     {

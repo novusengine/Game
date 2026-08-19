@@ -99,7 +99,7 @@ TEST_CASE("Embedded instances survive geometry growth and switch doodad sets by 
     for (const ModelScene::SpawnedEmbeddedInstance& instance : spawned.instances)
         CHECK((scene.GetModelInstance(instance.handle)->flags & ModelScene::ModelInstanceFlagVisible) == 0);
 
-    spawner.Destroy(spawned, 0);
+    spawner.Destroy(spawned);
     CHECK(spawned.instances.empty());
     CHECK(scene.GetStats().instances.liveInstances == 0);
 }

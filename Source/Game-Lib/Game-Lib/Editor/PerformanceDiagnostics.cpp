@@ -43,7 +43,7 @@ namespace Editor
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         ECS::Singletons::EngineStats& stats = registry->ctx().get<ECS::Singletons::EngineStats>();
 
-        ECS::Singletons::FrameTimes average = stats.AverageFrame(240);
+        ECS::Singletons::FrameTimes average = stats.AverageFrame(ECS::Singletons::EngineStats::MAX_ENTRIES);
 
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
 
@@ -691,7 +691,7 @@ namespace Editor
                         const std::string& name = renderer->GetTimeQueryName(frameTimeQueries[i]);
 
                         f32 averageMS = 0.0f;
-                        if (stats.AverageNamed(name, 240, averageMS))
+                        if (stats.AverageNamed(name, ECS::Singletons::EngineStats::MAX_ENTRIES, averageMS))
                         {
                             char line[256];
                             snprintf(line, sizeof(line), "%s;%.3f\n", name.c_str(), averageMS);
@@ -708,7 +708,7 @@ namespace Editor
                         const std::string& name = renderer->GetTimeQueryName(frameTimeQueries[i]);
 
                         f32 averageMS = 0.0f;
-                        if (stats.AverageNamed(name, 240, averageMS))
+                        if (stats.AverageNamed(name, ECS::Singletons::EngineStats::MAX_ENTRIES, averageMS))
                         {
                             ImGui::TableNextColumn();
                             ImGui::Text("%s", name.c_str());

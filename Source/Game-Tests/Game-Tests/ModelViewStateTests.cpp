@@ -63,14 +63,15 @@ TEST_CASE("Model View input preparation skips retired Scene instances", "[Render
 {
     ViewFixture fixture;
     const RenderScenes::ModelInstanceHandle instance = fixture.AddInstance();
-    REQUIRE(fixture.scene.DestroyModelInstance(instance, 0));
+    REQUIRE(fixture.scene.DestroyModelInstance(instance));
     fixture.scene.ReleaseRetiredHistory(0);
 
     ModelView::ModelViewState view;
     view.SetDiagnosticSelection(instance);
     view.PrepareInputs(fixture.scene, fixture.geometry);
 
-    CHECK(view.GetInputs().IsEmpty());
+    CHECK(view.GetActiveInputCount() == 0);
+    CHECK(view.GetDispatchInputCount() == 0);
     CHECK(view.GetLODHistory().IsEmpty());
     CHECK(view.GetQueueCapacity() == 1);
     CHECK(view.GetLoadedLOD0Meshlets() == 0);
@@ -88,8 +89,10 @@ TEST_CASE("Model View diagnostic selection replaces the previous instance", "[Re
     view.SetDiagnosticSelection(second);
     view.PrepareInputs(fixture.scene, fixture.geometry);
 
-    REQUIRE(view.GetInputs().Count() == 1);
-    CHECK(view.GetInputs()[0].instanceIndex == RenderScenes::GetModelInstanceSlot(second));
+    REQUIRE(view.GetActiveInputCount() == 1);
+    const u32 secondSlot = RenderScenes::GetModelInstanceSlot(second);
+    REQUIRE(view.GetInputs().Count() > secondSlot);
+    CHECK(view.GetInputs()[secondSlot].instanceIndex == secondSlot);
 }
 
 TEST_CASE("Model View prepares every active Scene instance without a diagnostic override", "[Rendering][ModelView]")
@@ -100,13 +103,61 @@ TEST_CASE("Model View prepares every active Scene instance without a diagnostic 
 
     ModelView::ModelViewState view;
     view.PrepareInputs(fixture.scene, fixture.geometry);
+    fixture.scene.AcknowledgeModelMembershipChanges();
 
     REQUIRE(view.GetInputs().Count() == 2);
+    CHECK(view.GetActiveInputCount() == 2);
     CHECK(view.GetInputs()[0].instanceIndex == RenderScenes::GetModelInstanceSlot(first));
     CHECK(view.GetInputs()[1].instanceIndex == RenderScenes::GetModelInstanceSlot(second));
     CHECK(view.GetLoadedLOD0Meshlets() == 2);
     CHECK(view.GetLoadedLOD0Triangles() > 0);
     CHECK(view.GetPreparedSceneRevision() == fixture.scene.GetModelInstances().GetMembershipRevision());
+}
+
+TEST_CASE("Model View membership churn preserves unrelated slot and LOD history ownership", "[Rendering][ModelView]")
+{
+    ViewFixture fixture;
+    const RenderScenes::ModelInstanceHandle first = fixture.AddInstance();
+    const RenderScenes::ModelInstanceHandle stable = fixture.AddInstance();
+
+    ModelView::ModelViewState view;
+    view.PrepareInputs(fixture.scene, fixture.geometry);
+    fixture.scene.AcknowledgeModelMembershipChanges();
+    const u32 stableSlot = RenderScenes::GetModelInstanceSlot(stable);
+    const u32 stableHistory = view.GetInputs()[stableSlot].lodHistoryOffset;
+    view.GetLODHistory()[stableHistory] = 3;
+
+    fixture.scene.SetHistoryRetireValue(1);
+    REQUIRE(fixture.scene.DestroyModelInstance(first));
+    view.PrepareChangedInputs(fixture.scene, fixture.geometry, fixture.scene.GetModelMembershipChanges());
+    fixture.scene.AcknowledgeModelMembershipChanges();
+
+    CHECK(view.GetActiveInputCount() == 1);
+    CHECK(view.GetInputs()[stableSlot].lodHistoryOffset == stableHistory);
+    CHECK(view.GetLODHistory()[stableHistory] == 3);
+
+    fixture.scene.ReleaseRetiredHistory(1);
+    const RenderScenes::ModelInstanceHandle replacement = fixture.AddInstance();
+    view.PrepareChangedInputs(fixture.scene, fixture.geometry, fixture.scene.GetModelMembershipChanges());
+    CHECK(RenderScenes::GetModelInstanceSlot(replacement) == RenderScenes::GetModelInstanceSlot(first));
+    CHECK(view.GetInputs()[stableSlot].lodHistoryOffset == stableHistory);
+    CHECK(view.GetLODHistory()[stableHistory] == 3);
+}
+
+TEST_CASE("Model View retains targeted clear requests until graph consumption", "[Rendering][ModelView]")
+{
+    ModelView::ModelViewState view;
+    const std::array slots = {2u, 9u};
+    const std::array ranges = {ModelScene::MeshletHistoryRange{4, 3}, ModelScene::MeshletHistoryRange{20, 2}};
+    view.QueueTemporalClears(slots, ranges);
+
+    REQUIRE(view.GetPendingInstanceClears().size() == slots.size());
+    REQUIRE(view.GetPendingMeshletClears().size() == ranges.size());
+    CHECK(view.GetPendingMeshletClears()[1].wordOffset == 20);
+
+    view.AcknowledgeTemporalClears();
+    CHECK(view.GetPendingInstanceClears().empty());
+    CHECK(view.GetPendingMeshletClears().empty());
 }
 
 TEST_CASE("Model View counts loaded transparent LOD 0 meshlets", "[Rendering][ModelView]")

@@ -28,6 +28,8 @@
 #include <entt/entt.hpp>
 #include <lualib.h>
 
+#include <chrono>
+
 #include <algorithm>
 #include <filesystem>
 #include <limits>
@@ -248,6 +250,7 @@ namespace Scripting::Asset
         zenith->AddTableField("models", stats.modelGeometry.numModels);
         zenith->AddTableField("residentModels", stats.models.residentModels);
         zenith->AddTableField("modelReferences", stats.models.references);
+        zenith->AddTableField("modelCacheHits", stats.models.cacheHits);
         zenith->AddTableField("usedBytes", stats.modelGeometry.usedBytes + stats.materialStorage.usedBytes);
         zenith->AddTableField("reservedBytes", stats.modelGeometry.reservedBytes + stats.materialStorage.reservedBytes);
         zenith->AddTableField("growths", stats.modelGeometry.bufferGrowths + stats.materialStorage.bufferGrowths);
@@ -290,6 +293,8 @@ namespace Scripting::Asset
         zenith->AddTableField("mapPlacementDuplicates", placementStats.duplicatePlacements);
         zenith->AddTableField("mapPlacementResolutionFailures", placementStats.sourceResolutionFailures);
         zenith->AddTableField("mapPlacementFallbacks", placementStats.modelFallbackPlacements);
+        zenith->AddTableField("mapPlacementSourceLookups", placementStats.sourceAssetLookups);
+        zenith->AddTableField("mapPlacementSourceAssets", placementStats.sourceAssetCacheEntries);
         zenith->AddTableField("embeddedInstances", placementStats.embedded.spawnedInstances);
         zenith->AddTableField("embeddedInvalidReferenceSkips", placementStats.embedded.invalidReferenceSkips);
         zenith->AddTableField("embeddedMissingGeometrySkips", placementStats.embedded.missingGeometrySkips);
@@ -387,9 +392,12 @@ namespace Scripting::Asset
         const RenderScenes::RenderSceneStats baseline = scene->GetStats();
         std::vector<RenderScenes::ModelInstanceHandle> handles(instanceCount);
         bool succeeded = true;
+        u64 totalMicroseconds = 0;
+        u64 maximumMicroseconds = 0;
 
         for (u32 iteration = 0; iteration < iterationCount && succeeded; ++iteration)
         {
+            const auto iterationStart = std::chrono::steady_clock::now();
             for (u32 instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex)
             {
                 RenderScenes::ModelInstanceDesc desc;
@@ -426,11 +434,17 @@ namespace Scripting::Asset
 
             scene->AcknowledgeClearsAndPublish();
             for (const RenderScenes::ModelInstanceHandle handle : handles)
-                succeeded &= scene->DestroyModelInstance(handle, iteration + 1u);
+            {
+                scene->SetHistoryRetireValue(iteration + 1u);
+                succeeded &= scene->DestroyModelInstance(handle);
+            }
 
             scene->ReleaseRetiredHistory(iteration);
             succeeded &= scene->GetStats().meshletHistory.retiredWords != 0;
             scene->ReleaseRetiredHistory(iteration + 1u);
+            const u64 elapsed = static_cast<u64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - iterationStart).count());
+            totalMicroseconds += elapsed;
+            maximumMicroseconds = std::max(maximumMicroseconds, elapsed);
         }
 
         const RenderScenes::RenderSceneStats stats = scene->GetStats();
@@ -440,36 +454,44 @@ namespace Scripting::Asset
         succeeded &= stats.meshletHistory.retiredWords == baseline.meshletHistory.retiredWords;
         succeeded &= stats.meshletHistory.addressSpaceWords == baseline.meshletHistory.addressSpaceWords;
 
-        NC_LOG_INFO("RENDER_SCENE lifecycle_stress_complete success={} instances={} iterations={} slots={} staleRejects={} historyHighWater={}",
+        NC_LOG_INFO("RENDER_SCENE lifecycle_stress_complete success={} instances={} iterations={} slots={} staleRejects={} historyHighWater={} totalUs={} averageUs={} maxUs={}",
                     succeeded, instanceCount, iterationCount, stats.instances.slotCapacity,
-                    stats.instances.staleHandleRejects, stats.meshletHistory.highWaterWords);
+                    stats.instances.staleHandleRejects, stats.meshletHistory.highWaterWords,
+                    totalMicroseconds, iterationCount != 0 ? totalMicroseconds / iterationCount : 0,
+                    maximumMicroseconds);
         zenith->Push(succeeded);
         return 1;
     }
 
     i32 AssetHandler::StressRenderViewLifecycle(Zenith* zenith)
     {
+        constexpr u32 ITERATIONS = 256;
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         RenderScenes::RenderView* mainView = gameRenderer->GetModelRenderSystem()->GetView(1);
-        RenderScenes::RenderViewDesc desc;
-        desc.debugName = "Descriptor Reclamation Probe";
-        desc.scene = mainView->GetScene();
-        desc.cameraIndex = mainView->GetCameraIndex();
-        desc.dimensions = mainView->GetDimensions();
-        desc.dimensionType = mainView->GetDimensionType();
-        desc.visibilityTarget = mainView->GetVisibilityTarget();
-        desc.normalTarget = mainView->GetNormalTarget();
-        desc.motionTarget = mainView->GetMotionTarget();
-        desc.colorTarget = mainView->GetColorTarget();
-        desc.transparencyAccumulationTarget = mainView->GetTransparencyAccumulationTarget();
-        desc.transparencyRevealageTarget = mainView->GetTransparencyRevealageTarget();
-        desc.depthPyramidTarget = mainView->GetDepthPyramidTarget();
-        desc.depthTarget = mainView->GetDepthTarget();
-        desc.lifetime = RenderScenes::RenderViewLifetime::Transient;
-        desc.refresh = RenderScenes::RenderViewRefresh::Retained;
-        RenderScenes::RenderView* probe = gameRenderer->CreateRenderView(std::move(desc));
-        const bool succeeded = probe && gameRenderer->DestroyRenderView(probe->GetID());
-        NC_LOG_INFO("RENDER_VIEW lifecycle_stress_complete success={}", succeeded);
+        bool succeeded = mainView != nullptr;
+        u32 completed = 0;
+        for (; completed < ITERATIONS && succeeded; ++completed)
+        {
+            RenderScenes::RenderViewDesc desc;
+            desc.debugName = "Descriptor Reclamation Probe";
+            desc.scene = mainView->GetScene();
+            desc.cameraIndex = mainView->GetCameraIndex();
+            desc.dimensions = mainView->GetDimensions();
+            desc.dimensionType = mainView->GetDimensionType();
+            desc.visibilityTarget = mainView->GetVisibilityTarget();
+            desc.normalTarget = mainView->GetNormalTarget();
+            desc.motionTarget = mainView->GetMotionTarget();
+            desc.colorTarget = mainView->GetColorTarget();
+            desc.transparencyAccumulationTarget = mainView->GetTransparencyAccumulationTarget();
+            desc.transparencyRevealageTarget = mainView->GetTransparencyRevealageTarget();
+            desc.depthPyramidTarget = mainView->GetDepthPyramidTarget();
+            desc.depthTarget = mainView->GetDepthTarget();
+            desc.lifetime = RenderScenes::RenderViewLifetime::Transient;
+            desc.refresh = RenderScenes::RenderViewRefresh::Retained;
+            RenderScenes::RenderView* probe = gameRenderer->CreateRenderView(std::move(desc));
+            succeeded = probe && gameRenderer->DestroyRenderView(probe->GetID());
+        }
+        NC_LOG_INFO("RENDER_VIEW lifecycle_stress_complete success={} completed={} requested={}", succeeded, completed, ITERATIONS);
         zenith->Push(succeeded);
         return 1;
     }

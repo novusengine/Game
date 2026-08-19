@@ -1,7 +1,7 @@
 #include "Shadows/ModelShadowRaster.inc.slang"
 
-[[vk::binding(27, PER_PASS)]] StructuredBuffer<uint4> _shadowRasterVertexAttributes;
-[[vk::binding(28, PER_PASS)]] StructuredBuffer<uint> _shadowRasterMaterialTable;
+[[vk::binding(29, PER_PASS)]] StructuredBuffer<uint4> _shadowRasterVertexAttributes;
+[[vk::binding(30, PER_PASS)]] StructuredBuffer<uint> _shadowRasterMaterialTable;
 
 struct MeshVertex
 {
@@ -19,6 +19,12 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
           out vertices MeshVertex vertices[64], out indices uint3 triangles[124])
 {
     uint queueOffset = groupID.x + groupID.y * MODEL_SHADOW_MESH_DISPATCH_MAX_GROUPS_X;
+    if (queueOffset >= LoadModelShadowQueueCount())
+    {
+        SetMeshOutputCounts(0u, 0u);
+        return;
+    }
+
     ModelShadowRecord shadowRecord = LoadModelShadowRecord(LoadModelShadowRecordIndex(queueOffset));
     ModelVisibilityRecord packed = {shadowRecord.packedInstanceAndMesh, shadowRecord.packedLODSubmeshAndMeshlet};
     DecodedModelVisibilityRecord record = DecodeModelVisibilityRecord(packed);

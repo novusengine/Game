@@ -5,6 +5,7 @@
 #include "Material/LightingInput.inc.slang"
 #include "Material/LightingModels.inc.slang"
 #include "Material/Decals.inc.slang"
+#include "Material/Fog.inc.slang"
 
 #include "Material/MaterialEvaluation.inc.slang"
 #include "Generated/MaterialActiveGroup.inc.slang"
@@ -13,6 +14,8 @@ struct Constants
 {
     float4 renderInfo;
     float4 shadowSettings;
+    float4 fogColor;
+    float4 fogSettings;
     uint resourceIndex;
     uint viewIndex;
     uint tileCapacity;
@@ -28,6 +31,10 @@ struct Constants
 [[vk::binding(22, PER_PASS)]] Texture2D<uint> _materialIDs;
 [[vk::binding(23, PER_PASS)]] StructuredBuffer<uint> _materialTileQueue0;
 [[vk::binding(24, PER_PASS)]] StructuredBuffer<uint> _materialTileQueue1;
+[[vk::binding(26, PER_PASS)]] StructuredBuffer<uint> _materialCounters0;
+[[vk::binding(27, PER_PASS)]] StructuredBuffer<uint> _materialCounters1;
+
+#define MATERIAL_RESOLVE_MAX_GROUPS_X 1024u
 
 uint MixMaterialID(uint value)
 {
@@ -47,7 +54,12 @@ float3 MaterialIDColor(uint value)
 [numthreads(8, 8, 1)]
 void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    uint queueOffset = MATERIAL_COOK_GROUP * _constants.tileCapacity + groupID.x;
+    uint localQueueOffset = groupID.x + groupID.y * MATERIAL_RESOLVE_MAX_GROUPS_X;
+    uint count = _constants.resourceIndex == 0u ? _materialCounters0[MATERIAL_COOK_GROUP]
+                                                : _materialCounters1[MATERIAL_COOK_GROUP];
+    if (localQueueOffset >= min(count, _constants.tileCapacity))
+        return;
+    uint queueOffset = MATERIAL_COOK_GROUP * _constants.tileCapacity + localQueueOffset;
     uint tile = _constants.resourceIndex == 0u ? _materialTileQueue0[queueOffset]
                                                : _materialTileQueue1[queueOffset];
     uint2 tilePosition = uint2(tile % _constants.tilesX, tile / _constants.tilesX);
@@ -125,5 +137,6 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
     else if (_constants.debugMode == 4u) color = MaterialIDColor(lightingModel);
     else if (_constants.debugMode == 5u) color = MaterialIDColor(
         _materialTextureIndices[instance.textureOffset]);
+    color = ApplyFog(color, pixel.worldPosition, _cameras[_constants.viewIndex].eyePosition.xyz, _constants.fogColor.rgb, _constants.fogSettings);
     _materialColor[pixelPos] = float4(color, 1.0f);
 }

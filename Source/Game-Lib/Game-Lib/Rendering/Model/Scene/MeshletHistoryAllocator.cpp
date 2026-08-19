@@ -56,19 +56,19 @@ namespace ModelScene
 
     void MeshletHistoryAllocator::ReleaseRetired(u64 completedValue)
     {
-        for (size_t index = 0; index < _retiredRanges.size();)
+        size_t writeIndex = 0;
+        for (const RetiredRange& retired : _retiredRanges)
         {
-            const RetiredRange& retired = _retiredRanges[index];
             if (retired.retireValue > completedValue)
             {
-                ++index;
+                _retiredRanges[writeIndex++] = retired;
                 continue;
             }
 
             _retiredWords -= retired.range.wordCount;
             AddFreeRange(retired.range);
-            _retiredRanges.erase(_retiredRanges.begin() + index);
         }
+        _retiredRanges.resize(writeIndex);
 
         CoalesceFreeRanges();
         TrimFreeTail();

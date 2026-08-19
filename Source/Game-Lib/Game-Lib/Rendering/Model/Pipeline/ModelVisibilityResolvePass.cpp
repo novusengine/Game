@@ -65,32 +65,32 @@ namespace ModelPipeline
                                                  const ModelLoading::ModelGeometryStorage& geometry,
                                                  const RenderScenes::RenderScene& scene)
     {
-        auto bind = [&set](StringUtils::StringHash name, Renderer::BufferID buffer, Renderer::BufferID& current) {
+        auto Bind = [&set](StringUtils::StringHash name, Renderer::BufferID buffer, Renderer::BufferID& current) {
             if (buffer == current)
                 return;
             set.Bind(name, buffer);
             current = buffer;
         };
 
-        bind("_resolvedModelVisibilityRecords0"_h, work.GetVisibilityRecords(0),
+        Bind("_resolvedModelVisibilityRecords0"_h, work.GetVisibilityRecords(0),
              bindings.frames[0].visibilityRecords);
-        bind("_resolvedModelVisibilityStats0"_h, work.GetStatsBuffer(0), bindings.frames[0].workStats);
-        bind("_resolvedModelVisibilityRecords1"_h, work.GetVisibilityRecords(1),
+        Bind("_resolvedModelVisibilityStats0"_h, work.GetStatsBuffer(0), bindings.frames[0].workStats);
+        Bind("_resolvedModelVisibilityRecords1"_h, work.GetVisibilityRecords(1),
              bindings.frames[1].visibilityRecords);
-        bind("_resolvedModelVisibilityStats1"_h, work.GetStatsBuffer(1), bindings.frames[1].workStats);
-        bind("_resolvedModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
+        Bind("_resolvedModelVisibilityStats1"_h, work.GetStatsBuffer(1), bindings.frames[1].workStats);
+        Bind("_resolvedModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
              bindings.modelInstances);
-        bind("_resolvedModels"_h, geometry.GetRecords().GetBuffer(), bindings.models);
-        bind("_resolvedModelMeshes"_h, geometry.GetMeshes().GetBuffer(), bindings.meshes);
-        bind("_resolvedModelLODs"_h, geometry.GetMeshLODs().GetBuffer(), bindings.lods);
-        bind("_resolvedModelSubmeshes"_h, geometry.GetSubmeshes().GetBuffer(), bindings.submeshes);
-        bind("_resolvedModelMeshlets"_h, geometry.GetMeshlets().GetBuffer(), bindings.meshlets);
-        bind("_resolvedModelPositions"_h, geometry.GetPositions().GetBuffer(), bindings.positions);
-        bind("_resolvedModelVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer(),
+        Bind("_resolvedModels"_h, geometry.GetRecords().GetBuffer(), bindings.models);
+        Bind("_resolvedModelMeshes"_h, geometry.GetMeshes().GetBuffer(), bindings.meshes);
+        Bind("_resolvedModelLODs"_h, geometry.GetMeshLODs().GetBuffer(), bindings.lods);
+        Bind("_resolvedModelSubmeshes"_h, geometry.GetSubmeshes().GetBuffer(), bindings.submeshes);
+        Bind("_resolvedModelMeshlets"_h, geometry.GetMeshlets().GetBuffer(), bindings.meshlets);
+        Bind("_resolvedModelPositions"_h, geometry.GetPositions().GetBuffer(), bindings.positions);
+        Bind("_resolvedModelVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer(),
              bindings.vertexAttributes);
-        bind("_resolvedModelVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(),
+        Bind("_resolvedModelVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(),
              bindings.vertexIndices);
-        bind("_resolvedModelTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), bindings.triangles);
+        Bind("_resolvedModelTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), bindings.triangles);
     }
 
     void ModelVisibilityResolvePass::Upload(const ModelView::ModelViewWorkResources& work,
@@ -100,22 +100,22 @@ namespace ModelPipeline
         BindCommon(_preEffectsSet, _preEffectsBindings, work, geometry, scene);
         BindCommon(_velocitySet, _velocityBindings, work, geometry, scene);
         BindCommon(_diagnosticSet, _diagnosticBindings.common, work, geometry, scene);
-        auto bindHighlight = [this](StringUtils::StringHash name, Renderer::BufferID buffer,
+        auto BindHighlight = [this](StringUtils::StringHash name, Renderer::BufferID buffer,
                                     Renderer::BufferID& current) {
             if (buffer == current)
                 return;
             _highlightSet.Bind(name, buffer);
             current = buffer;
         };
-        bindHighlight("_highlightModelVisibilityRecords0"_h, work.GetVisibilityRecords(0),
+        BindHighlight("_highlightModelVisibilityRecords0"_h, work.GetVisibilityRecords(0),
                       _highlightBindings.frames[0].visibilityRecords);
-        bindHighlight("_highlightModelVisibilityStats0"_h, work.GetStatsBuffer(0),
+        BindHighlight("_highlightModelVisibilityStats0"_h, work.GetStatsBuffer(0),
                       _highlightBindings.frames[0].workStats);
-        bindHighlight("_highlightModelVisibilityRecords1"_h, work.GetVisibilityRecords(1),
+        BindHighlight("_highlightModelVisibilityRecords1"_h, work.GetVisibilityRecords(1),
                       _highlightBindings.frames[1].visibilityRecords);
-        bindHighlight("_highlightModelVisibilityStats1"_h, work.GetStatsBuffer(1),
+        BindHighlight("_highlightModelVisibilityStats1"_h, work.GetStatsBuffer(1),
                       _highlightBindings.frames[1].workStats);
-        bindHighlight("_highlightModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
+        BindHighlight("_highlightModelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
                       _highlightBindings.modelInstances);
         for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
         {

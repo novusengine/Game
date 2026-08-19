@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Game-Lib/Rendering/Model/View/ModelViewWork.h"
+#include "ModelGeometryBindings.h"
 
 #include <Renderer/DescriptorSet.h>
 #include <Renderer/Descriptors/GraphicsPipelineDesc.h>
@@ -45,17 +46,6 @@ namespace ModelPipeline
         struct Bindings
         {
             FrameBindings frames[ModelView::MODEL_VIEW_FRAME_COUNT];
-            Renderer::BufferID modelInstances = Renderer::BufferID::Invalid();
-            Renderer::BufferID models = Renderer::BufferID::Invalid();
-            Renderer::BufferID meshes = Renderer::BufferID::Invalid();
-            Renderer::BufferID lods = Renderer::BufferID::Invalid();
-            Renderer::BufferID submeshes = Renderer::BufferID::Invalid();
-            Renderer::BufferID meshlets = Renderer::BufferID::Invalid();
-            Renderer::BufferID positions = Renderer::BufferID::Invalid();
-            Renderer::BufferID vertexAttributes = Renderer::BufferID::Invalid();
-            Renderer::BufferID vertexIndices = Renderer::BufferID::Invalid();
-            Renderer::BufferID triangles = Renderer::BufferID::Invalid();
-            Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
         };
 
         Renderer::Renderer* _renderer = nullptr;
@@ -64,7 +54,7 @@ namespace ModelPipeline
         Renderer::GraphicsPipelineID _oneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Renderer::GraphicsPipelineID _twoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Bindings _bindings;
+        ModelGeometryBindings _geometryBindings;
         u32 _queueGeneration = 0;
-        u32 _descriptorWarmupFrames = 0;
     };
 } // namespace ModelPipeline

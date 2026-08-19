@@ -20,6 +20,11 @@ namespace RenderScenes
     {
         if (_view)
             _gameRenderer->DestroyRenderView(_view->GetID());
+        DestroyTargets();
+    }
+
+    void OffscreenRenderView::DestroyTargets()
+    {
         if (_visibility != Renderer::ImageID::Invalid())
             _renderer->DestroyImage(_visibility);
         if (_normals != Renderer::ImageID::Invalid())
@@ -34,6 +39,13 @@ namespace RenderScenes
             _renderer->DestroyImage(_depthPyramid);
         if (_depth != Renderer::DepthImageID::Invalid())
             _renderer->DestroyDepthImage(_depth);
+        _visibility = Renderer::ImageID::Invalid();
+        _normals = Renderer::ImageID::Invalid();
+        _color = Renderer::ImageID::Invalid();
+        _transparencyAccumulation = Renderer::ImageID::Invalid();
+        _transparencyRevealage = Renderer::ImageID::Invalid();
+        _depthPyramid = Renderer::ImageID::Invalid();
+        _depth = Renderer::DepthImageID::Invalid();
     }
 
     bool OffscreenRenderView::SetTarget(Renderer::TextureID target)
@@ -102,6 +114,11 @@ namespace RenderScenes
         _desc.depthTarget = _depth;
         _desc.retainedOutput = _target;
         _view = _gameRenderer->CreateRenderView(_desc);
+        if (!_view)
+        {
+            DestroyTargets();
+            _target = Renderer::TextureID::Invalid();
+        }
         return _view != nullptr;
     }
 } // namespace RenderScenes

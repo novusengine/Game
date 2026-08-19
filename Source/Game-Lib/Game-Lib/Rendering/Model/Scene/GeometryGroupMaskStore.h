@@ -32,13 +32,16 @@ namespace ModelScene
         RenderScenes::GeometryGroupMaskHandle Create(u32 groupCount, bool enabledByDefault = true);
         void Release(RenderScenes::GeometryGroupMaskHandle handle);
         bool SetEnabled(RenderScenes::GeometryGroupMaskHandle handle, u32 groupID, bool enabled);
-        bool SetAll(RenderScenes::GeometryGroupMaskHandle handle, bool enabled);
+        bool SetRangeEnabled(RenderScenes::GeometryGroupMaskHandle handle, u32 firstGroupID, u32 lastGroupID, bool enabled, bool& outChanged);
+        bool SetAll(RenderScenes::GeometryGroupMaskHandle handle, bool enabled, bool& outChanged);
         bool IsEnabled(RenderScenes::GeometryGroupMaskHandle handle, u32 groupID) const;
+        void FlushFrees() { _wordAllocator.FlushFrees(); }
         void SyncToGPU(Renderer::Renderer* renderer);
 
         bool IsValid(RenderScenes::GeometryGroupMaskHandle handle) const;
         u32 GetOffset(RenderScenes::GeometryGroupMaskHandle handle) const;
         u32 GetWordCount(RenderScenes::GeometryGroupMaskHandle handle) const;
+        u32 GetGroupCount(RenderScenes::GeometryGroupMaskHandle handle) const;
         GeometryGroupMaskStoreStats GetStats() const;
         const Renderer::GPUVector<u32>& GetMasks() const { return _masks; }
 

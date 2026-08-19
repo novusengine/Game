@@ -78,35 +78,49 @@ namespace ModelScene
 
     bool GeometryGroupMaskStore::SetEnabled(RenderScenes::GeometryGroupMaskHandle handle, u32 groupID, bool enabled)
     {
+        bool changed = false;
+        return SetRangeEnabled(handle, groupID, groupID, enabled, changed);
+    }
+
+    bool GeometryGroupMaskStore::SetRangeEnabled(RenderScenes::GeometryGroupMaskHandle handle, u32 firstGroupID, u32 lastGroupID, bool enabled, bool& outChanged)
+    {
         Mask* mask = GetMask(handle);
-        if (!mask || groupID >= mask->groupCount)
+        outChanged = false;
+        if (!mask || firstGroupID > lastGroupID || lastGroupID >= mask->groupCount)
             return false;
 
-        const u32 wordIndex = mask->range.offset + (groupID / 32u);
-        const u32 bit = 1u << (groupID % 32u);
-        if (enabled)
-            _masks[wordIndex] |= bit;
-        else
-            _masks[wordIndex] &= ~bit;
-        _masks.SetDirtyElement(wordIndex);
+        const u32 firstWord = firstGroupID / 32u;
+        const u32 lastWord = lastGroupID / 32u;
+        for (u32 word = firstWord; word <= lastWord; ++word)
+        {
+            const u32 firstBit = word == firstWord ? firstGroupID % 32u : 0u;
+            const u32 lastBit = word == lastWord ? lastGroupID % 32u : 31u;
+            const u32 lowMask = 0xFFFFFFFFu << firstBit;
+            const u32 highMask = lastBit == 31u ? 0xFFFFFFFFu : (1u << (lastBit + 1u)) - 1u;
+            const u32 rangeMask = lowMask & highMask;
+            const u32 index = mask->range.offset + word;
+            const u32 previous = _masks[index];
+            _masks[index] = enabled ? previous | rangeMask : previous & ~rangeMask;
+            if (_masks[index] != previous)
+            {
+                _masks.SetDirtyElement(index);
+                outChanged = true;
+            }
+        }
         return true;
     }
 
-    bool GeometryGroupMaskStore::SetAll(RenderScenes::GeometryGroupMaskHandle handle, bool enabled)
+    bool GeometryGroupMaskStore::SetAll(RenderScenes::GeometryGroupMaskHandle handle, bool enabled, bool& outChanged)
     {
-        Mask* mask = GetMask(handle);
+        const Mask* mask = GetMask(handle);
         if (!mask)
             return false;
-
-        for (u32 index = 0; index < mask->range.count; ++index)
-            _masks[mask->range.offset + index] = enabled ? 0xFFFFFFFFu : 0u;
-
-        if (enabled && mask->range.count != 0 && (mask->groupCount % 32u) != 0)
-            _masks[mask->range.offset + mask->range.count - 1] = (1u << (mask->groupCount % 32u)) - 1u;
-
-        if (mask->range.count != 0)
-            _masks.SetDirtyElements(mask->range.offset, mask->range.count);
-        return true;
+        if (mask->groupCount == 0)
+        {
+            outChanged = false;
+            return true;
+        }
+        return SetRangeEnabled(handle, 0, mask->groupCount - 1u, enabled, outChanged);
     }
 
     bool GeometryGroupMaskStore::IsEnabled(RenderScenes::GeometryGroupMaskHandle handle, u32 groupID) const
@@ -139,6 +153,12 @@ namespace ModelScene
     {
         const Mask* mask = GetMask(handle);
         return mask ? mask->range.count : 0;
+    }
+
+    u32 GeometryGroupMaskStore::GetGroupCount(RenderScenes::GeometryGroupMaskHandle handle) const
+    {
+        const Mask* mask = GetMask(handle);
+        return mask ? mask->groupCount : 0;
     }
 
     GeometryGroupMaskStoreStats GeometryGroupMaskStore::GetStats() const

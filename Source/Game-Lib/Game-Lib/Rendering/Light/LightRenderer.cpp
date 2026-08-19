@@ -460,6 +460,10 @@ void LightRenderer::CreatePermanentResources()
         RecreateBuffer(newSize);
     });
 
+    // AddOnRenderSizeChanged only observes future resizes. Create and bind the initial
+    // tile buffer now so the first classification/resolve dispatch has a valid descriptor.
+    RecreateBuffer(_renderer->GetWindowSize());
+
     _decalAddWork.resize(64);
     _decalRemoveWork.resize(64);
 

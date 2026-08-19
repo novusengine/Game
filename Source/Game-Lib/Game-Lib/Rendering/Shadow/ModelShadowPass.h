@@ -32,7 +32,7 @@ namespace ShadowRendering
                          ModelShadowWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
                          const MaterialLoading::MaterialStorage& materials, const RenderScenes::RenderScene& scene,
                          Renderer::BufferID svsmData, u32 numClipmaps, bool dynamicSplit, u8 frameIndex,
-                         i32 forcedLOD, f32 lodTargetTexels, bool coneCulling);
+                         i32 forcedLOD, f32 lodTargetTexels);
         void AddRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                            const ModelShadowWorkResources& work,
                            const ModelLoading::ModelGeometryStorage& geometry,

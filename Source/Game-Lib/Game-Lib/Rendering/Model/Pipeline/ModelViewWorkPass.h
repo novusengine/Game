@@ -28,6 +28,7 @@ namespace ModelPipeline
         bool Upload(const ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work,
                     const ModelLoading::ModelGeometryStorage& geometry,
                     const RenderScenes::RenderScene& scene);
+        void AddHistoryClearPass(Renderer::RenderGraph* renderGraph, const RenderScenes::RenderView& view, ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work);
         void AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view,
                      const ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work,
                      const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
@@ -129,18 +130,21 @@ namespace ModelPipeline
         Renderer::DescriptorSet _finalizeDescriptorSet;
         Renderer::DescriptorSet _replayDescriptorSet;
         Renderer::DescriptorSet _beginPhase2DescriptorSet;
+        Renderer::DescriptorSet _historyClearDescriptorSet;
         Renderer::ComputePipelineID _expandPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _expandFinalizePipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _cullPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _finalizePipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _replayPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _beginPhase2Pipeline = Renderer::ComputePipelineID::Invalid();
+        Renderer::ComputePipelineID _historyClearPipeline = Renderer::ComputePipelineID::Invalid();
         ExpandBindings _expandBindings;
         ExpandFinalizeFrameBindings _expandFinalizeBindings[ModelView::MODEL_VIEW_FRAME_COUNT];
         CullBindings _cullBindings;
         FinalizeFrameBindings _finalizeBindings[ModelView::MODEL_VIEW_FRAME_COUNT];
         ReplayBindings _replayBindings;
         BeginPhase2FrameBindings _beginPhase2Bindings[ModelView::MODEL_VIEW_FRAME_COUNT];
-        u32 _descriptorWarmupFrames = 0;
+        Renderer::BufferID _historyClearInstanceVisibility[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
+        Renderer::BufferID _historyClearMeshletHistory[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
     };
 } // namespace ModelPipeline

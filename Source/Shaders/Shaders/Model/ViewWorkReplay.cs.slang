@@ -57,12 +57,24 @@ ModelMeshletSurvivor LoadPreviousSurvivor(uint index)
 
 bool LoadCurrentInstanceVisibility(uint instanceIndex)
 {
+    uint wordCount;
+    uint wordStride;
+    if (_constants.resourceIndex == 0u) _instanceVisibility0.GetDimensions(wordCount, wordStride);
+    else _instanceVisibility1.GetDimensions(wordCount, wordStride);
+    if ((instanceIndex >> 5u) >= wordCount)
+        return false;
     return _constants.resourceIndex == 0u ? LoadBit(_instanceVisibility0, instanceIndex) :
                                             LoadBit(_instanceVisibility1, instanceIndex);
 }
 
 bool LoadPreviousMeshletHistory(uint bitIndex)
 {
+    uint wordCount;
+    uint wordStride;
+    if (_constants.resourceIndex == 0u) _meshletHistory1.GetDimensions(wordCount, wordStride);
+    else _meshletHistory0.GetDimensions(wordCount, wordStride);
+    if ((bitIndex >> 5u) >= wordCount)
+        return false;
     return _constants.resourceIndex == 0u ? LoadBit(_meshletHistory1, bitIndex) :
                                             LoadBit(_meshletHistory0, bitIndex);
 }
@@ -116,7 +128,23 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (DispatchThreadID.x >= min(previousCount, _constants.queueCapacity))
         return;
 
+    uint boundSurvivorCount;
+    uint boundSurvivorStride;
+    if (_constants.resourceIndex == 0u)
+        _survivors1.GetDimensions(boundSurvivorCount, boundSurvivorStride);
+    else
+        _survivors0.GetDimensions(boundSurvivorCount, boundSurvivorStride);
+    if (DispatchThreadID.x >= boundSurvivorCount)
+        return;
     ModelMeshletSurvivor survivor = LoadPreviousSurvivor(DispatchThreadID.x);
+    uint boundInstanceCount;
+    uint boundInstanceStride;
+    _modelInstances.GetDimensions(boundInstanceCount, boundInstanceStride);
+    if (survivor.instanceIndex >= boundInstanceCount)
+    {
+        AddStat(MODEL_WORK_STAT_STALE_GENERATION_SKIPS, 1u);
+        return;
+    }
     ModelInstanceRecord instance = _modelInstances[survivor.instanceIndex];
     if (instance.generation != survivor.instanceGeneration)
     {
@@ -125,11 +153,29 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     if (!LoadCurrentInstanceVisibility(survivor.instanceIndex))
         return;
+    uint boundLODHistoryCount;
+    uint boundLODHistoryStride;
+    _lodHistory.GetDimensions(boundLODHistoryCount, boundLODHistoryStride);
+    if (survivor.lodHistoryIndex >= boundLODHistoryCount)
+        return;
     if (_lodHistory[survivor.lodHistoryIndex] != survivor.lodIndex)
     {
         AddStat(MODEL_WORK_STAT_LOD_MISMATCH_SKIPS, 1u);
         return;
     }
+
+    uint boundModelCount;
+    uint boundModelStride;
+    _modelRecords.GetDimensions(boundModelCount, boundModelStride);
+    if (instance.modelIndex >= boundModelCount)
+        return;
+    ModelRecord model = _modelRecords[instance.modelIndex];
+    uint meshletIndex = model.meshletBase + survivor.meshletIndex;
+    uint boundMeshletCount;
+    uint boundMeshletStride;
+    _modelMeshlets.GetDimensions(boundMeshletCount, boundMeshletStride);
+    if (meshletIndex >= boundMeshletCount)
+        return;
 
     uint historyBit = instance.meshletHistoryWordOffset * 32u + survivor.meshletIndex;
     if (!LoadPreviousMeshletHistory(historyBit))
@@ -144,6 +190,11 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (queueOffset >= _constants.queueCapacity || recordOffset >= _constants.queueCapacity ||
         survivorOffset >= _constants.queueCapacity)
     {
+        if (survivorOffset < _constants.queueCapacity)
+        {
+            ModelMeshletSurvivor invalidSurvivor = (ModelMeshletSurvivor)0;
+            StoreCurrentSurvivor(survivorOffset, invalidSurvivor);
+        }
         if (queueOffset >= _constants.queueCapacity) AddStat(MODEL_WORK_STAT_QUEUE_OVERFLOWS, 1u);
         if (recordOffset >= _constants.queueCapacity) AddStat(MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS, 1u);
         if (survivorOffset >= _constants.queueCapacity) AddStat(MODEL_WORK_STAT_SURVIVOR_QUEUE_OVERFLOWS, 1u);
@@ -157,8 +208,7 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     StoreCurrentSurvivor(survivorOffset, survivor);
     MarkCurrentMeshletHistory(historyBit);
     AddStat(MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + survivor.rasterClass, 1u);
-    ModelRecord model = _modelRecords[instance.modelIndex];
-    uint triangleCount = ModelMeshletTriangleCount(_modelMeshlets[model.meshletBase + survivor.meshletIndex]);
+    uint triangleCount = ModelMeshletTriangleCount(_modelMeshlets[meshletIndex]);
     AddStat(MODEL_WORK_STAT_COMMITTED_TRIANGLES, triangleCount);
     AddStat(MODEL_WORK_STAT_PHASE1_REPLAYED_TRIANGLES, triangleCount);
     AddStat(MODEL_WORK_STAT_PHASE1_REPLAYED_MESHLETS, 1u);

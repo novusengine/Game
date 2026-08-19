@@ -229,10 +229,16 @@ const VisibilityBuffer UnpackVisibilityBuffer(uint data)
     }
     else if (payload.geometryTypeID == TYPED_VISIBILITY_LEGACY_MODEL)
     {
-        LegacyModelVisibilityRecord record = _legacyModelVisibilityRecords[payload.recordID];
-        vBuffer.typeID = ObjectType::ModelOpaque;
-        vBuffer.instanceID = record.instanceRefID;
-        vBuffer.triangleID = record.triangleBase + payload.triangleID;
+        uint recordCount;
+        uint recordStride;
+        _legacyModelVisibilityRecords.GetDimensions(recordCount, recordStride);
+        if (payload.recordID < recordCount)
+        {
+            LegacyModelVisibilityRecord record = _legacyModelVisibilityRecords[payload.recordID];
+            vBuffer.typeID = ObjectType::ModelOpaque;
+            vBuffer.instanceID = record.instanceRefID;
+            vBuffer.triangleID = record.triangleBase + payload.triangleID;
+        }
     }
     else if (payload.geometryTypeID == TYPED_VISIBILITY_JOLT_DEBUG)
     {

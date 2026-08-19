@@ -35,9 +35,11 @@ namespace ModelScene
 
         void Reserve(u32 tableCount, u32 entryCount);
         RenderScenes::ModelMaterialTableHandle AcquireShared(std::span<const u32> materials);
+        bool AddReference(RenderScenes::ModelMaterialTableHandle table);
         RenderScenes::ModelMaterialTableHandle CreatePrivate(RenderScenes::ModelMaterialTableHandle source);
         bool SetMaterial(RenderScenes::ModelMaterialTableHandle table, u32 slot, RenderAssets::MaterialInstanceHandle material);
         void Release(RenderScenes::ModelMaterialTableHandle table);
+        void FlushFrees() { _entryAllocator.FlushFrees(); }
         void SyncToGPU(Renderer::Renderer* renderer);
 
         bool IsValid(RenderScenes::ModelMaterialTableHandle table) const;

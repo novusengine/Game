@@ -40,7 +40,7 @@ namespace ShadowRendering
         void AdvanceFrame(RenderScenes::RenderScene& scene);
 
         u32 DrainInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs);
-        std::span<const vec4> GetDynamicAABBs() const { return _dynamicAABBs; }
+        std::span<const vec4> GetDynamicAABBs() const;
         SceneShadowStats GetStats() const;
 
       private:
@@ -54,12 +54,13 @@ namespace ShadowRendering
         static void TransformBounds(const FileFormat::Model::Bounds& bounds, const mat4x4& transform, vec3& outMin,
                                     vec3& outMax);
         void QueueInvalidation(const FileFormat::Model::Bounds& bounds, const mat4x4& transform);
-        void RebuildDynamicAABBs();
+        void RebuildDynamicAABBs() const;
 
         robin_hood::unordered_flat_map<u64, DynamicCaster> _dynamicCasters;
         std::vector<u64> _retiredCasterKeys;
         std::vector<vec4> _invalidations;
-        std::vector<vec4> _dynamicAABBs;
+        mutable std::vector<vec4> _dynamicAABBs;
+        mutable bool _dynamicAABBsDirty = false;
         u32 _transitionsIn = 0;
         u32 _transitionsOut = 0;
     };

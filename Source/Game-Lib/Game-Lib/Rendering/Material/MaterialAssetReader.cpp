@@ -109,11 +109,15 @@ namespace MaterialLoading
 
     MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::ReadMaterialInstance(std::span<const u8> payload, const MaterialAssetView& material, AssetLoading::ValidationMode validationMode)
     {
-        MaterialAssetReadResult<MaterialInstanceAssetView> result = DecodeMaterialInstance(payload);
-        if (!result || !AssetLoading::ShouldPerformFullValidation(validationMode))
-            return result;
+        return ValidateMaterialInstance(DecodeMaterialInstance(payload), material, validationMode);
+    }
 
-        return MaterialAssetValidator::ValidateMaterialInstance(result, material);
+    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::ValidateMaterialInstance(MaterialAssetReadResult<MaterialInstanceAssetView> decoded,
+                                                                                                      const MaterialAssetView& material, AssetLoading::ValidationMode validationMode)
+    {
+        if (!decoded || !AssetLoading::ShouldPerformFullValidation(validationMode))
+            return decoded;
+        return MaterialAssetValidator::ValidateMaterialInstance(std::move(decoded), material);
     }
 
     MaterialAssetReadResult<MaterialAnimationAssetView> MaterialAssetReader::ReadMaterialAnimation(std::span<const u8> payload)

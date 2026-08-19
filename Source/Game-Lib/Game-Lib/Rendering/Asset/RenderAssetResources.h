@@ -51,6 +51,15 @@ namespace RenderAssets
         void AddCapturePass(Renderer::RenderGraph& renderGraph);
 
         ModelHandle LoadModel(FileFormat::AssetID assetID) { return _modelRegistry.Load(assetID); }
+        ModelLoading::ModelLoadStatus BeginModelLoad(FileFormat::AssetID assetID, ModelHandle& outHandle)
+        {
+            return _modelRegistry.BeginLoad(assetID, outHandle);
+        }
+        ModelLoading::ModelLoadStatus PollModelLoad(FileFormat::AssetID assetID, ModelHandle& outHandle)
+        {
+            return _modelRegistry.PollLoad(assetID, outHandle);
+        }
+        bool ReleaseModel(FileFormat::AssetID assetID) { return _modelRegistry.Release(assetID); }
         MaterialInstanceHandle LoadMaterialInstance(FileFormat::AssetID assetID)
         {
             return _materialRegistry.LoadMaterialInstance(assetID);

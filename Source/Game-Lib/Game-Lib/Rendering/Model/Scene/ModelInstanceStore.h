@@ -59,6 +59,7 @@ namespace ModelScene
         u32 geometryGroupWordOffset = 0;
         u32 geometryGroupWordCount = 0;
         MeshletHistoryRange meshletHistory;
+        u32 meshletCount = 0;
         bool visible = true;
         bool privateMaterials = false;
     };
@@ -79,6 +80,7 @@ namespace ModelScene
         u32 slotCapacity = 0;
         u32 pendingSlotClears = 0;
         u32 staleHandleRejects = 0;
+        u64 activeMeshlets = 0;
     };
 
     // Owns CPU-side generation-checked instance slots and their GPU-side transform
@@ -116,10 +118,13 @@ namespace ModelScene
         {
             return _pendingSlotClears;
         }
-        void AcknowledgePendingSlotClears()
-        {
-            _pendingSlotClears.clear();
-        }
+        void AcknowledgePendingSlotClears();
+        std::span<const u32> GetMembershipChanges() const { return _membershipChanges; }
+        void AcknowledgeMembershipChanges();
+        void QueueRoutingChange(RenderScenes::ModelInstanceHandle handle);
+        std::span<const u32> GetRoutingChanges() const { return _routingChanges; }
+        void AcknowledgeRoutingChanges();
+        RenderScenes::ModelInstanceHandle GetHandleAtSlot(u32 slotIndex) const;
         ModelInstanceStoreStats GetStats() const;
         const Renderer::GPUVector<ModelInstanceGPURecord>& GetRecords() const
         {
@@ -130,6 +135,7 @@ namespace ModelScene
             return _membershipRevision;
         }
         u32 GetHighlightedInstanceCount() const { return _highlightedInstances; }
+        u64 GetActiveMeshletCount() const { return _activeMeshlets; }
 
       private:
         enum class SlotState : u8
@@ -146,6 +152,10 @@ namespace ModelScene
             SlotState state = SlotState::Free;
             bool desiredVisible = false;
             bool frameAdvanceQueued = false;
+            bool clearQueued = false;
+            bool membershipChangeQueued = false;
+            bool routingChangeQueued = false;
+            u32 meshletCount = 0;
         };
 
         struct SlotGenerationEntry
@@ -157,6 +167,8 @@ namespace ModelScene
         Slot* GetSlot(RenderScenes::ModelInstanceHandle handle);
         const Slot* GetSlot(RenderScenes::ModelInstanceHandle handle) const;
         void QueueFrameAdvance(u32 slotIndex);
+        void QueueSlotClear(u32 slotIndex);
+        void QueueMembershipChange(u32 slotIndex);
         void RecordStaleHandle() const
         {
             _staleHandleRejects++;
@@ -166,12 +178,15 @@ namespace ModelScene
         std::vector<Slot> _slots;
         std::vector<u32> _freeSlots;
         std::vector<u32> _pendingSlotClears;
+        std::vector<u32> _membershipChanges;
+        std::vector<u32> _routingChanges;
         std::vector<SlotGenerationEntry> _pendingPublications;
         std::vector<SlotGenerationEntry> _frameAdvanceEntries;
         std::vector<u32> _highlightedSlots;
         u32 _liveInstances = 0;
         u32 _pendingInstances = 0;
         u32 _highlightedInstances = 0;
+        u64 _activeMeshlets = 0;
         mutable u32 _staleHandleRejects = 0;
         u64 _membershipRevision = 0;
     };

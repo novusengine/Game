@@ -31,16 +31,15 @@ namespace ModelScene
         return handle;
     }
 
-    bool ModelSceneBridge::Remove(entt::entity entity, u64 retireValue)
+    bool ModelSceneBridge::Remove(entt::entity entity)
     {
         const auto existing = _instances.find(entity);
         if (existing == _instances.end() || !existing->second.scene)
             return false;
 
-        const bool removed = existing->second.scene->DestroyModelInstance(existing->second.handle, retireValue);
+        const bool removed = existing->second.scene->DestroyModelInstance(existing->second.handle);
         if (removed)
         {
-            existing->second.scene->ReleaseRetiredHistory(retireValue);
             _instances.erase(existing);
         }
         return removed;
@@ -98,6 +97,12 @@ namespace ModelScene
     {
         const auto existing = _instances.find(entity);
         return existing != _instances.end() && existing->second.scene && existing->second.scene->SetGeometryGroupEnabled(existing->second.handle, groupID, enabled);
+    }
+
+    bool ModelSceneBridge::SetGeometryGroupRangeEnabled(entt::entity entity, u32 firstGroupID, u32 lastGroupID, bool enabled)
+    {
+        const auto existing = _instances.find(entity);
+        return existing != _instances.end() && existing->second.scene && existing->second.scene->SetGeometryGroupRangeEnabled(existing->second.handle, firstGroupID, lastGroupID, enabled);
     }
 
     bool ModelSceneBridge::SetAllGeometryGroups(entt::entity entity, bool enabled)

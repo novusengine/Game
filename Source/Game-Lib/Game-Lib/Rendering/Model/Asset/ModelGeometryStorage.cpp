@@ -23,7 +23,7 @@ namespace
         if (source.empty())
             return destination.Count();
 
-        const u32 base = destination.AddCount(static_cast<u32>(source.size()));
+        const u32 base = destination.AddCountUninitialized(static_cast<u32>(source.size()));
         std::memcpy(&destination[base], source.data(), source.size_bytes());
         return base;
     }
@@ -138,6 +138,19 @@ namespace ModelLoading
         record.numSubmeshes = static_cast<u32>(view.submeshes.size());
         record.meshletBase = AppendSpan(_meshlets, view.meshlets);
         record.numMeshlets = static_cast<u32>(view.meshlets.size());
+        for (const FileFormat::Model::Mesh& mesh : view.meshes)
+        {
+            if (mesh.numLODs == 0 || mesh.lodOffset >= view.meshLODs.size())
+                continue;
+            const FileFormat::Model::MeshLOD& lod = view.meshLODs[mesh.lodOffset];
+            record.lod0Meshlets += lod.numMeshlets;
+            for (u32 meshletIndex = 0; meshletIndex < lod.numMeshlets; ++meshletIndex)
+            {
+                const u32 index = lod.meshletOffset + meshletIndex;
+                if (index < view.meshlets.size())
+                    record.lod0Triangles += view.meshlets[index].triangleCount;
+            }
+        }
         record.positionBase = AppendSpan(_positions, view.positions);
         record.numPositions = static_cast<u32>(view.positions.size());
         record.vertexAttributeBase = AppendSpan(_vertexAttributes, view.vertexAttributes);

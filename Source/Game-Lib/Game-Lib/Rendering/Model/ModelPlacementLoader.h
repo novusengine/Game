@@ -33,6 +33,8 @@ namespace ModelRendering
         u32 duplicatePlacements = 0;
         u32 sourceResolutionFailures = 0;
         u32 modelFallbackPlacements = 0;
+        u32 sourceAssetLookups = 0;
+        u32 sourceAssetCacheEntries = 0;
         ModelScene::EmbeddedInstanceSpawnerStats embedded;
     };
 
@@ -70,7 +72,13 @@ namespace ModelRendering
             ModelScene::EmbeddedInstanceSpawnerStats statsBefore;
         };
 
-        bool BeginPlacement(const Terrain::Placement& placement);
+        struct WaitingPlacement
+        {
+            Terrain::Placement source;
+            FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
+        };
+
+        bool BeginPlacement(const Terrain::Placement& placement, FileFormat::AssetID assetID, RenderAssets::ModelHandle model);
         void FinishPlacement(bool succeeded);
         FileFormat::AssetID ResolveModelAssetID(u64 sourceReference);
         static mat4x4 MakeWorldTransform(const Terrain::Placement& placement);
@@ -82,6 +90,7 @@ namespace ModelRendering
         moodycamel::ConcurrentQueue<Terrain::Placement> _pendingPlacements;
         robin_hood::unordered_map<u32, PlacementInstances> _placements;
         std::optional<ActivePlacement> _activePlacement;
+        std::optional<WaitingPlacement> _waitingPlacement;
         robin_hood::unordered_map<u64, FileFormat::AssetID> _sourceAssets;
         robin_hood::unordered_set<u64> _reportedResolutionFailures;
         robin_hood::unordered_set<FileFormat::AssetID> _reportedFallbackAssets;
@@ -90,6 +99,7 @@ namespace ModelRendering
         u32 _duplicatePlacements = 0;
         u32 _sourceResolutionFailures = 0;
         u32 _modelFallbackPlacements = 0;
+        u32 _sourceAssetLookups = 0;
         std::atomic<u32> _numQueuedPlacements = 0;
         std::atomic<u32> _numProcessedPlacements = 0;
     };

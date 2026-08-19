@@ -6,7 +6,6 @@ struct Constants
 {
     uint queueCapacity;
     uint frameIndex;
-    uint enableConeCulling;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -52,6 +51,11 @@ void AddStat(uint index, uint value, out uint previous)
 ModelShadowChunk LoadChunk(uint index)
 {
     return _constants.frameIndex == 0u ? _shadowCullChunks0[index] : _shadowCullChunks1[index];
+}
+
+uint LoadStat(uint index)
+{
+    return _constants.frameIndex == 0u ? _shadowCullStats0[index] : _shadowCullStats1[index];
 }
 
 void StoreRecord(uint index, ModelShadowRecord record)
@@ -130,6 +134,10 @@ bool IntersectsPages(float4 sphere, uint clipmapIndex, bool dynamicCaster)
 void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
     uint chunkIndex = groupID.x + groupID.y * MODEL_SHADOW_COMPUTE_DISPATCH_MAX_GROUPS_X;
+    uint chunkCount = min(LoadStat(MODEL_SHADOW_STAT_EXPANDED_CHUNKS), _constants.queueCapacity);
+    if (chunkIndex >= chunkCount)
+        return;
+
     ModelShadowChunk chunk = LoadChunk(chunkIndex);
     uint count = chunk.packedCountRasterLODAndClipmap & MODEL_SHADOW_CHUNK_COUNT_MASK;
     if (groupThreadID.x == 0u)
@@ -159,14 +167,6 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
         AddStat(MODEL_SHADOW_STAT_REJECTED_PAGE, 1u);
         return;
     }
-    if (_constants.enableConeCulling != 0u && (rasterClass & 1u) == 0u &&
-        ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter, meshlet.boundsRadius,
-                            instance.currentWorld, camera.cullingEyePosition.xyz))
-    {
-        AddStat(MODEL_SHADOW_STAT_REJECTED_CONE, 1u);
-        return;
-    }
-
     uint recordIndex;
     AddStat(MODEL_SHADOW_STAT_VISIBILITY_RECORDS, 1u, recordIndex);
     uint queueIndex = ModelShadowQueueIndex(rasterClass, dynamicCaster);

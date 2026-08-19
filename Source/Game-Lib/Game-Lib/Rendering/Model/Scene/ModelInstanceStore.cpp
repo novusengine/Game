@@ -21,6 +21,8 @@ namespace ModelScene
         _records.Reserve(additionalSlots);
         _slots.reserve(_slots.size() + additionalSlots);
         _pendingSlotClears.reserve(_pendingSlotClears.size() + instanceCount);
+        _membershipChanges.reserve(_membershipChanges.size() + instanceCount);
+        _routingChanges.reserve(_routingChanges.size() + instanceCount);
         _pendingPublications.reserve(_pendingPublications.size() + instanceCount);
         _frameAdvanceEntries.reserve(_frameAdvanceEntries.size() + instanceCount);
     }
@@ -51,6 +53,8 @@ namespace ModelScene
         slot.state = SlotState::Pending;
         slot.desiredVisible = info.visible;
         slot.frameAdvanceQueued = false;
+        slot.meshletCount = info.meshletCount;
+        _activeMeshlets += info.meshletCount;
 
         ModelInstanceGPURecord& record = _records[slotIndex];
         record = {};
@@ -73,7 +77,8 @@ namespace ModelScene
         if (reusedSlot)
             _records.SetDirtyElement(slotIndex);
 
-        _pendingSlotClears.push_back(slotIndex);
+        QueueSlotClear(slotIndex);
+        QueueMembershipChange(slotIndex);
         _pendingPublications.push_back({slotIndex, slot.generation});
         _pendingInstances++;
         ++_membershipRevision;
@@ -105,6 +110,8 @@ namespace ModelScene
         slot->desiredVisible = false;
         slot->frameAdvanceQueued = false;
         slot->resources = {};
+        _activeMeshlets -= slot->meshletCount;
+        slot->meshletCount = 0;
         slot->generation++;
         if (slot->generation == 0)
             slot->generation = 1;
@@ -117,6 +124,7 @@ namespace ModelScene
             _records.SetDirtyElement(slotIndex);
         }
         _freeSlots.push_back(slotIndex);
+        QueueMembershipChange(slotIndex);
         ++_membershipRevision;
         return true;
     }
@@ -139,11 +147,7 @@ namespace ModelScene
             record.previousWorld = transform;
             record.flags |= ModelInstanceFlagTeleported;
             record.flags &= ~ModelInstanceFlagMotionValid;
-            if (std::find(_pendingSlotClears.begin(), _pendingSlotClears.end(),
-                          RenderScenes::GetModelInstanceSlot(handle)) == _pendingSlotClears.end())
-            {
-                _pendingSlotClears.push_back(RenderScenes::GetModelInstanceSlot(handle));
-            }
+            QueueSlotClear(RenderScenes::GetModelInstanceSlot(handle));
         }
         else if (slot->state == SlotState::Pending)
         {
@@ -182,11 +186,7 @@ namespace ModelScene
             record.flags &= ~ModelInstanceFlagMotionValid;
             outNeedsHistoryClear = true;
             QueueFrameAdvance(RenderScenes::GetModelInstanceSlot(handle));
-            if (std::find(_pendingSlotClears.begin(), _pendingSlotClears.end(),
-                          RenderScenes::GetModelInstanceSlot(handle)) == _pendingSlotClears.end())
-            {
-                _pendingSlotClears.push_back(RenderScenes::GetModelInstanceSlot(handle));
-            }
+            QueueSlotClear(RenderScenes::GetModelInstanceSlot(handle));
         }
         _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
         return true;
@@ -416,6 +416,46 @@ namespace ModelScene
         return slot ? &slot->resources : nullptr;
     }
 
+    RenderScenes::ModelInstanceHandle ModelInstanceStore::GetHandleAtSlot(u32 slotIndex) const
+    {
+        if (slotIndex >= _slots.size() || _slots[slotIndex].state == SlotState::Free)
+            return RenderScenes::InvalidModelInstanceHandle();
+        return RenderScenes::MakeModelInstanceHandle(slotIndex, _slots[slotIndex].generation);
+    }
+
+    void ModelInstanceStore::AcknowledgePendingSlotClears()
+    {
+        for (const u32 slotIndex : _pendingSlotClears)
+            if (slotIndex < _slots.size())
+                _slots[slotIndex].clearQueued = false;
+        _pendingSlotClears.clear();
+    }
+
+    void ModelInstanceStore::AcknowledgeMembershipChanges()
+    {
+        for (const u32 slotIndex : _membershipChanges)
+            if (slotIndex < _slots.size())
+                _slots[slotIndex].membershipChangeQueued = false;
+        _membershipChanges.clear();
+    }
+
+    void ModelInstanceStore::QueueRoutingChange(RenderScenes::ModelInstanceHandle handle)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot || slot->routingChangeQueued)
+            return;
+        slot->routingChangeQueued = true;
+        _routingChanges.push_back(RenderScenes::GetModelInstanceSlot(handle));
+    }
+
+    void ModelInstanceStore::AcknowledgeRoutingChanges()
+    {
+        for (const u32 slotIndex : _routingChanges)
+            if (slotIndex < _slots.size())
+                _slots[slotIndex].routingChangeQueued = false;
+        _routingChanges.clear();
+    }
+
     void ModelInstanceStore::CollectActiveHandles(std::vector<RenderScenes::ModelInstanceHandle>& outHandles) const
     {
         outHandles.clear();
@@ -447,7 +487,8 @@ namespace ModelScene
                 .freeSlots = static_cast<u32>(_freeSlots.size()),
                 .slotCapacity = static_cast<u32>(_slots.size()),
                 .pendingSlotClears = static_cast<u32>(_pendingSlotClears.size()),
-                .staleHandleRejects = _staleHandleRejects};
+                .staleHandleRejects = _staleHandleRejects,
+                .activeMeshlets = _activeMeshlets};
     }
 
     ModelInstanceStore::Slot* ModelInstanceStore::GetSlot(RenderScenes::ModelInstanceHandle handle)
@@ -480,5 +521,23 @@ namespace ModelScene
 
         slot.frameAdvanceQueued = true;
         _frameAdvanceEntries.push_back({slotIndex, slot.generation});
+    }
+
+    void ModelInstanceStore::QueueSlotClear(u32 slotIndex)
+    {
+        Slot& slot = _slots[slotIndex];
+        if (slot.clearQueued)
+            return;
+        slot.clearQueued = true;
+        _pendingSlotClears.push_back(slotIndex);
+    }
+
+    void ModelInstanceStore::QueueMembershipChange(u32 slotIndex)
+    {
+        Slot& slot = _slots[slotIndex];
+        if (slot.membershipChangeQueued)
+            return;
+        slot.membershipChangeQueued = true;
+        _membershipChanges.push_back(slotIndex);
     }
 } // namespace ModelScene

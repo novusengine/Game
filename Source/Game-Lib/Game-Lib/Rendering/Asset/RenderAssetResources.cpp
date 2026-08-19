@@ -38,7 +38,8 @@ namespace RenderAssets
         std::string materialPackError;
         if (!_materialProgramLibrary.Load("Data/Shaders/Materials.matpack", materialPackError))
         {
-            NC_LOG_ERROR("MATERIAL_PACK load_failed path=Data/Shaders/Materials.matpack reason={}", materialPackError);
+            NC_LOG_CRITICAL("MATERIAL_PACK load_failed path=Data/Shaders/Materials.matpack reason={}", materialPackError);
+            return false;
         }
 
         if (!_textureRegistry.Initialize() ||
@@ -94,7 +95,7 @@ namespace RenderAssets
         renderGraph.AddPass<CapturePassData>("Render Asset Capture Buffers",
             [this](CapturePassData& data, Renderer::RenderGraphBuilder& builder) {
                 using BufferUsage = Renderer::BufferPassUsage;
-                auto track = [&builder, &data](const auto& buffer) {
+                auto Track = [&builder, &data](const auto& buffer) {
                     if (buffer.UsedBytes() >= sizeof(u32))
                     {
                         data.sizes[data.numSources] = std::min(buffer.UsedBytes(), 64u);
@@ -102,24 +103,24 @@ namespace RenderAssets
                     }
                 };
 
-                track(_materialStorage.GetMaterials());
-                track(_materialStorage.GetMaterialInstances());
-                track(_materialStorage.GetMaterialTable());
-                track(_materialStorage.GetParameterStorage().GetBuffer());
-                track(_geometryStorage.GetRecords());
-                track(_geometryStorage.GetMeshes());
-                track(_geometryStorage.GetMeshLODs());
-                track(_geometryStorage.GetSubmeshes());
-                track(_geometryStorage.GetMeshlets());
-                track(_geometryStorage.GetPositions());
-                track(_geometryStorage.GetVertexAttributes());
-                track(_geometryStorage.GetSkinningData());
-                track(_geometryStorage.GetMeshletVertexIndices());
-                track(_geometryStorage.GetMeshletTriangles());
-                track(_geometryStorage.GetJointPaletteRemaps());
-                track(_geometryStorage.GetMaterialSlots());
-                track(_geometryStorage.GetEmbeddedInstanceSets());
-                track(_geometryStorage.GetEmbeddedInstances());
+                Track(_materialStorage.GetMaterials());
+                Track(_materialStorage.GetMaterialInstances());
+                Track(_materialStorage.GetMaterialTable());
+                Track(_materialStorage.GetParameterStorage().GetBuffer());
+                Track(_geometryStorage.GetRecords());
+                Track(_geometryStorage.GetMeshes());
+                Track(_geometryStorage.GetMeshLODs());
+                Track(_geometryStorage.GetSubmeshes());
+                Track(_geometryStorage.GetMeshlets());
+                Track(_geometryStorage.GetPositions());
+                Track(_geometryStorage.GetVertexAttributes());
+                Track(_geometryStorage.GetSkinningData());
+                Track(_geometryStorage.GetMeshletVertexIndices());
+                Track(_geometryStorage.GetMeshletTriangles());
+                Track(_geometryStorage.GetJointPaletteRemaps());
+                Track(_geometryStorage.GetMaterialSlots());
+                Track(_geometryStorage.GetEmbeddedInstanceSets());
+                Track(_geometryStorage.GetEmbeddedInstances());
                 data.scratch = builder.Write(_captureScratch.GetBuffer(), BufferUsage::TRANSFER);
                 return true;
             },

@@ -16,6 +16,7 @@ ConsoleCommandHandler::ConsoleCommandHandler()
     RegisterCommand("reloadscripts"_h, &ConsoleCommands::CommandReloadScripts);
     RegisterCommand("refresh"_h, &ConsoleCommands::CommandRefreshDB);
     RegisterCommand("descriptor_pool_stats"_h, &ConsoleCommands::CommandDescriptorPoolStats);
+    RegisterCommand("gpu_pass_times"_h, &ConsoleCommands::CommandGpuPassTimes);
 
     RegisterCommand("exit"_h, &ConsoleCommands::CommandExit);
     RegisterCommand("halt"_h, &ConsoleCommands::CommandExit);

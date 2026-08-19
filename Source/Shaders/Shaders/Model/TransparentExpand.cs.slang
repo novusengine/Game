@@ -49,8 +49,13 @@ void StoreChunk(uint index, ModelTransparentChunk chunk)
 bool GeometryGroupEnabled(ModelInstanceRecord instance, uint groupID)
 {
     uint word = groupID >> 5u;
-    return word < instance.geometryGroupWordCount &&
-           (_transparentGeometryGroups[instance.geometryGroupWordOffset + word] & (1u << (groupID & 31u))) != 0u;
+    uint boundWordCount;
+    uint boundWordStride;
+    _transparentGeometryGroups.GetDimensions(boundWordCount, boundWordStride);
+    uint absoluteWord = instance.geometryGroupWordOffset + word;
+    return word < instance.geometryGroupWordCount && absoluteWord >= instance.geometryGroupWordOffset &&
+           absoluteWord < boundWordCount &&
+           (_transparentGeometryGroups[absoluteWord] & (1u << (groupID & 31u))) != 0u;
 }
 
 [shader("compute")]
@@ -61,6 +66,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         return;
 
     ViewInstanceInput input = _transparentViewInputs[dispatchThreadID.x];
+    if (input.instanceIndex == 0xFFFFFFFFu)
+        return;
+    uint boundInstanceCount;
+    uint boundInstanceStride;
+    _transparentInstances.GetDimensions(boundInstanceCount, boundInstanceStride);
+    if (input.instanceIndex >= boundInstanceCount)
+        return;
     ModelInstanceRecord instance = _transparentInstances[input.instanceIndex];
     AddStat(MODEL_TRANSPARENT_STAT_TESTED_INSTANCES, 1u);
     if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u || instance.opacity <= 0.0f)
@@ -69,6 +81,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
+    uint boundModelCount;
+    uint boundModelStride;
+    _transparentModels.GetDimensions(boundModelCount, boundModelStride);
+    if (instance.modelIndex >= boundModelCount)
+        return;
     ModelRecord model = _transparentModels[instance.modelIndex];
     Camera camera = _cameras[_constants.viewIndex];
     if (!ModelSphereInsideFrustum(camera, TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld)))
@@ -78,19 +95,51 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
 
     bool forceTransparent = (instance.flags & MODEL_INSTANCE_FORCE_TRANSPARENT) != 0u;
-    for (uint meshIndex = 0u; meshIndex < model.numMeshes; ++meshIndex)
+    uint boundMeshCount;
+    uint boundMeshStride;
+    _transparentMeshes.GetDimensions(boundMeshCount, boundMeshStride);
+    uint boundLODCount;
+    uint boundLODStride;
+    _transparentLODs.GetDimensions(boundLODCount, boundLODStride);
+    uint boundSubmeshCount;
+    uint boundSubmeshStride;
+    _transparentSubmeshes.GetDimensions(boundSubmeshCount, boundSubmeshStride);
+    uint boundLODHistoryCount;
+    uint boundLODHistoryStride;
+    _transparentLODHistory.GetDimensions(boundLODHistoryCount, boundLODHistoryStride);
+    uint boundMaterialTableCount;
+    uint boundMaterialTableStride;
+    _transparentMaterialTable.GetDimensions(boundMaterialTableCount, boundMaterialTableStride);
+    uint safeMeshCount = min(model.numMeshes, boundMeshCount - min(model.meshBase, boundMeshCount));
+    for (uint meshIndex = 0u; meshIndex < safeMeshCount; ++meshIndex)
     {
-        ModelMesh mesh = _transparentMeshes[model.meshBase + meshIndex];
+        uint absoluteMeshIndex = model.meshBase + meshIndex;
+        if (absoluteMeshIndex < model.meshBase || absoluteMeshIndex >= boundMeshCount)
+            continue;
+        ModelMesh mesh = _transparentMeshes[absoluteMeshIndex];
         if (mesh.numLODs == 0u)
             continue;
-        uint localLOD = min(_transparentLODHistory[input.lodHistoryOffset + meshIndex], mesh.numLODs - 1u);
-        ModelLOD lod = _transparentLODs[model.meshLODBase + mesh.lodOffset + localLOD];
+        uint lodBase = model.meshLODBase + mesh.lodOffset;
+        uint lodEnd = lodBase + mesh.numLODs;
+        uint historyIndex = input.lodHistoryOffset + meshIndex;
+        if (lodBase < model.meshLODBase || lodEnd < lodBase || lodEnd > boundLODCount ||
+            historyIndex < input.lodHistoryOffset || historyIndex >= boundLODHistoryCount)
+            continue;
+        uint localLOD = min(_transparentLODHistory[historyIndex], mesh.numLODs - 1u);
+        ModelLOD lod = _transparentLODs[lodBase + localLOD];
         if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u && (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u)
             continue;
 
-        for (uint submeshIndex = 0u; submeshIndex < lod.numSubmeshes; ++submeshIndex)
+        uint submeshBase = model.submeshBase + lod.submeshOffset;
+        uint safeSubmeshCount = submeshBase < model.submeshBase ? 0u :
+            min(lod.numSubmeshes, boundSubmeshCount - min(submeshBase, boundSubmeshCount));
+        for (uint submeshIndex = 0u; submeshIndex < safeSubmeshCount; ++submeshIndex)
         {
-            ModelSubmesh submesh = _transparentSubmeshes[model.submeshBase + lod.submeshOffset + submeshIndex];
+            uint absoluteSubmeshIndex = submeshBase + submeshIndex;
+            if (submeshBase < model.submeshBase || absoluteSubmeshIndex < submeshBase ||
+                absoluteSubmeshIndex >= boundSubmeshCount)
+                continue;
+            ModelSubmesh submesh = _transparentSubmeshes[absoluteSubmeshIndex];
             if (!GeometryGroupEnabled(instance, submesh.geometryGroupID))
             {
                 AddStat(MODEL_TRANSPARENT_STAT_REJECTED_GEOMETRY_GROUP_MESHLETS, submesh.numMeshlets);
@@ -104,7 +153,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 continue;
             }
 
-            uint materialInstanceIndex = _transparentMaterialTable[instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex];
+            uint materialIndex = instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex;
+            if (materialIndex < instance.materialTableOffset || materialIndex >= boundMaterialTableCount)
+                continue;
+            uint materialInstanceIndex = _transparentMaterialTable[materialIndex];
             MaterialInstanceRecord materialInstance = _materialInstances[materialInstanceIndex];
             uint executionGroup = MaterialExecutionGroup(materialInstance);
             if (!forceTransparent && MaterialRasterClass(materialInstance) != 2u)

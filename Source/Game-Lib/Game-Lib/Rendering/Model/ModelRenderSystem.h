@@ -6,6 +6,7 @@
 #include <robinhood/robinhood.h>
 
 #include <memory>
+#include <vector>
 
 struct RenderResources;
 class GameRenderer;
@@ -59,7 +60,8 @@ namespace ModelRendering
 
         void Update();
         void Upload();
-        void AdvanceFrame();
+        void CompleteFrame(u8 frameIndex);
+        void AdvanceFrame(u8 frameIndex);
         RenderScenes::RenderView* CreateView(const RenderScenes::RenderViewDesc& desc);
         bool DestroyView(u64 viewID);
         RenderScenes::RenderView* GetView(u64 viewID);
@@ -95,6 +97,7 @@ namespace ModelRendering
         ModelPerformanceStats GetPerformanceStats() const;
 
       private:
+        void RebuildSceneList();
         struct PixelQueryBindings
         {
             Renderer::BufferID visibilityRecords0 = Renderer::BufferID::Invalid();
@@ -107,10 +110,13 @@ namespace ModelRendering
         RenderAssets::RenderAssetResources* _assets = nullptr;
         RenderScenes::RenderScene* _mainScene = nullptr;
         robin_hood::unordered_flat_map<u64, std::unique_ptr<ModelRenderView>> _views;
+        std::vector<RenderScenes::RenderScene*> _scenes;
         ModelRenderView* _mainView = nullptr;
         RenderScenes::ModelInstanceHandle _diagnosticInstance = RenderScenes::InvalidModelInstanceHandle();
         i32 _lastForcedLOD = -1;
         bool _validateTransfers = false;
         PixelQueryBindings _pixelQueryBindings;
+        u64 _submittedFrameValues[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
+        u64 _nextSubmissionValue = 1;
     };
 } // namespace ModelRendering

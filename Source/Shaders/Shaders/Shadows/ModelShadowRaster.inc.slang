@@ -10,6 +10,7 @@ struct Constants
     uint frameIndex;
     uint dynamicCaster;
     uint opacityDither;
+    uint queueCapacity;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -31,15 +32,23 @@ struct Constants
 [[vk::binding(15, PER_PASS)]] StructuredBuffer<uint> _shadowRasterQueue7_1;
 [[vk::binding(16, PER_PASS)]] StructuredBuffer<ModelShadowRecord> _shadowRasterRecords0;
 [[vk::binding(17, PER_PASS)]] StructuredBuffer<ModelShadowRecord> _shadowRasterRecords1;
-[[vk::binding(18, PER_PASS)]] StructuredBuffer<ModelInstanceRecord> _shadowRasterInstances;
-[[vk::binding(19, PER_PASS)]] StructuredBuffer<ModelRecord> _shadowRasterModels;
-[[vk::binding(20, PER_PASS)]] StructuredBuffer<ModelMesh> _shadowRasterMeshes;
-[[vk::binding(21, PER_PASS)]] StructuredBuffer<ModelLOD> _shadowRasterLODs;
-[[vk::binding(22, PER_PASS)]] StructuredBuffer<ModelSubmesh> _shadowRasterSubmeshes;
-[[vk::binding(23, PER_PASS)]] StructuredBuffer<ModelMeshlet> _shadowRasterMeshlets;
-[[vk::binding(24, PER_PASS)]] StructuredBuffer<uint2> _shadowRasterPositions;
-[[vk::binding(25, PER_PASS)]] StructuredBuffer<uint> _shadowRasterVertexIndices;
-[[vk::binding(26, PER_PASS)]] StructuredBuffer<uint> _shadowRasterTriangles;
+[[vk::binding(18, PER_PASS)]] StructuredBuffer<uint> _shadowRasterStats0;
+[[vk::binding(19, PER_PASS)]] StructuredBuffer<uint> _shadowRasterStats1;
+[[vk::binding(20, PER_PASS)]] StructuredBuffer<ModelInstanceRecord> _shadowRasterInstances;
+[[vk::binding(21, PER_PASS)]] StructuredBuffer<ModelRecord> _shadowRasterModels;
+[[vk::binding(22, PER_PASS)]] StructuredBuffer<ModelMesh> _shadowRasterMeshes;
+[[vk::binding(23, PER_PASS)]] StructuredBuffer<ModelLOD> _shadowRasterLODs;
+[[vk::binding(24, PER_PASS)]] StructuredBuffer<ModelSubmesh> _shadowRasterSubmeshes;
+[[vk::binding(25, PER_PASS)]] StructuredBuffer<ModelMeshlet> _shadowRasterMeshlets;
+[[vk::binding(26, PER_PASS)]] StructuredBuffer<uint2> _shadowRasterPositions;
+[[vk::binding(27, PER_PASS)]] StructuredBuffer<uint> _shadowRasterVertexIndices;
+[[vk::binding(28, PER_PASS)]] StructuredBuffer<uint> _shadowRasterTriangles;
+
+uint LoadModelShadowQueueCount()
+{
+    uint count = _constants.frameIndex == 0u ? _shadowRasterStats0[MODEL_SHADOW_STAT_QUEUE_COUNTS_BASE + _constants.queueIndex] : _shadowRasterStats1[MODEL_SHADOW_STAT_QUEUE_COUNTS_BASE + _constants.queueIndex];
+    return min(count, _constants.queueCapacity);
+}
 
 uint LoadModelShadowRecordIndex(uint queueOffset)
 {

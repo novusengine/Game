@@ -83,6 +83,7 @@ struct ModelBounds
     uint reserved;
 };
 
+// GPU ABI: keep in lockstep with ModelLoading::ModelGPURecord.
 struct ModelRecord
 {
     ModelBounds bounds;
@@ -95,6 +96,8 @@ struct ModelRecord
     uint numSubmeshes;
     uint meshletBase;
     uint numMeshlets;
+    uint lod0Meshlets;
+    uint lod0Triangles;
     uint positionBase;
     uint numPositions;
     uint vertexAttributeBase;
@@ -117,6 +120,8 @@ struct ModelRecord
     uint defaultMaterialTableCount;
     uint flags;
     uint geometryGroupCount;
+    uint reserved0;
+    uint reserved1;
 };
 
 struct ModelMesh

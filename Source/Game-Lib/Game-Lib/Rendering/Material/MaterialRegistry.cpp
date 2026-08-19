@@ -140,7 +140,7 @@ namespace MaterialLoading
         MaterialAssetReadResult<MaterialInstanceAssetView> result;
         {
             ZoneScopedN("Validate Material Instance");
-            result = MaterialAssetReader::ReadMaterialInstance(payload, GetMaterialView(materialEntry->second));
+            result = MaterialAssetReader::ValidateMaterialInstance(std::move(decoded), GetMaterialView(materialEntry->second));
         }
         if (!result)
         {
@@ -168,7 +168,7 @@ namespace MaterialLoading
         if (_animator != nullptr)
             _animator->Register(handle, result.view.animationBindings);
 
-        _materialInstances.emplace(assetID, MaterialInstanceEntry{handle, 1, false});
+        _materialInstances.emplace(assetID, MaterialInstanceEntry{handle, materialAssetID, 1, false});
         return handle;
     }
 
@@ -240,7 +240,7 @@ namespace MaterialLoading
     {
         NC_LOG_ERROR("MODEL_ASSET material_instance_fallback asset={} dependency={} reason={}", assetID, dependencyAssetID, reason);
         const RenderAssets::MaterialInstanceHandle fallback = _storage->GetFallbackMaterialInstance();
-        _materialInstances.emplace(assetID, MaterialInstanceEntry{fallback, 1, true});
+        _materialInstances.emplace(assetID, MaterialInstanceEntry{fallback, dependencyAssetID, 1, true});
         ++_materialInstanceFailures;
         return fallback;
     }

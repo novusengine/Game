@@ -77,12 +77,26 @@ namespace MaterialLoading
         outOffset = static_cast<u32>(alignedOffset);
         if (!bytes.empty())
             std::memcpy(&_bytes[outOffset], bytes.data(), bytes.size());
+        _mutableBlocks.push_back({outOffset, static_cast<u32>(bytes.size())});
         ++_uniqueBlocks;
         return true;
     }
 
+    bool MaterialParameterStorage::IsMutableRange(u32 offset, u32 size) const
+    {
+        for (const Block& block : _mutableBlocks)
+        {
+            if (offset >= block.offset && size <= block.size && offset - block.offset <= block.size - size)
+                return true;
+        }
+        return false;
+    }
+
     bool MaterialParameterStorage::Write(u32 offset, std::span<const u8> bytes)
     {
+        NC_ASSERT(IsMutableRange(offset, static_cast<u32>(bytes.size())), "MaterialParameterStorage::Write targeted an immutable parameter block");
+        if (!IsMutableRange(offset, static_cast<u32>(bytes.size())))
+            return false;
         if (offset > _bytes.Count() || bytes.size() > _bytes.Count() - offset)
             return false;
         if (bytes.empty() || std::memcmp(&_bytes[offset], bytes.data(), bytes.size()) == 0)

@@ -26,7 +26,7 @@ namespace ModelScene
         RenderScenes::ModelInstanceHandle AddToScene(entt::entity entity, RenderScenes::RenderScene* scene,
                                                       RenderAssets::ModelHandle model, const mat4x4& transform,
                                                       bool visible = true);
-        bool Remove(entt::entity entity, u64 retireValue);
+        bool Remove(entt::entity entity);
         bool SetTransform(entt::entity entity, const mat4x4& transform, bool teleported = false);
         bool SetVisible(entt::entity entity, bool visible);
         bool SetHighlight(entt::entity entity, f32 intensity, u32 packedColor = 0xFFFFFFFFu);
@@ -35,6 +35,7 @@ namespace ModelScene
         bool SetMaterial(entt::entity entity, u32 slot, RenderAssets::MaterialInstanceHandle material);
         bool ResetMaterials(entt::entity entity);
         bool SetGeometryGroupEnabled(entt::entity entity, u32 groupID, bool enabled);
+        bool SetGeometryGroupRangeEnabled(entt::entity entity, u32 firstGroupID, u32 lastGroupID, bool enabled);
         bool SetAllGeometryGroups(entt::entity entity, bool enabled);
         void SyncTransforms(entt::registry& registry);
         RenderScenes::ModelInstanceHandle Get(entt::entity entity) const;

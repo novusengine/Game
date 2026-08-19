@@ -4,6 +4,7 @@
 #include "Game-Lib/Rendering/Model/Scene/MeshletHistoryAllocator.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelSceneBridge.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
+#include "Game-Lib/Rendering/Scene/StableRangeAllocator.h"
 
 #include <catch2/catch2.hpp>
 
@@ -51,7 +52,8 @@ TEST_CASE("Render scene rejects stale generations after slot reuse", "[Rendering
 
     scene.AcknowledgeClearsAndPublish();
     CHECK(scene.IsAlive(first));
-    REQUIRE(scene.DestroyModelInstance(first, 5));
+    scene.SetHistoryRetireValue(5);
+    REQUIRE(scene.DestroyModelInstance(first));
     CHECK_FALSE(scene.IsAlive(first));
     CHECK_FALSE(scene.SetModelVisible(first, true));
 
@@ -78,7 +80,7 @@ TEST_CASE("Render scene ignores stale queued publication slots after pending reu
     RenderScenes::ModelInstanceDesc desc;
     desc.model = fixture.model;
     const RenderScenes::ModelInstanceHandle stale = scene.CreateModelInstance(desc);
-    REQUIRE(scene.DestroyModelInstance(stale, 0));
+    REQUIRE(scene.DestroyModelInstance(stale));
     const RenderScenes::ModelInstanceHandle replacement = scene.CreateModelInstance(desc);
     REQUIRE(RenderScenes::GetModelInstanceSlot(stale) == RenderScenes::GetModelInstanceSlot(replacement));
 
@@ -118,6 +120,35 @@ TEST_CASE("Meshlet history reuse is deferred, coalesced, trimmed, and cleared", 
     CHECK(stats.addressSpaceWords == 0);
     CHECK(stats.freeRanges == 0);
     CHECK(stats.highWaterWords == 8);
+}
+
+TEST_CASE("Stable range frees batch without repeated maintenance", "[Rendering][RenderScene]")
+{
+    RenderScenes::StableRangeAllocator allocator;
+    std::array<RenderScenes::StableRange, 128> ranges;
+    for (auto& range : ranges)
+        range = allocator.Allocate(1);
+
+    allocator.Free(ranges);
+    CHECK(allocator.GetFreeCount() == ranges.size());
+    allocator.FlushFrees();
+    CHECK(allocator.GetAddressSpaceSize() == 0);
+    CHECK(allocator.GetFreeCount() == 0);
+}
+
+TEST_CASE("Repeated temporal invalidation queues each slot once", "[Rendering][RenderScene]")
+{
+    SceneFixture fixture;
+    RenderScenes::RenderScene scene(20, &fixture.geometry, &fixture.materials);
+    RenderScenes::ModelInstanceDesc desc;
+    desc.model = fixture.model;
+    const auto instance = scene.CreateModelInstance(desc);
+    scene.AcknowledgeClearsAndPublish();
+
+    REQUIRE(scene.SetModelTransform(instance, Translation(1.0f), true));
+    REQUIRE(scene.SetModelTransform(instance, Translation(2.0f), true));
+    REQUIRE(scene.SetModelTransform(instance, Translation(3.0f), true));
+    CHECK(scene.GetPendingClearRequests().instanceSlots.size() == 1);
 }
 
 TEST_CASE("Render scene tracks transforms, teleports, visibility, groups, and "
@@ -229,20 +260,26 @@ TEST_CASE("Render scene shadow state tracks caster bounds and lifecycle invalida
     REQUIRE(scene.SetGeometryGroupEnabled(instance, 0, false));
     CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
     invalidations.clear();
+    const size_t clearCount = scene.GetPendingClearRequests().meshletHistoryRanges.size();
+    REQUIRE(scene.SetGeometryGroupRangeEnabled(instance, 0, 0, false));
+    CHECK(scene.GetPendingClearRequests().meshletHistoryRanges.size() == clearCount);
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 0);
+    CHECK_FALSE(scene.SetGeometryGroupRangeEnabled(instance, 1, 0, false));
+    CHECK_FALSE(scene.SetGeometryGroupRangeEnabled(instance, 0, 1, false));
     REQUIRE(scene.SetModelVisible(instance, false));
     CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
     invalidations.clear();
     REQUIRE(scene.SetModelVisible(instance, true));
     CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
     invalidations.clear();
-    REQUIRE(scene.DestroyModelInstance(instance, 0));
+    REQUIRE(scene.DestroyModelInstance(instance));
     CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
 
     desc.visible = false;
     const RenderScenes::ModelInstanceHandle hidden = scene.CreateModelInstance(desc);
     invalidations.clear();
     CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 0);
-    REQUIRE(scene.DestroyModelInstance(hidden, 0));
+    REQUIRE(scene.DestroyModelInstance(hidden));
     CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 0);
 }
 
@@ -264,8 +301,11 @@ TEST_CASE("Render scene survives heavy slot churn without publishing uncleared r
         CHECK(scene.GetPendingClearRequests().instanceSlots.size() == handles.size());
         scene.AcknowledgeClearsAndPublish();
 
+        scene.SetHistoryRetireValue(iteration);
         for (RenderScenes::ModelInstanceHandle handle : handles)
-            REQUIRE(scene.DestroyModelInstance(handle, iteration));
+        {
+            REQUIRE(scene.DestroyModelInstance(handle));
+        }
         scene.ReleaseRetiredHistory(iteration);
     }
 
@@ -292,7 +332,8 @@ TEST_CASE("Model scene bridge keeps gameplay entity adaptation outside scene sto
     REQUIRE(bridge.SetTransform(entity, Translation(4.0f)));
     CHECK(scene.GetModelInstance(instance)->currentWorld[3].x == 4.0f);
     REQUIRE(bridge.SetVisible(entity, false));
-    REQUIRE(bridge.Remove(entity, 2));
+    scene.SetHistoryRetireValue(2);
+    REQUIRE(bridge.Remove(entity));
     CHECK(RenderScenes::GetModelInstanceSlot(bridge.Get(entity)) == RenderScenes::INVALID_SCENE_INDEX);
     CHECK_FALSE(scene.IsAlive(instance));
 }

@@ -60,10 +60,29 @@ namespace ModelRendering
             if (!_activePlacement)
             {
                 Terrain::Placement placement;
-                if (!_pendingPlacements.try_dequeue(placement))
-                    break;
+                FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
+                RenderAssets::ModelHandle model = _assets->GetFallbackModel();
+                if (_waitingPlacement)
+                {
+                    if (_assets->PollModelLoad(_waitingPlacement->assetID, model) == ModelLoading::ModelLoadStatus::Pending)
+                        break;
+                    placement = _waitingPlacement->source;
+                    assetID = _waitingPlacement->assetID;
+                    _waitingPlacement.reset();
+                }
+                else
+                {
+                    if (!_pendingPlacements.try_dequeue(placement))
+                        break;
+                    assetID = ResolveModelAssetID(placement.nameHash);
+                    if (assetID != FileFormat::INVALID_ASSET_ID && _assets->BeginModelLoad(assetID, model) == ModelLoading::ModelLoadStatus::Pending)
+                    {
+                        _waitingPlacement = WaitingPlacement{placement, assetID};
+                        break;
+                    }
+                }
                 ++loaded;
-                if (!BeginPlacement(placement))
+                if (!BeginPlacement(placement, assetID, model))
                 {
                     _numProcessedPlacements.fetch_add(1, std::memory_order_relaxed);
                     continue;
@@ -85,7 +104,7 @@ namespace ModelRendering
         TracyPlot("V2 Placements Loaded", static_cast<i64>(loaded));
     }
 
-    bool ModelPlacementLoader::BeginPlacement(const Terrain::Placement& placement)
+    bool ModelPlacementLoader::BeginPlacement(const Terrain::Placement& placement, FileFormat::AssetID assetID, RenderAssets::ModelHandle model)
     {
         ZoneScopedN("ModelPlacementLoader::BeginPlacement");
 
@@ -95,11 +114,8 @@ namespace ModelRendering
             return false;
         }
 
-        const FileFormat::AssetID assetID = ResolveModelAssetID(placement.nameHash);
-        RenderAssets::ModelHandle model = _assets->GetFallbackModel();
         if (assetID != FileFormat::INVALID_ASSET_ID)
         {
-            model = _assets->LoadModel(assetID);
             if (model == _assets->GetFallbackModel())
             {
                 ++_modelFallbackPlacements;
@@ -132,7 +148,7 @@ namespace ModelRendering
         if (!_embeddedSpawner.BeginSpawn(model, worldTransform, placement.doodadSet,
                                          active.instances.embedded, active.embeddedCursor))
         {
-            _scene->DestroyModelInstance(root, 0);
+            _scene->DestroyModelInstance(root);
             return false;
         }
 
@@ -148,8 +164,8 @@ namespace ModelRendering
         _activePlacement.reset();
         if (!succeeded)
         {
-            _embeddedSpawner.Destroy(active.instances.embedded, 0);
-            _scene->DestroyModelInstance(active.instances.root, 0);
+            _embeddedSpawner.Destroy(active.instances.embedded);
+            _scene->DestroyModelInstance(active.instances.root);
             return;
         }
 
@@ -199,18 +215,19 @@ namespace ModelRendering
 
         if (_activePlacement)
         {
-            _embeddedSpawner.Destroy(_activePlacement->instances.embedded, 0);
-            _scene->DestroyModelInstance(_activePlacement->instances.root, 0);
+            _embeddedSpawner.Destroy(_activePlacement->instances.embedded);
+            _scene->DestroyModelInstance(_activePlacement->instances.root);
             _activePlacement.reset();
         }
+        _waitingPlacement.reset();
 
         for (auto& [uniqueID, placement] : _placements)
         {
-            _embeddedSpawner.Destroy(placement.embedded, 0);
-            _scene->DestroyModelInstance(placement.root, 0);
+            _embeddedSpawner.Destroy(placement.embedded);
+            _scene->DestroyModelInstance(placement.root);
         }
         _placements.clear();
-        _scene->ReleaseRetiredHistory(0);
+        _scene->FlushModelResourceFrees();
         _numQueuedPlacements.store(0, std::memory_order_relaxed);
         _numProcessedPlacements.store(0, std::memory_order_relaxed);
     }
@@ -232,6 +249,8 @@ namespace ModelRendering
             .duplicatePlacements = _duplicatePlacements,
             .sourceResolutionFailures = _sourceResolutionFailures,
             .modelFallbackPlacements = _modelFallbackPlacements,
+            .sourceAssetLookups = _sourceAssetLookups,
+            .sourceAssetCacheEntries = static_cast<u32>(_sourceAssets.size()),
             .embedded = _embeddedSpawner.GetStats()
         };
     }
@@ -239,6 +258,7 @@ namespace ModelRendering
     FileFormat::AssetID ModelPlacementLoader::ResolveModelAssetID(u64 sourceReference)
     {
         ZoneScopedN("ModelPlacementLoader::ResolveModelAssetID");
+        ++_sourceAssetLookups;
 
         const auto cached = _sourceAssets.find(sourceReference);
         if (cached != _sourceAssets.end())

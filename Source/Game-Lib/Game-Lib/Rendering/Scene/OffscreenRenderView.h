@@ -26,6 +26,8 @@ namespace RenderScenes
         Renderer::TextureID GetTarget() const { return _target; }
 
       private:
+        void DestroyTargets();
+
         Renderer::Renderer* _renderer = nullptr;
         GameRenderer* _gameRenderer = nullptr;
         RenderViewDesc _desc;

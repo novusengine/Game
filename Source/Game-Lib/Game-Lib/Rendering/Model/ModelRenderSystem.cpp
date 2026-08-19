@@ -60,6 +60,7 @@ namespace ModelRendering
         const bool forwardModels = (static_cast<u32>(desc.passFamilies) & static_cast<u32>(RenderScenes::RenderViewPassFamily::ForwardModels)) != 0;
         if (desc.viewID == 0 || desc.debugName.empty() || !desc.scene || desc.dimensions.x == 0 || desc.dimensions.y == 0 ||
             (!visibilityModels && !forwardModels) ||
+            (visibilityModels && forwardModels) ||
             (visibilityModels && (desc.visibilityTarget == Renderer::ImageID::Invalid() || desc.normalTarget == Renderer::ImageID::Invalid())) ||
             desc.colorTarget == Renderer::ImageID::Invalid() ||
             desc.transparencyAccumulationTarget == Renderer::ImageID::Invalid() ||
@@ -73,6 +74,7 @@ namespace ModelRendering
         auto view = std::make_unique<ModelRenderView>(_renderer, _gameRenderer, _assets, desc, _validateTransfers);
         RenderScenes::RenderView* result = &view->GetView();
         _views.emplace(desc.viewID, std::move(view));
+        RebuildSceneList();
         return result;
     }
 
@@ -81,6 +83,7 @@ namespace ModelRendering
         if (!_views.contains(viewID) || (_mainView && _mainView->GetView().GetID() == viewID))
             return false;
         _views.erase(viewID);
+        RebuildSceneList();
         return true;
     }
 
@@ -99,17 +102,15 @@ namespace ModelRendering
                 view->GetView().SetDimensions(renderSize);
         }
 
-        robin_hood::unordered_flat_set<RenderScenes::RenderScene*> scenes;
-        for (auto& [viewID, view] : _views)
-            scenes.insert(view->GetView().GetScene());
-        for (RenderScenes::RenderScene* scene : scenes)
+        for (RenderScenes::RenderScene* scene : _scenes)
         {
-            if (!scene->GetPendingClearRequests().IsEmpty())
+            const RenderScenes::SceneClearRequests clears = scene->GetPendingClearRequests();
+            if (!clears.IsEmpty())
             {
                 for (auto& [viewID, view] : _views)
                 {
                     if (view->GetView().GetScene() == scene)
-                        view->GetView().RequestTemporalReset();
+                        view->GetState().QueueTemporalClears(clears.instanceSlots, clears.meshletHistoryRanges);
                 }
                 scene->AcknowledgeClearsAndPublish();
             }
@@ -119,26 +120,48 @@ namespace ModelRendering
         _lastForcedLOD = forcedLOD;
         for (auto& [viewID, view] : _views)
             view->Update(forcedLOD);
+        for (RenderScenes::RenderScene* scene : _scenes)
+        {
+            scene->AcknowledgeModelMembershipChanges();
+            scene->AcknowledgeTransparentRoutingChanges();
+        }
     }
 
     void ModelRenderSystem::Upload()
     {
-        robin_hood::unordered_flat_set<RenderScenes::RenderScene*> scenes;
-        for (auto& [viewID, view] : _views)
-            scenes.insert(view->GetView().GetScene());
-        for (RenderScenes::RenderScene* scene : scenes)
+        for (RenderScenes::RenderScene* scene : _scenes)
             scene->SyncToGPU(_renderer);
         for (auto& [viewID, view] : _views)
             view->Upload();
     }
 
-    void ModelRenderSystem::AdvanceFrame()
+    void ModelRenderSystem::CompleteFrame(u8 frameIndex)
     {
-        robin_hood::unordered_flat_set<RenderScenes::RenderScene*> scenes;
-        for (auto& [viewID, view] : _views)
-            scenes.insert(view->GetView().GetScene());
-        for (RenderScenes::RenderScene* scene : scenes)
+        for (RenderScenes::RenderScene* scene : _scenes)
+            scene->ReleaseRetiredHistory(_submittedFrameValues[frameIndex]);
+    }
+
+    void ModelRenderSystem::AdvanceFrame(u8 frameIndex)
+    {
+        const u64 submissionValue = _nextSubmissionValue++;
+        _submittedFrameValues[frameIndex] = submissionValue;
+        for (RenderScenes::RenderScene* scene : _scenes)
+        {
+            scene->SetHistoryRetireValue(submissionValue);
             scene->AdvanceFrame();
+        }
+    }
+
+    void ModelRenderSystem::RebuildSceneList()
+    {
+        _scenes.clear();
+        _scenes.reserve(_views.size());
+        for (const auto& [viewID, view] : _views)
+        {
+            RenderScenes::RenderScene* scene = view->GetView().GetScene();
+            if (std::find(_scenes.begin(), _scenes.end(), scene) == _scenes.end())
+                _scenes.push_back(scene);
+        }
     }
 
     void ModelRenderSystem::AddVisibilityPhase1Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -260,7 +283,7 @@ namespace ModelRendering
 
     void ModelRenderSystem::BindPixelQueryResources(Renderer::DescriptorSet& descriptorSet)
     {
-        auto bind = [&descriptorSet](StringUtils::StringHash name, Renderer::BufferID buffer,
+        auto Bind = [&descriptorSet](StringUtils::StringHash name, Renderer::BufferID buffer,
                                      Renderer::BufferID& current) {
             if (buffer == current)
                 return;
@@ -268,11 +291,11 @@ namespace ModelRendering
             current = buffer;
         };
 
-        bind("_queryModelVisibilityRecords0"_h, _mainView->GetWork().GetVisibilityRecords(0),
+        Bind("_queryModelVisibilityRecords0"_h, _mainView->GetWork().GetVisibilityRecords(0),
              _pixelQueryBindings.visibilityRecords0);
-        bind("_queryModelVisibilityRecords1"_h, _mainView->GetWork().GetVisibilityRecords(1),
+        Bind("_queryModelVisibilityRecords1"_h, _mainView->GetWork().GetVisibilityRecords(1),
              _pixelQueryBindings.visibilityRecords1);
-        bind("_queryModelInstances"_h, _mainScene->GetModelInstances().GetRecords().GetBuffer(),
+        Bind("_queryModelInstances"_h, _mainScene->GetModelInstances().GetRecords().GetBuffer(),
              _pixelQueryBindings.modelInstances);
     }
 
@@ -330,8 +353,7 @@ namespace ModelRendering
                 _mainView->GetState().SetDiagnosticSelection(_diagnosticInstance);
                 return _diagnosticInstance;
             }
-            _mainScene->DestroyModelInstance(_diagnosticInstance, 0);
-            _mainScene->ReleaseRetiredHistory(0);
+            _mainScene->DestroyModelInstance(_diagnosticInstance);
         }
 
         RenderScenes::ModelInstanceDesc desc;

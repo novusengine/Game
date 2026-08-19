@@ -11,6 +11,8 @@ namespace RenderScenes
         if (count == 0)
             return {};
 
+        FlushFrees();
+
         for (size_t index = 0; index < _freeRanges.size(); ++index)
         {
             StableRange& freeRange = _freeRanges[index];
@@ -38,8 +40,29 @@ namespace RenderScenes
             return;
 
         _freeRanges.push_back(range);
+        _freesDirty = true;
+    }
+
+    void StableRangeAllocator::Free(std::span<const StableRange> ranges)
+    {
+        ZoneScopedN("StableRangeAllocator::FreeBatch");
+
+        for (const StableRange range : ranges)
+        {
+            if (range)
+                _freeRanges.push_back(range);
+        }
+        _freesDirty |= !ranges.empty();
+    }
+
+    void StableRangeAllocator::FlushFrees()
+    {
+        if (!_freesDirty)
+            return;
+
         Coalesce();
         TrimTail();
+        _freesDirty = false;
     }
 
     u32 StableRangeAllocator::GetFreeCount() const

@@ -52,6 +52,8 @@ namespace MaterialLoading
         static MaterialAssetReadResult<MaterialAssetView> ReadMaterial(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
         // Dependency-free structural decode used to discover the referenced Material before optional cross-asset validation.
         static MaterialAssetReadResult<MaterialInstanceAssetView> DecodeMaterialInstance(std::span<const u8> payload);
+        static MaterialAssetReadResult<MaterialInstanceAssetView> ValidateMaterialInstance(MaterialAssetReadResult<MaterialInstanceAssetView> decoded,
+                                                                                            const MaterialAssetView& material, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
         static MaterialAssetReadResult<MaterialInstanceAssetView> ReadMaterialInstance(std::span<const u8> payload, const MaterialAssetView& material,
                                                                                        AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
         static MaterialAssetReadResult<MaterialAnimationAssetView> ReadMaterialAnimation(std::span<const u8> payload);

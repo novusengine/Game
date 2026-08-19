@@ -1,6 +1,7 @@
 #include "Material/MaterialABI.inc.slang"
 
 #define MATERIAL_DISPATCH_ARGUMENT_COUNT 3u
+#define MATERIAL_RESOLVE_MAX_GROUPS_X 1024u
 
 struct Constants
 {
@@ -24,14 +25,16 @@ void main(uint3 threadID : SV_DispatchThreadID)
     uint offset = group * MATERIAL_DISPATCH_ARGUMENT_COUNT;
     if (_constants.resourceIndex == 0u)
     {
-        _materialArguments0[offset] = count;
-        _materialArguments0[offset + 1u] = count == 0u ? 0u : 1u;
+        uint groupsX = min(count, MATERIAL_RESOLVE_MAX_GROUPS_X);
+        _materialArguments0[offset] = groupsX;
+        _materialArguments0[offset + 1u] = count == 0u ? 0u : (count + groupsX - 1u) / groupsX;
         _materialArguments0[offset + 2u] = count == 0u ? 0u : 1u;
     }
     else
     {
-        _materialArguments1[offset] = count;
-        _materialArguments1[offset + 1u] = count == 0u ? 0u : 1u;
+        uint groupsX = min(count, MATERIAL_RESOLVE_MAX_GROUPS_X);
+        _materialArguments1[offset] = groupsX;
+        _materialArguments1[offset + 1u] = count == 0u ? 0u : (count + groupsX - 1u) / groupsX;
         _materialArguments1[offset + 2u] = count == 0u ? 0u : 1u;
     }
 }

@@ -941,7 +941,7 @@ void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Mod
     _unloadRequests.enqueue(unloadRequest);
 
     GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-    gameRenderer->GetModelSceneBridge()->Remove(entity, 0);
+    gameRenderer->GetModelSceneBridge()->Remove(entity);
 }
 
 void ModelLoader::SetEntityVisible(entt::entity entity, bool visible)
@@ -1069,12 +1069,12 @@ void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, 
     {
         ModelScene::ModelSceneBridge* bridge = ServiceLocator::GetGameRenderer()->GetModelSceneBridge();
         const u32 lastGroupID = groupIDEnd == 0 ? groupIDStart : groupIDEnd;
-        for (u32 groupID = groupIDStart;; ++groupID)
+        if (lastGroupID < groupIDStart)
         {
-            bridge->SetGeometryGroupEnabled(entity, groupID, false);
-            if (groupID == lastGroupID)
-                break;
+            NC_LOG_ERROR("MODEL_GEOMETRY_GROUP invalid_range start={} end={}", groupIDStart, lastGroupID);
+            return;
         }
+        bridge->SetGeometryGroupRangeEnabled(entity, groupIDStart, lastGroupID, false);
     }
 }
 
@@ -1738,7 +1738,7 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         const FileFormat::AssetID modelAssetID = ResolveModelV2AssetID(request.modelHash);
         const RenderAssets::ModelHandle modelHandle = assets->LoadModel(modelAssetID);
 
-        sceneBridge->Remove(entityID, 0);
+        sceneBridge->Remove(entityID);
         const RenderScenes::ModelInstanceHandle sceneInstance =
             sceneBridge->AddToScene(entityID, scene, modelHandle, transform.GetMatrix());
 

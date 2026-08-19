@@ -335,9 +335,14 @@ void TerrainLoader::Update(f32 deltaTime)
                     u32 cellDataStartIndex = reserveOffsets.cellDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS);
                     u32 vertexDataStartIndex = reserveOffsets.vertexDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES);
 
-                    u32 chunkDataID = _terrainRenderer->AddChunk(workRequest.chunkHash, chunk, ivec2(chunkX, chunkY), chunkDataIndex, cellDataStartIndex, vertexDataStartIndex);
+                    u32 chunkDataID = 0;
+                    {
+                        ZoneScopedN("Commit Terrain Geometry");
+                        chunkDataID = _terrainRenderer->AddChunk(workRequest.chunkHash, chunk, ivec2(chunkX, chunkY), chunkDataIndex, cellDataStartIndex, vertexDataStartIndex);
+                    }
                     
                     {
+                        ZoneScopedN("Publish Chunk Metadata");
                         std::scoped_lock lock(_chunkLoadingMutex);
                         _chunkIDToChunkInfo[workRequest.chunkID] = { .chunk = chunk, .buffer = workRequest.buffer, .fileHandle = std::move(workRequest.fileHandle) };
                         _chunkIDToLoadedID[workRequest.chunkID] = chunkDataID;
@@ -347,7 +352,7 @@ void TerrainLoader::Update(f32 deltaTime)
                     }
 
                     {
-                        ZoneScopedN("Load Chunk Placements");
+                        ZoneScopedN("Queue Chunk Placements");
 
                         u32 numPlacements = chunk->placementHeader.numPlacements;
                         for (u32 placementIndex = 0; placementIndex < numPlacements; placementIndex++)
@@ -362,7 +367,7 @@ void TerrainLoader::Update(f32 deltaTime)
 
                     // Load Liquid
                     {
-                        ZoneScopedN("Process Chunk Liquid");
+                        ZoneScopedN("Commit Chunk Liquid");
 
                         u32 numLiquidHeaders = static_cast<u32>(chunk->liquidHeader.numHeaders);
                         if (numLiquidHeaders != 0 && numLiquidHeaders != 256)

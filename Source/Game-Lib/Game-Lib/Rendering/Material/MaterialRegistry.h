@@ -75,6 +75,7 @@ namespace MaterialLoading
         struct MaterialInstanceEntry
         {
             RenderAssets::MaterialInstanceHandle handle;
+            FileFormat::AssetID materialAssetID = FileFormat::INVALID_ASSET_ID;
             u32 referenceCount = 0;
             bool usedFallback = false;
         };
