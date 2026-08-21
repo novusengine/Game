@@ -45,13 +45,22 @@ namespace Scripting::Editor
         static i32 BeginTerrainEditorStroke(Zenith* zenith);
         static i32 ApplyTerrainEditorSample(Zenith* zenith);
         static i32 SetTerrainEditorPaintTexture(Zenith* zenith);
+        static i32 SetTerrainEditorPaintLayer(Zenith* zenith);
         static i32 ApplyTerrainEditorPaintSample(Zenith* zenith);
+        static i32 ApplyTerrainEditorVertexColorSample(Zenith* zenith);
         static i32 GetTerrainEditorCursorTextureLayers(Zenith* zenith);
         static i32 CommitTerrainEditorStroke(Zenith* zenith);
         static i32 CancelTerrainEditorStroke(Zenith* zenith);
         static i32 UndoTerrainEditor(Zenith* zenith);
         static i32 RedoTerrainEditor(Zenith* zenith);
         static i32 SaveTerrainEditor(Zenith* zenith);
+        static i32 GetTerrainEditorChunkLayout(Zenith* zenith);
+        static i32 AddTerrainEditorChunk(Zenith* zenith);
+        static i32 RemoveTerrainEditorChunk(Zenith* zenith);
+        static i32 ResetTerrainEditorChunk(Zenith* zenith);
+        static i32 GoToTerrainEditorChunk(Zenith* zenith);
+        static i32 PreviewTerrainEditorHeightFieldImport(Zenith* zenith);
+        static i32 ImportTerrainEditorHeightField(Zenith* zenith);
 
         static i32 GetSpellEditorSnapshot(Zenith* zenith);
         static i32 GetSpellEditorDraft(Zenith* zenith);
@@ -87,6 +96,59 @@ namespace Scripting::Editor
         static i32 ValidateSpellEditorDraft(Zenith* zenith);
         static i32 SubmitSpellEditorDraft(Zenith* zenith);
         static i32 DeleteSpellEditorSpell(Zenith* zenith);
+
+        static i32 GetMapEditorSnapshot(Zenith* zenith);
+        static i32 GetMapEditorState(Zenith* zenith);
+        static i32 RequestMapEditorSnapshot(Zenith* zenith);
+        static i32 CreateMapEditorMap(Zenith* zenith);
+        static i32 UpdateMapEditorMap(Zenith* zenith);
+        static i32 TakeMapEditorMutationResult(Zenith* zenith);
+
+        static i32 GetInteractionEditorSnapshot(Zenith* zenith);
+        static i32 GetInteractionEditorState(Zenith* zenith);
+        static i32 GetInteractionEditorRevision(Zenith* zenith);
+        static i32 RequestInteractionEditorSnapshot(Zenith* zenith);
+        static i32 CreateInteractionEditorText(Zenith* zenith);
+        static i32 UpdateInteractionEditorText(Zenith* zenith);
+        static i32 DeleteInteractionEditorText(Zenith* zenith);
+        static i32 CreateInteractionEditorTranslation(Zenith* zenith);
+        static i32 UpdateInteractionEditorTranslation(Zenith* zenith);
+        static i32 DeleteInteractionEditorTranslation(Zenith* zenith);
+        static i32 CreateInteractionEditorConditionSet(Zenith* zenith);
+        static i32 UpdateInteractionEditorConditionSet(Zenith* zenith);
+        static i32 DeleteInteractionEditorConditionSet(Zenith* zenith);
+        static i32 CreateInteractionEditorConditionGroup(Zenith* zenith);
+        static i32 UpdateInteractionEditorConditionGroup(Zenith* zenith);
+        static i32 DeleteInteractionEditorConditionGroup(Zenith* zenith);
+        static i32 CreateInteractionEditorCondition(Zenith* zenith);
+        static i32 UpdateInteractionEditorCondition(Zenith* zenith);
+        static i32 DeleteInteractionEditorCondition(Zenith* zenith);
+        static i32 CreateInteractionEditorGossipMenu(Zenith* zenith);
+        static i32 UpdateInteractionEditorGossipMenu(Zenith* zenith);
+        static i32 DeleteInteractionEditorGossipMenu(Zenith* zenith);
+        static i32 CreateInteractionEditorGossipMenuOption(Zenith* zenith);
+        static i32 UpdateInteractionEditorGossipMenuOption(Zenith* zenith);
+        static i32 ReorderInteractionEditorGossipMenuOption(Zenith* zenith);
+        static i32 DeleteInteractionEditorGossipMenuOption(Zenith* zenith);
+        static i32 CreateInteractionEditorCreatureTemplateInteraction(Zenith* zenith);
+        static i32 UpdateInteractionEditorCreatureTemplateInteraction(Zenith* zenith);
+        static i32 DeleteInteractionEditorCreatureTemplateInteraction(Zenith* zenith);
+        static i32 CreateInteractionEditorCreatureTemplateGossip(Zenith* zenith);
+        static i32 UpdateInteractionEditorCreatureTemplateGossip(Zenith* zenith);
+        static i32 DeleteInteractionEditorCreatureTemplateGossip(Zenith* zenith);
+        static i32 TakeInteractionEditorMutationResult(Zenith* zenith);
+
+        static i32 GetCreatureAIEditorState(Zenith* zenith);
+        static i32 RequestCreatureAIEditorCatalog(Zenith* zenith);
+        static i32 InspectCreatureAIEditorUnit(Zenith* zenith);
+        static i32 ClearCreatureAIEditorInspection(Zenith* zenith);
+        static i32 ViewCreatureAIEditorScript(Zenith* zenith);
+        static i32 EditCreatureAIEditorScript(Zenith* zenith);
+        static i32 CreateCreatureAIEditorScript(Zenith* zenith);
+        static i32 DuplicateCreatureAIEditorScript(Zenith* zenith);
+        static i32 FinishEditingCreatureAIEditorScript(Zenith* zenith);
+        static i32 LinkCreatureAIEditorScript(Zenith* zenith);
+        static i32 UnlinkCreatureAIEditorScript(Zenith* zenith);
 
         // Fires the registered selection-changed callback. Called from Lua (after SetSelected)
         // and from C++ (after picking updates the selection).
@@ -168,12 +230,83 @@ namespace Scripting::Editor
         { "BeginStroke",      EditorToolHandler::BeginTerrainEditorStroke,      Scripting::LuaMethodFlags::DeveloperOnly },
         { "ApplySample",      EditorToolHandler::ApplyTerrainEditorSample,      Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetPaintTexture",  EditorToolHandler::SetTerrainEditorPaintTexture,  Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetPaintLayer",    EditorToolHandler::SetTerrainEditorPaintLayer,    Scripting::LuaMethodFlags::DeveloperOnly },
         { "ApplyPaintSample", EditorToolHandler::ApplyTerrainEditorPaintSample, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ApplyVertexColorSample", EditorToolHandler::ApplyTerrainEditorVertexColorSample, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetCursorLayers",  EditorToolHandler::GetTerrainEditorCursorTextureLayers, Scripting::LuaMethodFlags::DeveloperOnly },
         { "CommitStroke",     EditorToolHandler::CommitTerrainEditorStroke,     Scripting::LuaMethodFlags::DeveloperOnly },
         { "CancelStroke",     EditorToolHandler::CancelTerrainEditorStroke,     Scripting::LuaMethodFlags::DeveloperOnly },
         { "Undo",             EditorToolHandler::UndoTerrainEditor,             Scripting::LuaMethodFlags::DeveloperOnly },
         { "Redo",             EditorToolHandler::RedoTerrainEditor,             Scripting::LuaMethodFlags::DeveloperOnly },
         { "Save",             EditorToolHandler::SaveTerrainEditor,             Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetChunkLayout",   EditorToolHandler::GetTerrainEditorChunkLayout,   Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AddChunk",         EditorToolHandler::AddTerrainEditorChunk,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RemoveChunk",      EditorToolHandler::RemoveTerrainEditorChunk,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResetChunk",       EditorToolHandler::ResetTerrainEditorChunk,       Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GoToChunk",        EditorToolHandler::GoToTerrainEditorChunk,        Scripting::LuaMethodFlags::DeveloperOnly },
+        { "PreviewHeightFieldImport", EditorToolHandler::PreviewTerrainEditorHeightFieldImport, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ImportHeightField",        EditorToolHandler::ImportTerrainEditorHeightField,        Scripting::LuaMethodFlags::DeveloperOnly },
+    };
+
+    static LuaRegister<> mapEditorGlobalMethods[] =
+    {
+        { "GetSnapshot",        EditorToolHandler::GetMapEditorSnapshot,          Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetState",           EditorToolHandler::GetMapEditorState,             Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RequestSnapshot",    EditorToolHandler::RequestMapEditorSnapshot,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Create",             EditorToolHandler::CreateMapEditorMap,            Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Update",             EditorToolHandler::UpdateMapEditorMap,            Scripting::LuaMethodFlags::DeveloperOnly },
+        { "TakeMutationResult", EditorToolHandler::TakeMapEditorMutationResult,   Scripting::LuaMethodFlags::DeveloperOnly },
+    };
+
+    static LuaRegister<> interactionEditorGlobalMethods[] =
+    {
+        { "GetSnapshot", EditorToolHandler::GetInteractionEditorSnapshot, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetState", EditorToolHandler::GetInteractionEditorState, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetRevision", EditorToolHandler::GetInteractionEditorRevision, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RequestSnapshot", EditorToolHandler::RequestInteractionEditorSnapshot, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateText", EditorToolHandler::CreateInteractionEditorText, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateText", EditorToolHandler::UpdateInteractionEditorText, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteText", EditorToolHandler::DeleteInteractionEditorText, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateTranslation", EditorToolHandler::CreateInteractionEditorTranslation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateTranslation", EditorToolHandler::UpdateInteractionEditorTranslation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteTranslation", EditorToolHandler::DeleteInteractionEditorTranslation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateConditionSet", EditorToolHandler::CreateInteractionEditorConditionSet, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateConditionSet", EditorToolHandler::UpdateInteractionEditorConditionSet, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteConditionSet", EditorToolHandler::DeleteInteractionEditorConditionSet, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateConditionGroup", EditorToolHandler::CreateInteractionEditorConditionGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateConditionGroup", EditorToolHandler::UpdateInteractionEditorConditionGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteConditionGroup", EditorToolHandler::DeleteInteractionEditorConditionGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCondition", EditorToolHandler::CreateInteractionEditorCondition, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCondition", EditorToolHandler::UpdateInteractionEditorCondition, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCondition", EditorToolHandler::DeleteInteractionEditorCondition, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateGossipMenu", EditorToolHandler::CreateInteractionEditorGossipMenu, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateGossipMenu", EditorToolHandler::UpdateInteractionEditorGossipMenu, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteGossipMenu", EditorToolHandler::DeleteInteractionEditorGossipMenu, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateGossipMenuOption", EditorToolHandler::CreateInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateGossipMenuOption", EditorToolHandler::UpdateInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ReorderGossipMenuOption", EditorToolHandler::ReorderInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteGossipMenuOption", EditorToolHandler::DeleteInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCreatureTemplateInteraction", EditorToolHandler::CreateInteractionEditorCreatureTemplateInteraction, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCreatureTemplateInteraction", EditorToolHandler::UpdateInteractionEditorCreatureTemplateInteraction, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCreatureTemplateInteraction", EditorToolHandler::DeleteInteractionEditorCreatureTemplateInteraction, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCreatureTemplateGossip", EditorToolHandler::CreateInteractionEditorCreatureTemplateGossip, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCreatureTemplateGossip", EditorToolHandler::UpdateInteractionEditorCreatureTemplateGossip, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCreatureTemplateGossip", EditorToolHandler::DeleteInteractionEditorCreatureTemplateGossip, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "TakeMutationResult", EditorToolHandler::TakeInteractionEditorMutationResult, Scripting::LuaMethodFlags::DeveloperOnly },
+    };
+
+    static LuaRegister<> creatureAIEditorGlobalMethods[] =
+    {
+        { "GetState",       EditorToolHandler::GetCreatureAIEditorState,       Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RequestCatalog", EditorToolHandler::RequestCreatureAIEditorCatalog, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "InspectUnit",    EditorToolHandler::InspectCreatureAIEditorUnit,    Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ClearInspection", EditorToolHandler::ClearCreatureAIEditorInspection, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "View",           EditorToolHandler::ViewCreatureAIEditorScript,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Edit",           EditorToolHandler::EditCreatureAIEditorScript,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Create",         EditorToolHandler::CreateCreatureAIEditorScript,   Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Duplicate",      EditorToolHandler::DuplicateCreatureAIEditorScript, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "FinishEditing",  EditorToolHandler::FinishEditingCreatureAIEditorScript, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Link",           EditorToolHandler::LinkCreatureAIEditorScript,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Unlink",         EditorToolHandler::UnlinkCreatureAIEditorScript,   Scripting::LuaMethodFlags::DeveloperOnly },
     };
 }

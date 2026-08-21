@@ -138,6 +138,7 @@ namespace ECS::Systems::UI
         }
 
         uiSingleton.clickedEntity = entt::null;
+        uiSingleton.clickedButton = -1;
     }
 
     void HandleInput::Init(entt::registry& registry)
@@ -146,7 +147,7 @@ namespace ECS::Systems::UI
 
         InputSystem* inputSystem = ServiceLocator::GetInputSystem();
 
-        auto handleLeftClick = [&registry, inputSystem](i32 key, bool isDown)
+        auto handleMouseButton = [&registry, inputSystem](i32 button, bool isDown)
         {
             auto& ctx = registry.ctx();
             auto& uiSingleton = ctx.get<Singletons::UISingleton>();
@@ -157,6 +158,16 @@ namespace ECS::Systems::UI
                     CancelClickedEntity(registry, uiSingleton);
 
                 return false;
+            }
+
+            // UI owns one mouse-button capture at a time. Consume any other
+            // button press or release while it is active so downstream
+            // contexts cannot start a second lifecycle. The matching owner
+            // release continues below and is the only release UI dispatches.
+            if (uiSingleton.clickedEntity != entt::null)
+            {
+                if (isDown || uiSingleton.clickedButton != button)
+                    return true;
             }
 
             vec2 mousePos;
@@ -185,8 +196,9 @@ namespace ECS::Systems::UI
 
                     i32 inputDownEvent = eventInputInfo->onMouseDownEvent;
                     i32 inputUpEvent = eventInputInfo->onMouseUpEvent;
+                    i32 inputReleaseEvent = eventInputInfo->onMouseReleaseEvent;
                     i32 heldEvent = eventInputInfo->onMouseHeldEvent;
-                    bool hasInputEvent = inputDownEvent != -1 || inputUpEvent != -1 || heldEvent != -1;
+                    bool hasInputEvent = inputDownEvent != -1 || inputUpEvent != -1 || inputReleaseEvent != -1 || heldEvent != -1;
 
                     i32 focusBeginEvent = eventInputInfo->onFocusBeginEvent;
                     i32 focusEndEvent = eventInputInfo->onFocusEndEvent;
@@ -205,7 +217,7 @@ namespace ECS::Systems::UI
 
                         if (inputDownEvent != -1)
                         {
-                            ECS::Util::UI::CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvent::MouseDown, widget.scriptWidget, key, mousePos);
+                            ECS::Util::UI::CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvent::MouseDown, widget.scriptWidget, button, mousePos);
                         }
 
                         if (hasFocusEvent)
@@ -218,6 +230,7 @@ namespace ECS::Systems::UI
                         }
 
                         uiSingleton.clickedEntity = entity;
+                        uiSingleton.clickedButton = button;
                         MarkAccepted(uiSingleton, pair, debugLevel);
                         return true;
                     }
@@ -226,152 +239,52 @@ namespace ECS::Systems::UI
                 ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
             }
 
-            if (!isDown && uiSingleton.clickedEntity != entt::null)
+            if (!isDown && uiSingleton.clickedEntity != entt::null && uiSingleton.clickedButton == button)
             {
+                entt::entity clickedEntity = uiSingleton.clickedEntity;
                 auto candidateIt = std::find_if(uiSingleton.allHoveredEntities.begin(), uiSingleton.allHoveredEntities.end(), [&](const UIInputCandidate& candidate)
                 {
-                    return candidate.entity == uiSingleton.clickedEntity;
+                    return candidate.entity == clickedEntity;
                 });
-                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.clickedEntity);
+                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(clickedEntity);
 
                 if (eventInputInfo)
                 {
                     eventInputInfo->isClicked = false;
+                    i32 inputReleaseEvent = eventInputInfo->onMouseReleaseEvent;
 
                     u32 templateHash = eventInputInfo->onClickTemplateHash;
                     if (templateHash)
                     {
-                        ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
+                        ECS::Util::UI::RefreshTemplate(&registry, clickedEntity, *eventInputInfo);
                     }
 
-                    if (candidateIt != uiSingleton.allHoveredEntities.end())
+                    uiSingleton.clickedEntity = entt::null;
+                    uiSingleton.clickedButton = -1;
+
+                    if (inputReleaseEvent != -1)
+                    {
+                        auto& widget = registry.get<Components::UI::Widget>(clickedEntity);
+                        ECS::Util::UI::CallLuaEvent(inputReleaseEvent, Scripting::UI::UIInputEvent::MouseUp, widget.scriptWidget, button, mousePos);
+                    }
+
+                    eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(clickedEntity);
+                    auto* widget = registry.try_get<Components::UI::Widget>(clickedEntity);
+                    if (candidateIt != uiSingleton.allHoveredEntities.end() && eventInputInfo && widget)
                     {
                         if (eventInputInfo->onMouseUpEvent != -1)
                         {
-                            auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
-                            ECS::Util::UI::CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvent::MouseUp, widget.scriptWidget, key, mousePos);
+                            ECS::Util::UI::CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvent::MouseUp, widget->scriptWidget, button, mousePos);
                         }
 
                         MarkAccepted(uiSingleton, *candidateIt, debugLevel);
                     }
                 }
-
-                uiSingleton.clickedEntity = entt::null;
-            }
-
-            return false;
-        };
-
-        auto handleRightClick = [&registry, inputSystem](i32 key, bool isDown)
-        {
-            auto& ctx = registry.ctx();
-            auto& uiSingleton = ctx.get<Singletons::UISingleton>();
-
-            if (inputSystem->IsMouseCaptured())
-            {
-                if (!isDown)
-                    CancelClickedEntity(registry, uiSingleton);
-                return false;
-            }
-
-            vec2 mousePos;
-            const i32 debugLevel = GetUIInputDebugLevel();
-            if (!RebuildCandidates(registry, inputSystem->GetMousePosition(), uiSingleton, mousePos, debugLevel >= 3))
-                return false;
-
-            BeginDebugSnapshot(uiSingleton, isDown ? Singletons::UIInputEventKind::Press : Singletons::UIInputEventKind::Release, mousePos, debugLevel);
-
-            if (isDown)
-            {
-                for (auto& pair : uiSingleton.allHoveredEntities)
+                else
                 {
-                    entt::entity entity = pair.entity;
-
-                    auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(entity);
-
-                    if (!eventInputInfo)
-                    {
-                        continue;
-                    }
-
-                    auto& widget = registry.get<Components::UI::Widget>(entity);
-
-                    u32 templateHash = eventInputInfo->onClickTemplateHash;
-
-                    i32 inputDownEvent = eventInputInfo->onMouseDownEvent;
-                    i32 inputUpEvent = eventInputInfo->onMouseUpEvent;
-                    i32 heldEvent = eventInputInfo->onMouseHeldEvent;
-                    bool hasInputEvent = inputDownEvent != -1 || inputUpEvent != -1 || heldEvent != -1;
-
-                    i32 focusBeginEvent = eventInputInfo->onFocusBeginEvent;
-                    i32 focusEndEvent = eventInputInfo->onFocusEndEvent;
-                    i32 focusHeldEvent = eventInputInfo->onFocusHeldEvent;
-                    bool isFocusable = widget.IsFocusable();
-                    bool hasFocusEvent = (focusBeginEvent != -1 || focusEndEvent != -1 || focusHeldEvent != -1) && isFocusable;
-
-                    if (templateHash != 0 || hasInputEvent)
-                    {
-                        eventInputInfo->isClicked = true;
-
-                        if (templateHash != 0)
-                        {
-                            ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
-                        }
-
-                        if (inputDownEvent != -1)
-                        {
-                            ECS::Util::UI::CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvent::MouseDown, widget.scriptWidget, key, mousePos);
-                        }
-
-                        if (hasFocusEvent)
-                        {
-                            ECS::Util::UI::FocusWidgetEntity(&registry, entity);
-                        }
-                        else
-                        {
-                            ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
-                        }
-
-                        uiSingleton.clickedEntity = entity;
-                        MarkAccepted(uiSingleton, pair, debugLevel);
-                        return true;
-                    }
+                    uiSingleton.clickedEntity = entt::null;
+                    uiSingleton.clickedButton = -1;
                 }
-
-                ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
-            }
-
-            if (!isDown && uiSingleton.clickedEntity != entt::null)
-            {
-                auto candidateIt = std::find_if(uiSingleton.allHoveredEntities.begin(), uiSingleton.allHoveredEntities.end(), [&](const UIInputCandidate& candidate)
-                {
-                    return candidate.entity == uiSingleton.clickedEntity;
-                });
-                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.clickedEntity);
-
-                if (eventInputInfo)
-                {
-                    eventInputInfo->isClicked = false;
-
-                    u32 templateHash = eventInputInfo->onClickTemplateHash;
-                    if (templateHash)
-                    {
-                        ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
-                    }
-
-                    if (candidateIt != uiSingleton.allHoveredEntities.end())
-                    {
-                        if (eventInputInfo->onMouseUpEvent != -1)
-                        {
-                            auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
-                            ECS::Util::UI::CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvent::MouseUp, widget.scriptWidget, key, mousePos);
-                        }
-
-                        MarkAccepted(uiSingleton, *candidateIt, debugLevel);
-                    }
-                }
-
-                uiSingleton.clickedEntity = entt::null;
             }
 
             return false;
@@ -484,8 +397,7 @@ namespace ECS::Systems::UI
         };
 
         InputContextHandle inputContext = inputSystem->CreateContext("UI", GameInputPriority::UI,
-            [handleLeftClick = std::move(handleLeftClick),
-             handleRightClick = std::move(handleRightClick),
+            [handleMouseButton = std::move(handleMouseButton),
              handleScroll = std::move(handleScroll),
              handleText = std::move(handleText),
              handleKeyboard = std::move(handleKeyboard)](const InputEvent& event)
@@ -502,12 +414,11 @@ namespace ECS::Systems::UI
             if (event.control.device == InputDevice::Keyboard)
                 return handleKeyboard(event.control.code, event.phase, event.modifiers) ? InputReply::Consumed : InputReply::Ignored;
 
-            const bool isDown = event.phase == InputPhase::Pressed;
-            if (event.control == InputControl::Mouse(MouseButton::Left))
-                return handleLeftClick(event.control.code, isDown) ? InputReply::Consumed : InputReply::Ignored;
-
-            if (event.control == InputControl::Mouse(MouseButton::Right))
-                return handleRightClick(event.control.code, isDown) ? InputReply::Consumed : InputReply::Ignored;
+            if (event.control.device == InputDevice::Mouse)
+            {
+                const bool isDown = event.phase == InputPhase::Pressed;
+                return handleMouseButton(event.control.code, isDown) ? InputReply::Consumed : InputReply::Ignored;
+            }
 
             return InputReply::Ignored;
         });
@@ -708,6 +619,7 @@ namespace ECS::Systems::UI
                         const bool hasMouseEffect = eventInputInfo->onClickTemplateHash != 0
                             || eventInputInfo->onMouseDownEvent != -1
                             || eventInputInfo->onMouseUpEvent != -1
+                            || eventInputInfo->onMouseReleaseEvent != -1
                             || eventInputInfo->onMouseHeldEvent != -1
                             || eventInputInfo->onMouseScrollEvent != -1;
 
@@ -763,6 +675,7 @@ namespace ECS::Systems::UI
                 const bool hasMouseEffect = eventInputInfo->onClickTemplateHash != 0
                     || eventInputInfo->onMouseDownEvent != -1
                     || eventInputInfo->onMouseUpEvent != -1
+                    || eventInputInfo->onMouseReleaseEvent != -1
                     || eventInputInfo->onMouseHeldEvent != -1
                     || eventInputInfo->onMouseScrollEvent != -1;
 

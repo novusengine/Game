@@ -52,8 +52,8 @@ namespace ECS::Util
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo);
         void RefreshClipper(entt::registry* registry, entt::entity entity);
 
-        // Nearest ancestor of `child` whose Clipper.clipChildren is set, or whose own
-        // clipRegionOverrideEntity is non-null. Returns entt::null at the root.
+        // Nearest ancestor of `child` whose Clipper.clipChildren is set. Returns
+        // entt::null at the root.
         entt::entity GetClippingAncestor(entt::registry* registry, entt::entity child);
 
         // Push the widget's current BoundingRect + clipRegionMin/Max + mask texture into

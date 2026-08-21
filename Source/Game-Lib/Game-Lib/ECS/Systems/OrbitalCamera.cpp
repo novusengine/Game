@@ -115,9 +115,7 @@ namespace
             return false;
 
         const f32 distance = glm::sqrt(distanceSquared);
-        const JPH::RRayCast ray(
-            JPH::RVec3(focusPosition.x, focusPosition.y, focusPosition.z),
-            JPH::Vec3(focusToCamera.x, focusToCamera.y, focusToCamera.z));
+        const JPH::RRayCast ray(JPH::RVec3(focusPosition.x, focusPosition.y, focusPosition.z), JPH::Vec3(focusToCamera.x, focusToCamera.y, focusToCamera.z));
 
         const StaticBroadPhaseFilter broadPhaseFilter;
         const StaticObjectLayerFilter objectLayerFilter;
@@ -174,6 +172,9 @@ namespace ECS::Systems
             InputBinding::Mouse(MouseButton::Left, InputModifier::None, ModifierMatch::Any),
             { .defaultReply = InputReply::Handled, .rebindable = false }, [&settings](const InputActionEvent& event)
         {
+            if (event.pointerSource != PointerSource::Mouse)
+                return InputReply::Handled;
+
             if (event.phase == InputPhase::Pressed)
             {
                 InputSystem* inputSystem = ServiceLocator::GetInputSystem();
@@ -204,6 +205,9 @@ namespace ECS::Systems
             InputBinding::Mouse(MouseButton::Right, InputModifier::None, ModifierMatch::Any),
             { .defaultReply = InputReply::Handled, .rebindable = false }, [&settings](const InputActionEvent& event)
         {
+            if (event.pointerSource != PointerSource::Mouse)
+                return InputReply::Handled;
+
             if (event.phase == InputPhase::Pressed)
             {
                 InputSystem* inputSystem = ServiceLocator::GetInputSystem();
@@ -247,7 +251,7 @@ namespace ECS::Systems
             if (!inputActions->IsContextActive(_inputContext))
                 return InputReply::Ignored;
 
-            if (event.type == InputEventType::CursorMove && settings.captureMousePending)
+            if (event.type == InputEventType::CursorMove && event.pointerSource == PointerSource::Mouse && settings.captureMousePending)
             {
                 const vec2 position = event.position;
                 const f64 clickGracePeriod = static_cast<f64>(glm::max(CVAR_CameraClickGracePeriod.GetFloat(), 0.0f)) / 1000.0;
@@ -267,7 +271,7 @@ namespace ECS::Systems
                 return InputReply::Consumed;
             }
 
-            if (event.type == InputEventType::CursorMove && settings.captureMouse)
+            if (event.type == InputEventType::CursorMove && event.pointerSource == PointerSource::Mouse && settings.captureMouse)
             {
                 CapturedMouseMoved(registry, event.delta);
                 return InputReply::Consumed;

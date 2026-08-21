@@ -97,27 +97,20 @@ namespace Scripting::Unit
                 if (!replayedUnitIDs.insert(unitID).second)
                     return true;
 
-                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
-                    .unitID = unitID
-                });
+                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{ .unitID = unitID });
 
                 return true;
             });
         }
 
         // Resend LocalMoverChanged
-        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{
-            .moverID = entt::to_integral(characterSingleton.moverEntity)
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{ .moverID = entt::to_integral(characterSingleton.moverEntity) });
 
         if (gameRegistry->valid(characterSingleton.moverEntity))
         {
             if (auto* unit = gameRegistry->try_get<ECS::Components::Unit>(characterSingleton.moverEntity))
             {
-                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
-                    .unitID = entt::to_integral(characterSingleton.moverEntity),
-                    .targetID = entt::to_integral(unit->targetEntity)
-                });
+                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{ .unitID = entt::to_integral(characterSingleton.moverEntity), .targetID = entt::to_integral(unit->targetEntity) });
             }
         }
     }
@@ -136,14 +129,28 @@ namespace Scripting::Unit
         return 1;
     }
 
+    i32 UnitHandler::GetTarget(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        const auto& character = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+        entt::id_type targetID = std::numeric_limits<entt::id_type>().max();
+        if (registry->valid(character.moverEntity))
+        {
+            const auto* unit = registry->try_get<ECS::Components::Unit>(character.moverEntity);
+            if (unit && registry->valid(unit->targetEntity))
+                targetID = entt::to_integral(unit->targetEntity);
+        }
+
+        zenith->Push(targetID);
+        return 1;
+    }
+
     i32 UnitHandler::GetHovered(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::id_type unitID = std::numeric_limits<entt::id_type>().max();
         const auto* controllerState = registry->ctx().find<ECS::Singletons::CharacterControllerSingleton>();
-        if (controllerState
-            && registry->valid(controllerState->hoveredEntity)
-            && registry->all_of<ECS::Components::Unit>(controllerState->hoveredEntity))
+        if (controllerState && registry->valid(controllerState->hoveredEntity) && registry->all_of<ECS::Components::Unit>(controllerState->hoveredEntity))
             unitID = entt::to_integral(controllerState->hoveredEntity);
 
         zenith->Push(unitID);

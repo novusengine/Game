@@ -88,6 +88,7 @@ namespace ECS::Singletons
         UIInputDebugSnapshot inputDebugSnapshot;
         vec2 lastClickPosition = vec2(-1.0f, -1.0f);
         entt::entity clickedEntity = entt::null;
+        i32 clickedButton = -1;
         entt::entity hoveredEntity = entt::null;
         entt::entity focusedEntity = entt::null;
         entt::entity justFocusedEntity = entt::null; // If it was just focused this frame

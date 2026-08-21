@@ -4,6 +4,7 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/Scripting/Game/Container.h"
+#include "Game-Lib/Scripting/Game/Interaction.h"
 #include "Game-Lib/Scripting/Handlers/RenderTargetHandler.h"
 #include "Game-Lib/Scripting/Handlers/RenderDocHandler.h"
 #include "Game-Lib/Scripting/Handlers/TracyHandler.h"
@@ -26,6 +27,7 @@ namespace Scripting::Game
     {
         LuaMethodTable::Set(zenith, gameGlobalMethods, "Game");
         Scripting::Game::Container::Register(zenith);
+        Scripting::Game::Interaction::Register(zenith);
         Scripting::RenderTarget::RenderTargetHandler::Register(zenith);
         Scripting::RenderDoc::RenderDocHandler::Register(zenith);
         Scripting::Tracy::TracyHandler::Register(zenith);
@@ -62,19 +64,13 @@ namespace Scripting::Game
                             if (mapStorage && mapStorage->Has(event.mapId))
                             {
                                 const auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(event.mapId);
-                                mapInternalName = mapStorage->GetString(map.nameInternal);
+                                mapInternalName = mapStorage->GetString(map.internalName);
                             }
                         }
                     }
                 }
 
-                zenith->CallEvent(
-                    MetaGen::Game::Lua::GameEvent::MapLoaded,
-                    MetaGen::Game::Lua::GameEventDataMapLoaded{
-                        .mapID = event.mapId,
-                        .mapInternalName = mapInternalName,
-                        .isLoaded = isLoaded,
-                    });
+                zenith->CallEvent(MetaGen::Game::Lua::GameEvent::MapLoaded, MetaGen::Game::Lua::GameEventDataMapLoaded{ .mapID = event.mapId, .mapInternalName = mapInternalName, .isLoaded = isLoaded });
             });
 
         ECS::Util::EventUtil::OnEvent<ECS::Components::MapLoadFailedEvent>(
@@ -92,7 +88,7 @@ namespace Scripting::Game
                         if (mapStorage && mapStorage->Has(event.mapId))
                         {
                             const auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(event.mapId);
-                            mapInternalName = mapStorage->GetString(map.nameInternal);
+                            mapInternalName = mapStorage->GetString(map.internalName);
                         }
                     }
                 }
@@ -108,13 +104,7 @@ namespace Scripting::Game
                     case ECS::Components::MapLoadFailureReason::NoAvailableChunks: reason = "no-available-chunks"; break;
                 }
 
-                zenith->CallEvent(
-                    MetaGen::Game::Lua::GameEvent::MapLoadFailed,
-                    MetaGen::Game::Lua::GameEventDataMapLoadFailed{
-                        .mapID = event.mapId,
-                        .mapInternalName = mapInternalName,
-                        .reason = reason,
-                    });
+                zenith->CallEvent(MetaGen::Game::Lua::GameEvent::MapLoadFailed, MetaGen::Game::Lua::GameEventDataMapLoadFailed{ .mapID = event.mapId, .mapInternalName = mapInternalName, .reason = reason });
             });
     }
 
@@ -127,8 +117,7 @@ namespace Scripting::Game
         zenith->Pop();
 
         GameHandler* self = luaManager
-            ? luaManager->GetLuaHandler<GameHandler>(
-                static_cast<LuaHandlerID>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Game))
+            ? luaManager->GetLuaHandler<GameHandler>(static_cast<LuaHandlerID>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Game))
             : nullptr;
         zenith->Push(self && self->_isLoaded);
         return 1;

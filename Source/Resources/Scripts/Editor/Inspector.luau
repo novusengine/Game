@@ -1,6 +1,6 @@
 local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
-Inspector — Lua port of the C++ ImGui Inspector. Shows the selected entity's
+Inspector - Lua port of the C++ ImGui Inspector. Shows the selected entity's
 components (Name, Transform, Scene Node, AABB, Model, Decal, Unit) and lets you
 edit them. Selection is shared with the Hierarchy and viewport picking through
 EditorSelection.

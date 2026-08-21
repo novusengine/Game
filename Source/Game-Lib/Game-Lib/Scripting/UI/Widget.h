@@ -166,6 +166,7 @@ namespace Scripting::UI
     {
         i32 SetOnMouseDown(Zenith* zenith, Widget* widget);
         i32 SetOnMouseUp(Zenith* zenith, Widget* widget);
+        i32 SetOnMouseRelease(Zenith* zenith, Widget* widget);
         i32 SetOnMouseHeld(Zenith* zenith, Widget* widget);
         i32 SetOnMouseScroll(Zenith* zenith, Widget* widget);
 
@@ -184,6 +185,7 @@ namespace Scripting::UI
     {
         { "SetOnMouseDown", WidgetInputMethods::SetOnMouseDown },
         { "SetOnMouseUp", WidgetInputMethods::SetOnMouseUp },
+        { "SetOnMouseRelease", WidgetInputMethods::SetOnMouseRelease },
         { "SetOnMouseHeld", WidgetInputMethods::SetOnMouseHeld },
         { "SetOnMouseScroll", WidgetInputMethods::SetOnMouseScroll },
 

@@ -102,7 +102,7 @@ function actionBarAPI.New(parent : Widget, position : vec, options : Options?) :
                 pressPosition = vec.New(mouseX, mouseY);
                 dragging = false;
             end);
-            slot.root:SetOnMouseHeld(function(_, _, _, mouseX, mouseY)
+            slot.root:SetOnMouseHeld(function(_, _, mouseX, mouseY)
                 if dragging or slot.payload == nil then return; end
                 if math.abs(mouseX - pressPosition.x) + math.abs(mouseY - pressPosition.y) > 3 then
                     dragging = true;

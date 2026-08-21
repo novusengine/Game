@@ -1,6 +1,6 @@
 local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
-CameraEditor — Lua port of the C++ ImGui Camera Info window. Three sections
+CameraEditor - Lua port of the C++ ImGui Camera Info window. Three sections
 (Transform, Map Position, Saves) using the Collapsible widget; the saves list
 lives in a ScrollBox so it can grow without resizing the window.
 

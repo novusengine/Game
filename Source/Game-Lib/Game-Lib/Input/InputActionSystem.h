@@ -69,6 +69,7 @@ public:
     InputControl control;
     InputPhase phase = InputPhase::None;
     InputModifier modifiers = InputModifier::None;
+    PointerSource pointerSource = PointerSource::None;
     f32 value = 0.0f;
 };
 

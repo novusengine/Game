@@ -8,6 +8,7 @@ export type Context =
     strength : number,
     hardness : number,
     targetOpacity : number,
+    targetColor : vec,
     inverted : boolean,
     stroke : StrokeState,
 }

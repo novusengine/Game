@@ -1,5 +1,5 @@
 --[[
-DevTopBar — dev menu bar drawn below the ImGui main menu during the
+DevTopBar - dev menu bar drawn below the ImGui main menu during the
 ImGui->Lua migration. Greyed entries are not yet ported.
 ]]
 
@@ -27,11 +27,17 @@ local bar = MenuBar.New(canvas, vec.New(0, -IMGUI_MENU_BAR_HEIGHT), vec.New(CANV
             { label = "Camera Info", enabled = true, onClick = function() EditorRegistry.Toggle("CameraInfo") end },
             { label = "Clock", enabled = true, onClick = function() EditorRegistry.Toggle("Clock") end },
             { label = "Map", enabled = true, onClick = function() EditorRegistry.Toggle("Map") end },
+            { label = "Map Editor", enabled = true, onClick = function() EditorRegistry.Toggle("MapEditor") end },
             { label = "Hierarchy", enabled = true, onClick = function() EditorRegistry.Toggle("Hierarchy") end },
             { label = "Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("Inspector") end },
             { label = "Asset Browser", enabled = true, onClick = function() EditorRegistry.Toggle("AssetBrowser") end },
             { label = "Console Variables", enabled = true, onClick = function() EditorRegistry.Toggle("CVarEditor") end },
             { label = "Spell Editor", enabled = true, onClick = function() EditorRegistry.Toggle("SpellEditor") end },
+            { label = "Creature AI", enabled = true, onClick = function() EditorRegistry.Toggle("CreatureAI") end },
+            { label = "Localized Text", enabled = true, onClick = function() EditorRegistry.Toggle("LocalizedTextEditor") end },
+            { label = "Conditions", enabled = true, onClick = function() EditorRegistry.Toggle("ConditionEditor") end },
+            { label = "Gossip Flow", enabled = true, onClick = function() EditorRegistry.Toggle("GossipFlowEditor") end },
+            { label = "Creature Interactions", enabled = true, onClick = function() EditorRegistry.Toggle("CreatureInteractionEditor") end },
             { label = "Terrain Editor", enabled = true, onClick = function() EditorRegistry.Toggle("TerrainEditor") end },
         }},
         { label = "Editor", items = {

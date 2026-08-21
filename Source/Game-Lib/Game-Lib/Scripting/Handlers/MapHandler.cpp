@@ -52,6 +52,7 @@ namespace Scripting::Map
         LuaManager* luaManager = ServiceLocator::GetLuaManager();
         if (!luaManager)
             return nullptr;
+
         return luaManager->GetLuaHandler<MapHandler>(static_cast<LuaHandlerID>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Map));
     }
 
@@ -108,8 +109,7 @@ namespace Scripting::Map
             std::string internalName;
             std::string name;
             u32 flags;
-            u8 instanceType;
-            u8 expansionID;
+            u8 type;
             u16 maxPlayers;
         };
 
@@ -117,15 +117,7 @@ namespace Scripting::Map
         entries.reserve(storage->GetNumRows());
         storage->Each([&entries, storage](u32 id, const MetaGen::Shared::ClientDB::MapRecord& record) -> bool
         {
-            entries.push_back({
-                id,
-                storage->GetString(record.nameInternal),
-                storage->GetString(record.name),
-                record.flags,
-                record.instanceType,
-                record.expansionID,
-                record.maxPlayers,
-            });
+            entries.push_back({ id, storage->GetString(record.internalName), storage->GetString(record.name), record.flags, record.type, record.maxPlayers });
             return true;
         });
         std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b)
@@ -141,11 +133,11 @@ namespace Scripting::Map
             zenith->AddTableField("internalName", e.internalName.c_str());
             zenith->AddTableField("name", e.name.c_str());
             zenith->AddTableField("flags", e.flags);
-            zenith->AddTableField("instanceType", static_cast<u32>(e.instanceType));
-            zenith->AddTableField("expansionID", static_cast<u32>(e.expansionID));
+            zenith->AddTableField("type", static_cast<u32>(e.type));
             zenith->AddTableField("maxPlayers", static_cast<u32>(e.maxPlayers));
             zenith->SetTableKey(static_cast<i32>(i + 1));
         }
+
         return 1;
     }
 
@@ -184,10 +176,42 @@ namespace Scripting::Map
         }
 
         const auto& record = storage->Get<MetaGen::Shared::ClientDB::MapRecord>(id);
-        const std::string& internalName = storage->GetString(record.nameInternal);
+        const std::string& internalName = storage->GetString(record.internalName);
         u32 hash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
         ServiceLocator::GetGameRenderer()->GetMapLoader()->LoadMap(hash);
         zenith->Push(true);
+        return 1;
+    }
+
+    i32 MapHandler::HasLocalHeader(Zenith* zenith)
+    {
+        const char* nameRaw = zenith->CheckVal<const char*>(1);
+        MetaGen::Shared::ClientDB::MapRecord* unused = nullptr;
+        if (!nameRaw || !ECSUtil::Map::GetMapFromInternalName(nameRaw, unused))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        TerrainLoader* terrainLoader = gameRenderer ? gameRenderer->GetTerrainLoader() : nullptr;
+        zenith->Push(terrainLoader && terrainLoader->HasMapHeader(nameRaw));
+        return 1;
+    }
+
+    i32 MapHandler::CreateEmptyLocalHeader(Zenith* zenith)
+    {
+        const char* nameRaw = zenith->CheckVal<const char*>(1);
+        MetaGen::Shared::ClientDB::MapRecord* unused = nullptr;
+        if (!nameRaw || !ECSUtil::Map::GetMapFromInternalName(nameRaw, unused))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        TerrainLoader* terrainLoader = gameRenderer ? gameRenderer->GetTerrainLoader() : nullptr;
+        zenith->Push(terrainLoader && terrainLoader->CreateEmptyMapHeader(nameRaw));
         return 1;
     }
 
@@ -217,6 +241,7 @@ namespace Scripting::Map
         {
             self->_onCurrentMapChangedRef = zenith->GetRef(1);
         }
+
         return 0;
     }
 

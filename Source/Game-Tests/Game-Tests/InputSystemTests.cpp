@@ -96,6 +96,97 @@ TEST_CASE("Single-binding action registration accepts focused behavior options",
     CHECK(lowerPriorityPresses == 1);
 }
 
+TEST_CASE("Specific modifier bindings dispatch before broad bindings on the same control", "[Input]")
+{
+    InputSystem inputSystem;
+    InputActionSystem inputActions(inputSystem);
+
+    const InputActionContextHandle context = inputActions.CreateContext("Editor", GameInputPriority::Editor);
+    REQUIRE(inputActions.SetContextActive(context, true));
+
+    u32 broadEvents = 0;
+    u32 altEvents = 0;
+    const InputActionHandle broadAction = inputActions.RegisterAction(context, "BroadLeftMouse", "Broad Left Mouse", "Test",
+        InputBinding::Mouse(MouseButton::Left, InputModifier::None, ModifierMatch::Any), [&broadEvents](const InputActionEvent&)
+    {
+        broadEvents++;
+        return InputReply::Consumed;
+    });
+    const InputActionHandle altAction = inputActions.RegisterAction(context, "AltLeftMouse", "Alt Left Mouse", "Test",
+        InputBinding::Mouse(MouseButton::Left, InputModifier::Alt, ModifierMatch::Exact), [&altEvents](const InputActionEvent&)
+    {
+        altEvents++;
+        return InputReply::Consumed;
+    });
+    REQUIRE(broadAction.IsValid());
+    REQUIRE(altAction.IsValid());
+
+    inputSystem.BeginFrame();
+    inputActions.BeginFrame();
+    inputSystem.QueueMouseButtonEvent(MouseButton::Left, InputPhase::Pressed, InputModifier::Alt);
+    inputSystem.ProcessEvents();
+
+    CHECK(broadEvents == 0);
+    CHECK(altEvents == 1);
+    CHECK_FALSE(inputActions.IsDown(broadAction));
+    CHECK(inputActions.IsDown(altAction));
+
+    inputSystem.BeginFrame();
+    inputActions.BeginFrame();
+    inputSystem.QueueMouseButtonEvent(MouseButton::Left, InputPhase::Released, InputModifier::Alt);
+    inputSystem.ProcessEvents();
+
+    CHECK(broadEvents == 0);
+    CHECK(altEvents == 2);
+    CHECK_FALSE(inputActions.IsDown(altAction));
+}
+
+TEST_CASE("Pointer source propagates through input actions", "[Input]")
+{
+    InputSystem inputSystem;
+    InputActionSystem inputActions(inputSystem);
+
+    const InputActionContextHandle context = inputActions.CreateContext("PointerSource", GameInputPriority::Editor);
+    REQUIRE(inputActions.SetContextActive(context, true));
+
+    PointerSource observedSource = PointerSource::None;
+    inputActions.RegisterAction(context, "PrimaryPointer", "Primary Pointer", "Test", InputBinding::Mouse(MouseButton::Left), [&observedSource](const InputActionEvent& event)
+    {
+        observedSource = event.pointerSource;
+        return InputReply::Consumed;
+    });
+
+    inputSystem.BeginFrame();
+    inputActions.BeginFrame();
+    inputSystem.QueueMouseButtonEvent(MouseButton::Left, InputPhase::Pressed, InputModifier::None, PointerSource::Pen);
+    inputSystem.ProcessEvents();
+
+    CHECK(observedSource == PointerSource::Pen);
+}
+
+TEST_CASE("Cursor events preserve pointer source changes within a frame", "[Input]")
+{
+    InputSystem inputSystem;
+    std::vector<PointerSource> observedSources;
+
+    const InputContextHandle context = inputSystem.CreateContext("PointerSource", GameInputPriority::Editor, [&observedSources](const InputEvent& event)
+    {
+        if (event.type == InputEventType::CursorMove)
+            observedSources.push_back(event.pointerSource);
+        return InputReply::Ignored;
+    });
+    REQUIRE(inputSystem.SetContextActive(context, true));
+
+    inputSystem.BeginFrame();
+    inputSystem.QueueCursorPositionEvent(10.0f, 10.0f, PointerSource::Pen);
+    inputSystem.QueueCursorPositionEvent(20.0f, 20.0f, PointerSource::Mouse);
+    inputSystem.ProcessEvents();
+
+    REQUIRE(observedSources.size() == 2);
+    CHECK(observedSources[0] == PointerSource::Pen);
+    CHECK(observedSources[1] == PointerSource::Mouse);
+}
+
 TEST_CASE("Higher priority input consumers prevent lower contexts from observing presses", "[Input]")
 {
     InputSystem inputSystem;
@@ -773,4 +864,31 @@ TEST_CASE("Invalid persisted bindings are ignored and non-rebindable actions kee
 
     std::error_code error;
     std::filesystem::remove(path, error);
+}
+
+TEST_CASE("Pen state is normalized, persists while in contact, and clears on focus loss", "[Input]")
+{
+    InputSystem inputSystem;
+
+    inputSystem.SetPenState(1.5f, false, true, vec2(10.0f, 20.0f));
+    CHECK(inputSystem.GetPenState().pressure == 1.0f);
+    CHECK(inputSystem.GetPenState().inRange);
+    CHECK(inputSystem.GetPenState().inContact);
+
+    inputSystem.BeginFrame();
+    CHECK(inputSystem.GetPenState().pressure == 1.0f);
+    CHECK(inputSystem.GetPenState().delta == vec2(0.0f));
+    CHECK(inputSystem.GetPenState().inContact);
+
+    inputSystem.SetPenState(0.5f, true, false, vec2(14.0f, 18.0f));
+    CHECK(inputSystem.GetPenState().pressure == 0.0f);
+    CHECK(inputSystem.GetPenState().delta == vec2(4.0f, -2.0f));
+    CHECK(inputSystem.GetPenState().inRange);
+    CHECK_FALSE(inputSystem.GetPenState().inContact);
+
+    inputSystem.SetPenState(0.5f, true, true, vec2(14.0f, 18.0f));
+    inputSystem.QueueFocusEvent(false);
+    CHECK(inputSystem.GetPenState().pressure == 0.0f);
+    CHECK_FALSE(inputSystem.GetPenState().inRange);
+    CHECK_FALSE(inputSystem.GetPenState().inContact);
 }

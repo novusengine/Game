@@ -19,6 +19,7 @@
 
 #include <MetaGen/Game/Lua/Lua.h>
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Localization/Localization.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Network/Client.h>
@@ -46,9 +47,7 @@ namespace Scripting
     void GlobalHandler::PostLoad(Zenith* zenith)
     {
         const char* motd = CVarSystem::Get()->GetStringCVar(CVarCategory::Client, "scriptingMotd");
-        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::Loaded, MetaGen::Game::Lua::GameEventDataLoaded{
-            .motd = motd
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::Loaded, MetaGen::Game::Lua::GameEventDataLoaded{ .motd = motd });
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -60,9 +59,7 @@ namespace Scripting
 
     void GlobalHandler::Update(Zenith* zenith, f32 deltaTime)
     {
-        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::Updated, MetaGen::Game::Lua::GameEventDataUpdated{
-            .deltaTime = deltaTime
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::Updated, MetaGen::Game::Lua::GameEventDataUpdated{ .deltaTime = deltaTime });
     }
 
     i32 GlobalHandler::AddCursor(Zenith* zenith)
@@ -212,9 +209,7 @@ namespace Scripting
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
         
-        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSendChatMessagePacket{
-            .message = message
-        });
+        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSendChatMessagePacket{ .message = message });
 
         return 0;
     }
@@ -295,9 +290,7 @@ namespace Scripting
                 CVarSystem::Get()->SetStringCVar(CVarCategory::Network, "accountName", "");
             }
 
-            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{
-                .accountName = username
-            });
+            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{ .accountName = username, .locale = static_cast<u8>(MetaGen::Shared::Localization::LocaleEnum::EnUS) });
         }
 
         zenith->Push(true);
@@ -387,9 +380,7 @@ namespace Scripting
 
         networkState.characterListInfo.characterSelected = true;
 
-        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientCharacterSelectPacket{
-            .characterIndex = characterIndex
-        });
+        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientCharacterSelectPacket{ .characterIndex = characterIndex });
 
         zenith->Push(true);
         return 1;

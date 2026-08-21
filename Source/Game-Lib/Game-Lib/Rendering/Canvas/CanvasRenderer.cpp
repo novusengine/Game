@@ -331,12 +331,14 @@ void CanvasRenderer::Update(f32 deltaTime)
     uiRegistry->view<DirtyChildClipper>().each([&](entt::entity entity)
     {
         ZoneScopedN("CanvasRenderer::PropagateChildClipper");
-        auto& clipper = uiRegistry->get<Clipper>(entity);
-
         transformSystem2D.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
         {
             auto& childClipper = uiRegistry->get<Clipper>(childEntity);
-            childClipper.clipRegionOverrideEntity = (clipper.clipChildren) ? entity : entt::null;
+            // Re-resolve from the transform ancestry instead of assigning this
+            // source to every descendant. This keeps the nearest nested clipper
+            // when multiple DirtyChildClipper sources are processed together.
+            childClipper.clipRegionOverrideEntity = ECS::Util::UI::GetClippingAncestor(uiRegistry, childEntity);
+            ECS::Util::UI::RecomputeClipSlots(uiRegistry, childEntity);
 
             uiRegistry->emplace_or_replace<DirtyWidgetData>(childEntity);
         });
@@ -352,8 +354,7 @@ void CanvasRenderer::Update(f32 deltaTime)
         // pairs DirtyWidgetTransform with DirtyWidgetData so the transform pass above reserves it
         // first; this guards any path that bakes data without a transform (one identity frame, then
         // the queued transform sets the matrix).
-        if (widget.type != WidgetType::Canvas && widget.gpuMatrixSlot == -1 &&
-            widget.worldTransformIndex == std::numeric_limits<u32>().max())
+        if (widget.type != WidgetType::Canvas && widget.gpuMatrixSlot == -1 && widget.worldTransformIndex == std::numeric_limits<u32>().max())
         {
             widget.gpuMatrixSlot = static_cast<i32>(ReserveMatrixSlot());
             uiRegistry->emplace_or_replace<DirtyWidgetTransform>(entity);
@@ -1549,6 +1550,7 @@ u8 CanvasRenderer::ResolvePriority(entt::registry* registry, entt::entity entity
     {
         return 1; // Focus tier. Drag/modal/tooltip slots reserved for future systems.
     }
+
     return 0;
 }
 
@@ -1574,6 +1576,7 @@ void CanvasRenderer::RebuildCanvasOrder(entt::registry* registry)
     {
         if (a.layer != b.layer) 
             return a.layer < b.layer;
+
         return a.iterSeenIndex < b.iterSeenIndex;
     });
 

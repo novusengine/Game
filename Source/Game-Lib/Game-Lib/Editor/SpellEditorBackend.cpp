@@ -41,6 +41,7 @@ namespace Editor
                 if (Meta::ENUM_FIELD_LIST[index].second == value)
                     return true;
             }
+
             return false;
         }
 
@@ -145,7 +146,7 @@ namespace Editor
 
         const u32 requestID = data.StartRequest();
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellEditorSnapshotRequest(buffer, requestID))
+        if (!ECS::Util::MessageBuilder::Cheat::BuildDatabaseEditorSnapshotRequest(buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell, requestID))
         {
             data.FailSnapshot(requestID);
             return false;
@@ -171,10 +172,10 @@ namespace Editor
                 if (result->succeeded)
                 {
                     _draftState = SpellEditorDraftState::Refreshing;
-                    if (result->artifact == MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell)
+                    if (result->artifact == static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell))
                     {
                         _refreshSpellID = result->artifactID;
-                        _refreshDeletedSpell = result->mutationType == MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Delete;
+                        _refreshDeletedSpell = result->mutationType == MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Delete;
                     }
                     else
                     {
@@ -198,7 +199,7 @@ namespace Editor
                     }
                     else
                     {
-                        _draftState = result->artifact == MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell
+                        _draftState = result->artifact == static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell)
                             ? SpellEditorDraftState::MutationFailed
                             : (_draft ? SpellEditorDraftState::Clean : SpellEditorDraftState::None);
                     }
@@ -322,11 +323,9 @@ namespace Editor
         {
             if (constraint.spellID == spellID)
             {
-                draft.constraints.push_back({
-                    constraintID, constraint.groupID, constraint.scope,
-                    constraint.maximumApplications, constraint.overflowBehavior, constraint.overrideMask
-                });
+                draft.constraints.push_back({ constraintID, constraint.groupID, constraint.scope, constraint.maximumApplications, constraint.overflowBehavior, constraint.overrideMask });
             }
+
             return true;
         });
         std::ranges::sort(draft.constraints, {}, &SpellEditorConstraintDraft::id);
@@ -337,6 +336,7 @@ namespace Editor
             {
                 draft.procLinks.push_back({ procLinkID, procLink.procDataID, procLink.effectMask });
             }
+
             return true;
         });
         std::ranges::sort(draft.procLinks, {}, &SpellEditorProcLinkDraft::id);
@@ -692,8 +692,7 @@ namespace Editor
         using Artifact = MetaGen::Shared::Spell::SpellEditorArtifactEnum;
         SpellEditorData* data = GetData();
         ::ClientDB::Data* groups = data ? data->GetStorage(Artifact::SpellAuraConstraintGroup) : nullptr;
-        if (!groups || !groups->Has(groupID) ||
-            std::ranges::find(_draft->constraints, groupID, &SpellEditorConstraintDraft::groupID) != _draft->constraints.end())
+        if (!groups || !groups->Has(groupID) || std::ranges::find(_draft->constraints, groupID, &SpellEditorConstraintDraft::groupID) != _draft->constraints.end())
             return 0;
 
         const auto& group = groups->Get<MetaGen::Shared::ClientDB::SpellAuraConstraintGroupRecord>(groupID);
@@ -701,14 +700,7 @@ namespace Editor
         for (const SpellEditorConstraintDraft& constraint : _draft->constraints)
             draftIDs.push_back(constraint.id);
         const u32 id = AllocateID(Artifact::SpellAuraConstraint, draftIDs);
-        _draft->constraints.push_back({
-            id,
-            groupID,
-            group.defaultScope,
-            group.defaultMaximumApplications,
-            group.defaultOverflowBehavior,
-            0
-        });
+        _draft->constraints.push_back({ id, groupID, group.defaultScope, group.defaultMaximumApplications, group.defaultOverflowBehavior, 0 });
         MarkDirty();
         return id;
     }
@@ -725,15 +717,12 @@ namespace Editor
         return true;
     }
 
-    u32 SpellEditorBackend::CreateConstraintGroup(std::string name, u8 defaultScope,
-        u16 defaultMaximumApplications, u8 defaultOverflowBehavior)
+    u32 SpellEditorBackend::CreateConstraintGroup(std::string name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior)
     {
         using Artifact = MetaGen::Shared::Spell::SpellEditorArtifactEnum;
 
         const u32 groupID = AllocateID(Artifact::SpellAuraConstraintGroup);
-        if (groupID == 0 || !SendConstraintGroupMutation(groupID, name, defaultScope,
-            defaultMaximumApplications, defaultOverflowBehavior,
-            MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Create))
+        if (groupID == 0 || !SendConstraintGroupMutation(groupID, name, defaultScope, defaultMaximumApplications, defaultOverflowBehavior, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Create))
         {
             return 0;
         }
@@ -741,12 +730,9 @@ namespace Editor
         return groupID;
     }
 
-    bool SpellEditorBackend::UpdateConstraintGroup(u32 groupID, std::string name, u8 defaultScope,
-        u16 defaultMaximumApplications, u8 defaultOverflowBehavior)
+    bool SpellEditorBackend::UpdateConstraintGroup(u32 groupID, std::string name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior)
     {
-        return SendConstraintGroupMutation(groupID, name, defaultScope,
-            defaultMaximumApplications, defaultOverflowBehavior,
-            MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Update);
+        return SendConstraintGroupMutation(groupID, name, defaultScope, defaultMaximumApplications, defaultOverflowBehavior, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Update);
     }
 
     bool SpellEditorBackend::DeleteConstraintGroup(u32 groupID)
@@ -764,10 +750,16 @@ namespace Editor
             return false;
         }
 
-        const u32 requestID = data->StartMutationRequest();
-        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellAuraConstraintGroupDelete(buffer, requestID, groupID))
+        std::shared_ptr<Bytebuffer> payload = Bytebuffer::Borrow<sizeof(u32)>();
+        if (!payload->PutU32(groupID))
             return false;
+
+        const u32 requestID = data->StartMutationRequest();
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (!ECS::Util::MessageBuilder::Cheat::BuildDatabaseEditorMutation(buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell, static_cast<u8>(Artifact::SpellAuraConstraintGroup), MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Delete, requestID, payload->GetDataPointer(), static_cast<u32>(payload->writtenData)))
+        {
+            return false;
+        }
 
         networkState->client->Send(buffer);
         _pendingRequestID = requestID;
@@ -811,14 +803,12 @@ namespace Editor
         else if (field == "maximumApplications")
         {
             constraint->maximumApplications = static_cast<u16>(std::min<u64>(value, std::numeric_limits<u16>::max()));
-            SetOverrideState(Override::MaximumApplications,
-                group && constraint->maximumApplications == group->defaultMaximumApplications);
+            SetOverrideState(Override::MaximumApplications, group && constraint->maximumApplications == group->defaultMaximumApplications);
         }
         else if (field == "overflowBehavior")
         {
             constraint->overflowBehavior = static_cast<u8>(std::min<u64>(value, std::numeric_limits<u8>::max()));
-            SetOverrideState(Override::OverflowBehavior,
-                group && constraint->overflowBehavior == group->defaultOverflowBehavior);
+            SetOverrideState(Override::OverflowBehavior, group && constraint->overflowBehavior == group->defaultOverflowBehavior);
         }
         else
             return false;
@@ -865,9 +855,7 @@ namespace Editor
         return true;
     }
 
-    u32 SpellEditorBackend::CreateProcData(u32 ownerSpellID, std::string name, u32 phaseMask,
-        u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute,
-        f32 chanceToProc, u32 internalCooldownMS, i32 charges)
+    u32 SpellEditorBackend::CreateProcData(u32 ownerSpellID, std::string name, u32 phaseMask, u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute, f32 chanceToProc, u32 internalCooldownMS, i32 charges)
     {
         using Artifact = MetaGen::Shared::Spell::SpellEditorArtifactEnum;
 
@@ -876,24 +864,21 @@ namespace Editor
             procDataID, phaseMask, typeMask, hitMask, flags,
             procsPerMinute, chanceToProc, internalCooldownMS, charges
         };
-        if (procDataID == 0 || !SendProcDataMutation(value, ownerSpellID, name,
-            MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Create))
+        if (procDataID == 0 || !SendProcDataMutation(value, ownerSpellID, name, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Create))
         {
             return 0;
         }
+
         return procDataID;
     }
 
-    bool SpellEditorBackend::UpdateProcData(u32 procDataID, u32 ownerSpellID, std::string name,
-        u32 phaseMask, u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute,
-        f32 chanceToProc, u32 internalCooldownMS, i32 charges)
+    bool SpellEditorBackend::UpdateProcData(u32 procDataID, u32 ownerSpellID, std::string name, u32 phaseMask, u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute, f32 chanceToProc, u32 internalCooldownMS, i32 charges)
     {
         const GameDefine::Database::SpellProcData value = {
             procDataID, phaseMask, typeMask, hitMask, flags,
             procsPerMinute, chanceToProc, internalCooldownMS, charges
         };
-        return SendProcDataMutation(value, ownerSpellID, name,
-            MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Update);
+        return SendProcDataMutation(value, ownerSpellID, name, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Update);
     }
 
     bool SpellEditorBackend::DeleteProcData(u32 procDataID)
@@ -907,17 +892,21 @@ namespace Editor
             !procData || !procData->Has(procDataID) || !networkState || !networkState->client ||
             !networkState->client->IsConnected() || !networkState->isInWorld ||
             _pendingRequestID != 0 ||
-            (_draftState != SpellEditorDraftState::None &&
-                _draftState != SpellEditorDraftState::Clean &&
-                _draftState != SpellEditorDraftState::Dirty))
+            (_draftState != SpellEditorDraftState::None && _draftState != SpellEditorDraftState::Clean && _draftState != SpellEditorDraftState::Dirty))
         {
             return false;
         }
 
-        const u32 requestID = data->StartMutationRequest();
-        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellProcDataDelete(buffer, requestID, procDataID))
+        std::shared_ptr<Bytebuffer> payload = Bytebuffer::Borrow<sizeof(u32)>();
+        if (!payload->PutU32(procDataID))
             return false;
+
+        const u32 requestID = data->StartMutationRequest();
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (!ECS::Util::MessageBuilder::Cheat::BuildDatabaseEditorMutation(buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell, static_cast<u8>(Artifact::SpellProcData), MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Delete, requestID, payload->GetDataPointer(), static_cast<u32>(payload->writtenData)))
+        {
+            return false;
+        }
 
         networkState->client->Send(buffer);
         _resumeDraftStateAfterRefresh = _draftState;
@@ -931,8 +920,7 @@ namespace Editor
     {
         if (!CanEdit() || _draft->procLinks.size() >= MAX_PROC_LINKS)
             return 0;
-        if (std::ranges::find(_draft->procLinks, procDataID, &SpellEditorProcLinkDraft::procDataID) !=
-            _draft->procLinks.end())
+        if (std::ranges::find(_draft->procLinks, procDataID, &SpellEditorProcLinkDraft::procDataID) != _draft->procLinks.end())
         {
             return 0;
         }
@@ -1056,8 +1044,7 @@ namespace Editor
             _diagnostics.push_back({ "targeting.targetRecipientMask", "At least one supported recipient category must be selected." });
         if (!IsEnumValue<SpellRangePolicyEnumMeta>(_draft->rangePolicy))
             _diagnostics.push_back({ "targeting.rangePolicy", "Range policy is not a generated enum value." });
-        if (!std::isfinite(_draft->minimumRange) || !std::isfinite(_draft->maximumRange) ||
-            _draft->minimumRange < 0.0f || _draft->maximumRange < _draft->minimumRange)
+        if (!std::isfinite(_draft->minimumRange) || !std::isfinite(_draft->maximumRange) || _draft->minimumRange < 0.0f || _draft->maximumRange < _draft->minimumRange)
         {
             _diagnostics.push_back({ "targeting.range", "Range must be finite, non-negative, and maximum must not be below minimum." });
         }
@@ -1069,17 +1056,13 @@ namespace Editor
             _diagnostics.push_back({ "targeting.range", "Only the Distance range policy may define minimum and maximum range." });
         if (shape == SpellTargetShapeEnum::Single && (_draft->targetRadius != 0.0f || _draft->maximumTargets != 1))
             _diagnostics.push_back({ "targeting.targetShape", "Single-target spells require radius 0 and exactly one maximum target." });
-        if (shape == SpellTargetShapeEnum::Radius &&
-            (!std::isfinite(_draft->targetRadius) || _draft->targetRadius <= 0.0f ||
-             _draft->targetRadius > GameDefine::SpellTargeting::MAX_RADIUS ||
-             _draft->maximumTargets == 0 || _draft->maximumTargets > GameDefine::SpellTargeting::MAX_TARGETS))
+        if (shape == SpellTargetShapeEnum::Radius && (!std::isfinite(_draft->targetRadius) || _draft->targetRadius <= 0.0f || _draft->targetRadius > GameDefine::SpellTargeting::MAX_RADIUS || _draft->maximumTargets == 0 || _draft->maximumTargets > GameDefine::SpellTargeting::MAX_TARGETS))
         {
             _diagnostics.push_back({ "targeting.targetShape", "Radius targeting requires a positive bounded radius and 1-64 maximum targets." });
         }
         if (shape == SpellTargetShapeEnum::Radius && selector == SpellTargetSelectorEnum::None)
             _diagnostics.push_back({ "targeting.targetSelector", "Radius targeting requires an anchor." });
-        if (selector == SpellTargetSelectorEnum::GroundPosition &&
-            (relation != SpellTargetRelationEnum::Any || rangePolicy != SpellRangePolicyEnum::Distance))
+        if (selector == SpellTargetSelectorEnum::GroundPosition && (relation != SpellTargetRelationEnum::Any || rangePolicy != SpellRangePolicyEnum::Distance))
         {
             _diagnostics.push_back({ "targeting.targetSelector", "Ground-position targeting requires Any anchor relation and a Distance range policy." });
         }
@@ -1114,8 +1097,7 @@ namespace Editor
             {
                 _diagnostics.push_back({ "targeting.targetSelector", "A target-requiring effect needs a spell target selector." });
             }
-            if (descriptor->target.mode == SpellEffectTargetMode::Required &&
-                selector == SpellTargetSelectorEnum::GroundPosition && shape == SpellTargetShapeEnum::Single)
+            if (descriptor->target.mode == SpellEffectTargetMode::Required && selector == SpellTargetSelectorEnum::GroundPosition && shape == SpellTargetShapeEnum::Single)
             {
                 _diagnostics.push_back({ "targeting.targetShape", "A ground-position spell needs a Radius shape to resolve unit-targeted effects." });
             }
@@ -1124,9 +1106,7 @@ namespace Editor
             if (!parameterValidation.IsValid())
             {
                 const std::string parameterPath = path + ".parameters." + std::to_string(parameterValidation.parameterIndex + 1);
-                _diagnostics.push_back({ parameterPath,
-                    "Effect parameter failed generated catalog validation: " +
-                    std::string(GetSpellEffectParameterValidationErrorName(parameterValidation.error)) + "." });
+                _diagnostics.push_back({ parameterPath, "Effect parameter failed generated catalog validation: " + std::string(GetSpellEffectParameterValidationErrorName(parameterValidation.error)) + "." });
             }
 
             if (descriptor->type == SpellEffectTypeEnum::ApplyAura)
@@ -1259,8 +1239,7 @@ namespace Editor
             .maximumTargets = draft.maximumTargets
         };
 
-        if (!payload->PutU8(SPELL_SYNC_VERSION) || !GameDefine::Database::Spell::Write(payload.get(), spell) ||
-            !payload->PutU8(draft.aura.has_value() ? 1 : 0))
+        if (!payload->PutU8(SPELL_SYNC_VERSION) || !GameDefine::Database::Spell::Write(payload.get(), spell) || !payload->PutU8(draft.aura.has_value() ? 1 : 0))
         {
             return false;
         }
@@ -1315,7 +1294,7 @@ namespace Editor
         return payload->writtenData <= MAX_PAYLOAD_SIZE;
     }
 
-    bool SpellEditorBackend::SendDraft(const SpellEditorDraft& draft, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType)
+    bool SpellEditorBackend::SendDraft(const SpellEditorDraft& draft, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType)
     {
         SpellEditorData* data = GetData();
         ECS::Singletons::NetworkState* networkState = GetNetworkState();
@@ -1334,8 +1313,7 @@ namespace Editor
             return false;
 
         const u32 requestID = data->StartMutationRequest();
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellSync(
-            buffer, requestID, mutationType, payload->GetDataPointer(), payloadSize))
+        if (!ECS::Util::MessageBuilder::Cheat::BuildDatabaseEditorMutation(buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell, static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell), mutationType, requestID, payload->GetDataPointer(), payloadSize))
         {
             return false;
         }
@@ -1347,12 +1325,10 @@ namespace Editor
         return true;
     }
 
-    bool SpellEditorBackend::SendConstraintGroupMutation(u32 groupID, std::string_view name,
-        u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior,
-        MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType)
+    bool SpellEditorBackend::SendConstraintGroupMutation(u32 groupID, std::string_view name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType)
     {
         using Artifact = MetaGen::Shared::Spell::SpellEditorArtifactEnum;
-        using MutationType = MetaGen::Shared::Spell::SpellEditorMutationTypeEnum;
+        using MutationType = MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum;
 
         SpellEditorData* data = GetData();
         ECS::Singletons::NetworkState* networkState = GetNetworkState();
@@ -1369,18 +1345,20 @@ namespace Editor
             !data || data->state != SpellEditorDataState::Ready ||
             !networkState || !networkState->client || !networkState->client->IsConnected() ||
             !networkState->isInWorld || _pendingRequestID != 0 ||
-            (_draftState != SpellEditorDraftState::None &&
-                _draftState != SpellEditorDraftState::Clean &&
-                _draftState != SpellEditorDraftState::Dirty))
+            (_draftState != SpellEditorDraftState::None && _draftState != SpellEditorDraftState::Clean && _draftState != SpellEditorDraftState::Dirty))
+        {
+            return false;
+        }
+
+        std::shared_ptr<Bytebuffer> payload = Bytebuffer::Borrow<128>();
+        if (!payload->PutU32(groupID) || !payload->PutString(name) || !payload->PutU8(defaultScope) || !payload->PutU16(defaultMaximumApplications) || !payload->PutU8(defaultOverflowBehavior))
         {
             return false;
         }
 
         const u32 requestID = data->StartMutationRequest();
-        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<160>();
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellAuraConstraintGroupSet(
-            buffer, requestID, mutationType, groupID, name,
-            defaultScope, defaultMaximumApplications, defaultOverflowBehavior))
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<256>();
+        if (!ECS::Util::MessageBuilder::Cheat::BuildDatabaseEditorMutation(buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell, static_cast<u8>(Artifact::SpellAuraConstraintGroup), mutationType, requestID, payload->GetDataPointer(), static_cast<u32>(payload->writtenData)))
         {
             return false;
         }
@@ -1393,12 +1371,10 @@ namespace Editor
         return true;
     }
 
-    bool SpellEditorBackend::SendProcDataMutation(const GameDefine::Database::SpellProcData& value,
-        u32 ownerSpellID, std::string_view name,
-        MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType)
+    bool SpellEditorBackend::SendProcDataMutation(const GameDefine::Database::SpellProcData& value, u32 ownerSpellID, std::string_view name, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType)
     {
         using Artifact = MetaGen::Shared::Spell::SpellEditorArtifactEnum;
-        using MutationType = MetaGen::Shared::Spell::SpellEditorMutationTypeEnum;
+        using MutationType = MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum;
         using namespace MetaGen::Shared::Spell;
 
         SpellEditorData* data = GetData();
@@ -1458,9 +1434,7 @@ namespace Editor
             return Reject("the character is not in the world.");
         if (_pendingRequestID != 0)
             return Reject("another editor mutation is still pending.");
-        if (_draftState != SpellEditorDraftState::None &&
-            _draftState != SpellEditorDraftState::Clean &&
-            _draftState != SpellEditorDraftState::Dirty)
+        if (_draftState != SpellEditorDraftState::None && _draftState != SpellEditorDraftState::Clean && _draftState != SpellEditorDraftState::Dirty)
         {
             return Reject("the spell draft is busy.");
         }
@@ -1473,10 +1447,18 @@ namespace Editor
                 return Reject("the ProcData owner cannot be changed.");
         }
 
+        std::shared_ptr<Bytebuffer> payload = Bytebuffer::Borrow<192>();
+        if (!payload->PutU32(value.id) || !payload->PutU32(ownerSpellID) || !payload->PutString(name) ||
+            !payload->PutU32(value.phaseMask) || !payload->PutU64(value.typeMask) || !payload->PutU64(value.hitMask) ||
+            !payload->PutU64(value.flags) || !payload->PutF32(value.procsPerMinute) ||
+            !payload->PutF32(value.chanceToProc) || !payload->PutU32(value.internalCooldownMS) || !payload->PutI32(value.charges))
+        {
+            return Reject("the mutation payload could not be built.");
+        }
+
         const u32 requestID = data->StartMutationRequest();
-        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<256>();
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellProcDataSet(
-            buffer, requestID, mutationType, value, ownerSpellID, name))
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<384>();
+        if (!ECS::Util::MessageBuilder::Cheat::BuildDatabaseEditorMutation(buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell, static_cast<u8>(Artifact::SpellProcData), mutationType, requestID, payload->GetDataPointer(), static_cast<u32>(payload->writtenData)))
         {
             return Reject("the network request could not be built.");
         }
@@ -1495,17 +1477,15 @@ namespace Editor
             return false;
         if (!Validate().empty())
             return false;
-        return SendDraft(*_draft, _draft->isCreate
-            ? MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Create
-            : MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Update);
+
+        return SendDraft(*_draft, _draft->isCreate ? MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Create : MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Update);
     }
 
     bool SpellEditorBackend::DeleteSpell(u32 spellID)
     {
         SpellEditorData* data = GetData();
         ECS::Singletons::NetworkState* networkState = GetNetworkState();
-        if (!data || data->state != SpellEditorDataState::Ready || !networkState || !networkState->client ||
-            !networkState->client->IsConnected() || !networkState->isInWorld || _pendingRequestID != 0)
+        if (!data || data->state != SpellEditorDataState::Ready || !networkState || !networkState->client || !networkState->client->IsConnected() || !networkState->isInWorld || _pendingRequestID != 0)
         {
             return false;
         }
@@ -1514,10 +1494,16 @@ namespace Editor
         if (!spellStorage->Has(spellID))
             return false;
 
+        std::shared_ptr<Bytebuffer> payload = Bytebuffer::Borrow<sizeof(u32)>();
+        if (!payload->PutU32(spellID))
+            return false;
+
         const u32 requestID = data->StartMutationRequest();
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellDelete(buffer, requestID, spellID))
+        if (!ECS::Util::MessageBuilder::Cheat::BuildDatabaseEditorMutation(buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell, static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell), MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Delete, requestID, payload->GetDataPointer(), static_cast<u32>(payload->writtenData)))
+        {
             return false;
+        }
 
         networkState->client->Send(buffer);
         _pendingRequestID = requestID;
@@ -1532,11 +1518,11 @@ namespace Editor
         SpellEditorDraft storedDraft;
         if (!LoadDraft(spellID, storedDraft))
             return false;
-        return SendDraft(storedDraft, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Update);
+
+        return SendDraft(storedDraft, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Update);
     }
 
-    u32 SpellEditorBackend::AllocateID(MetaGen::Shared::Spell::SpellEditorArtifactEnum artifact,
-        const std::vector<u32>& additionalIDs) const
+    u32 SpellEditorBackend::AllocateID(MetaGen::Shared::Spell::SpellEditorArtifactEnum artifact, const std::vector<u32>& additionalIDs) const
     {
         SpellEditorData* data = GetData();
         ::ClientDB::Data* storage = data ? data->GetStorage(artifact) : nullptr;

@@ -2,6 +2,7 @@
 
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Components/InteractionCapabilities.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
@@ -11,6 +12,7 @@
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/FactionUtil.h"
+#include "Game-Lib/ECS/Util/InteractionUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Editor/EditorHandler.h"
@@ -23,6 +25,7 @@
 #include "Game-Lib/Util/UnitUtil.h"
 
 #include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/Interaction/Interaction.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Input/InputSystem.h>
@@ -255,13 +258,7 @@ namespace ECS::Systems::CharacterControllerInput
         if (unit->targetEntity == entt::null)
             return true;
 
-        if (!Util::Network::SendPacket(networkState,
-            MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
-                .targetGUID = ObjectGUID::Empty
-            },
-            MetaGen::Shared::Packet::ClientAutoAttackStatePacket{
-                .enabled = 0 
-            }))
+        if (!Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{ .targetGUID = ObjectGUID::Empty }, MetaGen::Shared::Packet::ClientAutoAttackStatePacket{ .enabled = 0 }))
             return false;
 
         if (registry->valid(unit->targetEntity))
@@ -277,10 +274,7 @@ namespace ECS::Systems::CharacterControllerInput
         unit->targetEntity = entt::null;
         ::Util::Unit::SetAutoAttackVisualState(*registry, characterSingleton.moverEntity, false);
 
-        Scripting::Util::Zenith::GetGlobal()->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
-            .unitID = entt::to_integral(characterSingleton.moverEntity),
-            .targetID = entt::to_integral(unit->targetEntity)
-        });
+        Scripting::Util::Zenith::GetGlobal()->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{ .unitID = entt::to_integral(characterSingleton.moverEntity), .targetID = entt::to_integral(unit->targetEntity) });
         return true;
     }
 
@@ -290,8 +284,7 @@ namespace ECS::Systems::CharacterControllerInput
         entt::registry::context& ctx = registry->ctx();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
         auto& networkState = ctx.get<Singletons::NetworkState>();
-        if (!registry->valid(characterSingleton.moverEntity) || !registry->valid(targetEntity) ||
-            !registry->all_of<Components::Unit>(characterSingleton.moverEntity) || !registry->all_of<Components::Unit>(targetEntity))
+        if (!registry->valid(characterSingleton.moverEntity) || !registry->valid(targetEntity) || !registry->all_of<Components::Unit>(characterSingleton.moverEntity) || !registry->all_of<Components::Unit>(targetEntity))
         {
             return false;
         }
@@ -302,8 +295,7 @@ namespace ECS::Systems::CharacterControllerInput
             if (!updateAutoAttackState)
                 return true;
 
-            if (!Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientAutoAttackStatePacket{
-                .enabled = static_cast<u8>(autoAttackEnabled) }))
+            if (!Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientAutoAttackStatePacket{ .enabled = static_cast<u8>(autoAttackEnabled) }))
             {
                 return false;
             }
@@ -314,13 +306,8 @@ namespace ECS::Systems::CharacterControllerInput
 
         const ObjectGUID targetNetworkID = registry->get<Components::Unit>(targetEntity).networkID;
         const bool targetUpdateSent = updateAutoAttackState
-            ? Util::Network::SendPacket(networkState,
-                MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
-                    .targetGUID = targetNetworkID },
-                MetaGen::Shared::Packet::ClientAutoAttackStatePacket{
-                    .enabled = static_cast<u8>(autoAttackEnabled) })
-            : Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
-                .targetGUID = targetNetworkID });
+            ? Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{ .targetGUID = targetNetworkID }, MetaGen::Shared::Packet::ClientAutoAttackStatePacket{ .enabled = static_cast<u8>(autoAttackEnabled) })
+            : Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{ .targetGUID = targetNetworkID });
         if (!targetUpdateSent)
             return false;
 
@@ -345,10 +332,7 @@ namespace ECS::Systems::CharacterControllerInput
                 modelLoader->SetModelHighlight(*model, TARGET_HIGHLIGHT_INTENSITY);
         }
 
-        Scripting::Util::Zenith::GetGlobal()->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
-            .unitID = entt::to_integral(characterSingleton.moverEntity),
-            .targetID = entt::to_integral(targetEntity)
-        });
+        Scripting::Util::Zenith::GetGlobal()->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{ .unitID = entt::to_integral(characterSingleton.moverEntity), .targetID = entt::to_integral(targetEntity) });
         return true;
     }
 
@@ -394,20 +378,28 @@ namespace ECS::Systems::CharacterControllerInput
         if (!registry->valid(targetEntity) || targetEntity == characterSingleton.moverEntity || !registry->all_of<Components::Unit>(targetEntity))
             return InputReply::Ignored;
 
+        const bool isRightClick = event.control == InputControl::Mouse(MouseButton::Right);
+        const auto* interactionCapabilities = registry->try_get<Components::InteractionCapabilities>(targetEntity);
+        const bool canRequestGossip = isRightClick && interactionCapabilities &&
+            (interactionCapabilities->value & MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::Gossip) != MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::None;
+
         if (unit.targetEntity == targetEntity)
         {
-            if (event.control == InputControl::Mouse(MouseButton::Right))
+            if (isRightClick)
             {
-                const bool canAttack = ECS::Util::Faction::CanAttack(*registry, targetEntity);
-                SetTarget(targetEntity, true, canAttack);
+                SetTarget(targetEntity, true, !canRequestGossip && ECS::Util::Faction::CanAttack(*registry, targetEntity));
+                if (canRequestGossip)
+                    ECS::Util::Interaction::Open(*registry, targetEntity);
                 return InputReply::Consumed;
             }
 
             return InputReply::Ignored;
         }
 
-        const bool startAutoAttack = event.control == InputControl::Mouse(MouseButton::Right) && ECS::Util::Faction::CanAttack(*registry, targetEntity);
-        SetTarget(targetEntity, event.control == InputControl::Mouse(MouseButton::Right), startAutoAttack);
+        const bool startAutoAttack = isRightClick && !canRequestGossip && ECS::Util::Faction::CanAttack(*registry, targetEntity);
+        SetTarget(targetEntity, isRightClick, startAutoAttack);
+        if (canRequestGossip)
+            ECS::Util::Interaction::Open(*registry, targetEntity);
 
         return InputReply::Consumed;
     }

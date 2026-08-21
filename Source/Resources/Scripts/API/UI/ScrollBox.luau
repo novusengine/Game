@@ -56,6 +56,7 @@ export type ScrollBox =
 local scrollBoxAPI : ScrollBoxAPI = {};
 
 local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
+    local refreshScrollbarPosition;
 
     scrollBoxTable.Scroll = function(self : ScrollBox, event : any, x : number, y : number)
         scrollBoxTable.scrollPosX = scrollBoxTable.scrollPosX + x * scrollBoxTable.scrollSensitivity;
@@ -86,49 +87,13 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
     
         scrollBoxTable:MoveContent(vec.New(scrollBoxTable.scrollPosX, scrollBoxTable.scrollPosY));
 
-        if (scrollBoxTable.canHaveVerticalScrollBar) then
-            -- Calculate the proper position of the scrollbar.
-            local scrollBarBackgroundHeight = scrollBoxTable.scrollBarBackground:GetHeight();
-            local scrollBarHeight = scrollBoxTable.scrollBar:GetHeight();
-
-            local scrollHeight = scrollBarBackgroundHeight - scrollBarHeight;
-            local scrollBarY;
-            
-            if scrollBoxTable.fillFromBottom then
-                -- For bottom-fill, scrollbar position calculation
-                local scrollRange = height - contentHeight;
-                if scrollRange < 0 then
-                    -- Handle is anchored to bottom, so we need to calculate position from bottom
-                    -- When scrollPosY = 0 (newest messages), we want scrollBarY = 0 (at bottom)
-                    -- When scrollPosY = scrollRange (oldest messages), we want scrollBarY = -scrollHeight (at top)
-                    scrollBarY = (scrollBoxTable.scrollPosY / scrollRange) * scrollHeight;
-                else
-                    scrollBarY = 0; -- At bottom when no scrolling needed
-                end
-            else
-                -- Original top-fill calculation
-                scrollBarY = upperBoundY > 0 and -(scrollBoxTable.scrollPosY / upperBoundY) * scrollHeight or 0;
-            end
-
-            scrollBoxTable:MoveScrollBar(scrollBarY);
-        end
+        if (scrollBoxTable.canHaveVerticalScrollBar) then refreshScrollbarPosition(scrollBoxTable); end
 
         if scrollBoxTable.onScroll then scrollBoxTable.onScroll() end
     end
 
     scrollBoxTable.ScrollToStart = function(self : ScrollBox)
-        scrollBoxTable.scrollPosX = 0;
-        
-        if scrollBoxTable.fillFromBottom then
-            -- For bottom-fill, "start" means the natural position (newest content visible)
-            scrollBoxTable.scrollPosY = 0;
-        else
-            -- For top-fill, "start" means the top
-            scrollBoxTable.scrollPosY = 0;
-        end
-        
-        scrollBoxTable:MoveContent(vec.New(scrollBoxTable.scrollPosX, scrollBoxTable.scrollPosY));
-        scrollBoxTable:MoveScrollBar(scrollBoxTable.scrollPosY);
+        self:SetOffset(vec.New(0, 0));
     end
 
     scrollBoxTable.ScrollToEnd = function(self : ScrollBox)
@@ -136,20 +101,17 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
             return;
         end
 
-        scrollBoxTable.scrollPosX = 0;
-        
+        local targetY;
         if scrollBoxTable.fillFromBottom then
             -- For bottom-fill, "end" means scrolling up to see older content
             local height = scrollBoxTable._viewport:GetHeight();
             local contentHeight = scrollBoxTable.content:GetHeight();
-            scrollBoxTable.scrollPosY = math.min(0, height - contentHeight);
+            targetY = math.min(0, height - contentHeight);
         else
             -- For top-fill, "end" means the bottom
-            scrollBoxTable.scrollPosY = scrollBoxTable.contentSizeY - scrollBoxTable._viewport:GetHeight();
+            targetY = scrollBoxTable.contentSizeY - scrollBoxTable._viewport:GetHeight();
         end
-        
-        scrollBoxTable:MoveContent(vec.New(scrollBoxTable.scrollPosX, scrollBoxTable.scrollPosY));
-        scrollBoxTable:MoveScrollBar(scrollBoxTable.scrollPosY);
+        self:SetOffset(vec.New(0, targetY));
     end
 
     scrollBoxTable.MoveContent = function(self : ScrollBox, position : vec)
@@ -161,6 +123,23 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
             self.scrollBar:SetPos(vec.New(0, y));
         end
     end
+
+    refreshScrollbarPosition = function(self : ScrollBox)
+        if not self.canHaveVerticalScrollBar or self.scrollBar == nil then return; end
+        local viewportHeight = self._viewport:GetHeight();
+        local contentHeight = self.content:GetHeight();
+        local scrollRange = if self.fillFromBottom
+            then math.min(0, viewportHeight - contentHeight)
+            else math.max(0, contentHeight - viewportHeight);
+        local trackHeight = math.max(0, self.scrollBarBackground:GetHeight() - self.scrollBar:GetHeight());
+        local scrollBarY = 0;
+        if scrollRange ~= 0 and trackHeight > 0 then
+            scrollBarY = if self.fillFromBottom
+                then (self.scrollPosY / scrollRange) * trackHeight
+                else -(self.scrollPosY / scrollRange) * trackHeight;
+        end
+        self:MoveScrollBar(scrollBarY);
+    end;
 
     scrollBoxTable.SetAnchor = function(self : ScrollBox, anchor : vec)
         self.root:SetAnchor(anchor);
@@ -189,18 +168,7 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
             self:RefreshScrollbar();
             self:RefreshScrollbarHandleSize();
 
-            local viewportHeight = self._viewport:GetHeight();
-            local scrollRange = if self.fillFromBottom
-                then math.min(0, viewportHeight - height)
-                else math.max(0, height - viewportHeight);
-            local scrollTrackHeight = self.scrollBarBackground:GetHeight() - self.scrollBar:GetHeight();
-            local scrollBarY = 0;
-            if scrollRange ~= 0 then
-                scrollBarY = if self.fillFromBottom
-                    then (self.scrollPosY / scrollRange) * scrollTrackHeight
-                    else -(self.scrollPosY / scrollRange) * scrollTrackHeight;
-            end
-            self:MoveScrollBar(scrollBarY);
+            refreshScrollbarPosition(self);
         end
     end
 
@@ -271,6 +239,7 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
             then math.clamp(offset.y, math.min(0, viewportHeight - contentHeight), 0)
             else math.clamp(offset.y, 0, math.max(0, contentHeight - viewportHeight));
         self:MoveContent(vec.New(self.scrollPosX, self.scrollPosY));
+        refreshScrollbarPosition(self);
         if self.onScroll then self.onScroll(); end
     end
     scrollBoxTable.GetViewportSize = function(self : ScrollBox) : vec

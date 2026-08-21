@@ -1,5 +1,5 @@
 --[[
-EditorRegistry — registry of Lua editor windows.
+EditorRegistry - registry of Lua editor windows.
 
     local Editor = require("@src/API/Editor/Registry")
     Editor.Register("Clock", { Show = ..., Hide = ..., IsVisible = ... })

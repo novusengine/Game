@@ -2,7 +2,7 @@ export type TextUtilAPI =
 {
     ContainsIgnoreCase : (text : string, query : string) -> boolean,
     Truncate : (text : string, maximumCharacters : number) -> string,
-    TruncateToWidth : (text : string, textTemplate : string, maximumWidth : number) -> string,
+    TruncateToWidth : (text : string, textTemplate : string, maximumWidth : number, fontSize : number?) -> string,
 }
 
 local textUtilAPI : TextUtilAPI = { };
@@ -22,11 +22,16 @@ function textUtilAPI.Truncate(text : string, maximumCharacters : number) : strin
     return prefix .. suffix;
 end
 
-function textUtilAPI.TruncateToWidth(text : string, textTemplate : string, maximumWidth : number) : string
-    if UI.CalculateTextSize(text, textTemplate).x <= maximumWidth then return text; end
+function textUtilAPI.TruncateToWidth(text : string, textTemplate : string, maximumWidth : number, fontSize : number?) : string
+    local function Measure(value : string) : vec
+        if fontSize == nil then return UI.CalculateTextSize(value, textTemplate); end
+        return UI.CalculateTextSize(value, textTemplate, fontSize);
+    end
+
+    if Measure(text).x <= maximumWidth then return text; end
 
     local suffix = "...";
-    if UI.CalculateTextSize(suffix, textTemplate).x > maximumWidth then return ""; end
+    if Measure(suffix).x > maximumWidth then return ""; end
 
     local characterCount = utf8.len(text) or #text;
     local low = 0;
@@ -35,7 +40,7 @@ function textUtilAPI.TruncateToWidth(text : string, textTemplate : string, maxim
         local candidateLength = math.ceil((low + high) / 2);
         local endByte = utf8.offset(text, candidateLength + 1);
         local prefix = if endByte == nil then text else string.sub(text, 1, endByte - 1);
-        if UI.CalculateTextSize(prefix .. suffix, textTemplate).x <= maximumWidth then
+        if Measure(prefix .. suffix).x <= maximumWidth then
             low = candidateLength;
         else
             high = candidateLength - 1;

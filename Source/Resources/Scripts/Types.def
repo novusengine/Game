@@ -102,6 +102,17 @@ declare StatTypeEnum : StatTypeEnum
 
 export type Event = integer
 
+export type DatabaseEditorMutationResult =
+{
+    requestID : integer,
+    artifact : integer,
+    artifactID : integer,
+    mutationType : integer,
+    succeeded : boolean,
+    revision : integer,
+    response : string,
+}
+
 declare extern type GameEventDataMapLoaded with
     mapID : number
     mapInternalName : string
@@ -137,6 +148,12 @@ declare function RegisterEvent(eventID : Event, callback : ((eventID : Event, da
 declare Game : {
     IsLoaded : () -> boolean,
 }
+declare Interaction : {
+    GetState : (() -> { [string] : any }),
+    Open : ((unitID : integer) -> boolean),
+    Select : ((sessionID : integer, revision : integer, optionToken : integer) -> boolean),
+    Close : ((sessionID : integer) -> boolean),
+}
 declare Scheduler : {
     AfterSeconds : (seconds : number, callback : () -> ()) -> number,
     AfterFrames : (frames : number, callback : () -> ()) -> number,
@@ -149,8 +166,7 @@ type MapInfo = {
     internalName : string,
     name : string,
     flags : integer,
-    instanceType : integer,
-    expansionID : integer,
+    type : integer,
     maxPlayers : integer,
 }
 
@@ -160,6 +176,8 @@ declare Map : {
     GetList : () -> { MapInfo },
     Load : (internalName : string) -> boolean,
     LoadByID : (id : integer) -> boolean,
+    HasLocalHeader : (internalName : string) -> boolean,
+    CreateEmptyLocalHeader : (internalName : string) -> boolean,
     Unload : () -> boolean,
     SetOnCurrentMapChanged : (fn : (() -> ())?) -> (),
 }
@@ -308,6 +326,8 @@ type KeyboardEventCallback = ((widget : Widget, event : UIKeyboardEvent, ...any)
 declare extern type WidgetInputEvents with
     function SetOnMouseDown(self, callback : MouseEventCallback?) : ()
     function SetOnMouseUp(self, callback : MouseEventCallback?) : ()
+    -- Unlike MouseUp, MouseRelease is delivered even when the pointer leaves the pressed widget.
+    function SetOnMouseRelease(self, callback : MouseEventCallback?) : ()
     function SetOnMouseHeld(self, callback : MouseEventCallback?) : ()
     function SetOnMouseScroll(self, callback : MouseEventCallback?) : ()
 
@@ -471,11 +491,12 @@ declare UI :
 
     GetCanvas : ((name : string, position : vec, size : vec, isRenderTexture : boolean?) -> Canvas),
     GetMousePos : (() -> vec),
+    DrawLine2D : ((from : vec, to : vec, color : vec) -> ()),
     GetTextureSize : ((path : string) -> vec?),
     IsSmoothUnitFrameBarsEnabled : (() -> boolean),
 
     PixelsToTexCoord : ((position : vec, size : vec) -> vec),
-    CalculateTextSize : ((text : string, template : string) -> vec),
+    CalculateTextSize : ((text : string, template : string, fontSize : number?) -> vec),
     WrapText : ((text : string, template : string, wrapWidth : number) -> (string, vec)),
 
     FocusWidget : ((widget : Widget) -> ()),
@@ -512,6 +533,12 @@ declare Input :
     IsContextActive : ((name : string) -> boolean),
     GetContexts : (() -> { any }),
     IsMouseCaptured : (() -> boolean),
+    GetPenPressure : (() -> number),
+    IsPenInRange : (() -> boolean),
+    IsPenInContact : (() -> boolean),
+    GetPointerDelta : (() -> vector),
+    BeginPointerCapture : (() -> boolean),
+    EndPointerCapture : (() -> boolean),
     IsSoftwareCursorEnabled : (() -> boolean),
     GetCursorState : ((knownRevision : integer?) -> (integer?, string?)),
 }
@@ -531,6 +558,7 @@ declare Box :
 declare Unit :
 {
     GetLocal            : (() -> integer),
+    GetTarget           : (() -> integer),
     GetHovered          : (() -> integer),
     GetName             : ((unitID : integer) -> string),
     GetHealth           : ((unitID : integer) -> (number, number)),
@@ -742,6 +770,68 @@ declare SpellEditor :
     Delete : ((spellID : integer) -> boolean),
 }
 
+declare MapEditor :
+{
+    GetSnapshot : (() -> { [string] : any }),
+    GetState : (() -> string),
+    RequestSnapshot : (() -> boolean),
+    Create : ((flags : integer, internalName : string, name : string, mapType : integer, maxPlayers : integer) -> integer),
+    Update : ((mapID : integer, flags : integer, internalName : string, name : string, mapType : integer, maxPlayers : integer) -> integer),
+    TakeMutationResult : ((requestID : integer) -> DatabaseEditorMutationResult?),
+}
+
+declare InteractionEditor :
+{
+    GetSnapshot : (() -> { [string] : any }),
+    GetState : (() -> string),
+    GetRevision : (() -> integer),
+    RequestSnapshot : (() -> boolean),
+    CreateText : ((internalName : string, englishValue : string, translatorContext : string) -> integer),
+    UpdateText : ((textID : integer, internalName : string, englishValue : string, translatorContext : string) -> integer),
+    DeleteText : ((textID : integer) -> integer),
+    CreateTranslation : ((textID : integer, locale : integer, value : string) -> integer),
+    UpdateTranslation : ((textID : integer, locale : integer, value : string) -> integer),
+    DeleteTranslation : ((textID : integer, locale : integer) -> integer),
+    CreateConditionSet : ((internalName : string, groupOperator : integer, conditionType : integer, comparison : integer, parameter1 : integer, parameter2 : integer, parameter3 : integer, parameter4 : integer) -> integer),
+    UpdateConditionSet : ((conditionSetID : integer, internalName : string) -> integer),
+    DeleteConditionSet : ((conditionSetID : integer) -> integer),
+    CreateConditionGroup : ((conditionSetID : integer, parentGroupID : integer, groupOperator : integer, negated : boolean, orderIndex : integer, conditionType : integer, comparison : integer, parameter1 : integer, parameter2 : integer, parameter3 : integer, parameter4 : integer) -> integer),
+    UpdateConditionGroup : ((conditionGroupID : integer, groupOperator : integer, negated : boolean, orderIndex : integer) -> integer),
+    DeleteConditionGroup : ((conditionGroupID : integer) -> integer),
+    CreateCondition : ((conditionGroupID : integer, orderIndex : integer, conditionType : integer, comparison : integer, parameter1 : integer, parameter2 : integer, parameter3 : integer, parameter4 : integer) -> integer),
+    UpdateCondition : ((conditionID : integer, conditionGroupID : integer, orderIndex : integer, conditionType : integer, comparison : integer, parameter1 : integer, parameter2 : integer, parameter3 : integer, parameter4 : integer) -> integer),
+    DeleteCondition : ((conditionID : integer) -> integer),
+    CreateGossipMenu : ((internalName : string, greetingTextID : integer, flags : integer) -> integer),
+    UpdateGossipMenu : ((gossipMenuID : integer, internalName : string, greetingTextID : integer, flags : integer) -> integer),
+    DeleteGossipMenu : ((gossipMenuID : integer) -> integer),
+    CreateGossipMenuOption : ((menuID : integer, orderIndex : integer, textID : integer, icon : integer, flags : integer, visibilityConditionSetID : integer, enabledConditionSetID : integer, disabledReasonTextID : integer, actionType : integer, actionParameter1 : integer, actionParameter2 : integer, actionParameter3 : integer, actionParameter4 : integer) -> integer),
+    UpdateGossipMenuOption : ((optionID : integer, menuID : integer, orderIndex : integer, textID : integer, icon : integer, flags : integer, visibilityConditionSetID : integer, enabledConditionSetID : integer, disabledReasonTextID : integer, actionType : integer, actionParameter1 : integer, actionParameter2 : integer, actionParameter3 : integer, actionParameter4 : integer) -> integer),
+    ReorderGossipMenuOption : ((optionID : integer, menuID : integer, orderIndex : integer, textID : integer, icon : integer, flags : integer, visibilityConditionSetID : integer, enabledConditionSetID : integer, disabledReasonTextID : integer, actionType : integer, actionParameter1 : integer, actionParameter2 : integer, actionParameter3 : integer, actionParameter4 : integer) -> integer),
+    DeleteGossipMenuOption : ((optionID : integer) -> integer),
+    CreateCreatureTemplateInteraction : ((creatureTemplateID : integer, rangePolicy : integer, interactionRange : number, flags : integer, rootMenuID : integer, gossipFlags : integer) -> integer),
+    UpdateCreatureTemplateInteraction : ((creatureTemplateID : integer, rangePolicy : integer, interactionRange : number, flags : integer) -> integer),
+    DeleteCreatureTemplateInteraction : ((creatureTemplateID : integer) -> integer),
+    CreateCreatureTemplateGossip : ((creatureTemplateID : integer, rootMenuID : integer, flags : integer) -> integer),
+    UpdateCreatureTemplateGossip : ((creatureTemplateID : integer, rootMenuID : integer, flags : integer) -> integer),
+    DeleteCreatureTemplateGossip : ((creatureTemplateID : integer) -> integer),
+    TakeMutationResult : ((requestID : integer) -> DatabaseEditorMutationResult?),
+}
+
+declare CreatureAIEditor :
+{
+    GetState : (() -> { [string] : any }),
+    RequestCatalog : (() -> boolean),
+    InspectUnit : ((unitID : integer) -> boolean),
+    ClearInspection : (() -> ()),
+    View : ((scriptName : string) -> boolean),
+    Edit : ((scriptName : string) -> boolean),
+    Create : ((scriptName : string, relativePath : string, source : string) -> boolean),
+    Duplicate : ((sourceScriptName : string, scriptName : string, relativePath : string) -> boolean),
+    FinishEditing : ((scriptName : string) -> boolean),
+    Link : ((guidScope : boolean, scriptName : string) -> boolean),
+    Unlink : ((guidScope : boolean) -> boolean),
+}
+
 declare TerrainEditor :
 {
     GetState : (() -> { [string] : any }?),
@@ -750,13 +840,22 @@ declare TerrainEditor :
     BeginStroke : ((name : string) -> boolean),
     ApplySample : ((operation : integer, position : vector, radius : number, strength : number, hardness : number, deltaTime : number, targetHeight : number) -> boolean),
     SetPaintTexture : ((virtualPath : string) -> boolean),
+    SetPaintLayer : ((layerIndex : integer) -> boolean),
     ApplyPaintSample : ((position : vector, radius : number, pressure : number, hardness : number, deltaTime : number, targetOpacity : number) -> boolean),
+    ApplyVertexColorSample : ((position : vector, radius : number, flow : number, hardness : number, deltaTime : number, targetColor : vector) -> boolean),
     GetCursorLayers : (() -> { { path : string, textureHash : integer, layerIndex : integer, averageWeight : number } }),
     CommitStroke : (() -> boolean),
     CancelStroke : (() -> boolean),
     Undo : (() -> boolean),
     Redo : (() -> boolean),
     Save : (() -> boolean),
+    GetChunkLayout : (() -> { [string] : any }?),
+    AddChunk : ((x : integer, y : integer) -> boolean),
+    RemoveChunk : ((x : integer, y : integer) -> boolean),
+    ResetChunk : ((x : integer, y : integer) -> boolean),
+    GoToChunk : ((x : integer, y : integer) -> boolean),
+    PreviewHeightFieldImport : ((manifestPath : string) -> { [string] : any }),
+    ImportHeightField : ((manifestPath : string, minimumHeight : number, maximumHeight : number) -> { [string] : any }),
 }
 
 declare Container :

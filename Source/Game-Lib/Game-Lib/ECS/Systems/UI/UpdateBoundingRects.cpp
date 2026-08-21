@@ -68,7 +68,11 @@ namespace ECS::Systems::UI
             // A moved clip source re-uploads its own slot from the new rect.
             auto* clipper = registry.try_get<Components::UI::Clipper>(entity);
             if (clipper != nullptr && (clipper->clipRectBufferIndex != 0 || clipper->maskBufferIndex != 0))
+            {
                 ECS::Util::UI::RecomputeClipSlots(&registry, entity);
+                if (clipper->clipChildren)
+                    registry.emplace_or_replace<Components::UI::DirtyChildClipper>(entity);
+            }
         });
 
         if (movedEntities.empty())
@@ -115,6 +119,8 @@ namespace ECS::Systems::UI
                 rect->max = pos + transform.GetSize();
             }
             ECS::Util::UI::RecomputeClipSlots(&registry, sourceEntity);
+            if (clipper->clipChildren)
+                registry.emplace_or_replace<Components::UI::DirtyChildClipper>(sourceEntity);
         }
 
         for (entt::entity dead : deadSources)

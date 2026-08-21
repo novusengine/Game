@@ -6,6 +6,8 @@
 
 #include <FileFormat/Novus/ShaderPack/ShaderPack.h>
 
+#include <Input/InputTypes.h>
+
 #include <robinhood/robinhood.h>
 
 namespace Renderer
@@ -72,9 +74,12 @@ public:
     bool SetCursor(u64 nameHash, u32 imguiMouseCursor = 0);
     u32 GetCursorRevision() const { return _cursorRevision; }
     const std::string& GetCursorTexturePath() const { return _cursorTexturePath; }
-    void HandleCursorPosition(f64 x, f64 y);
+    void HandleCursorPosition(f64 x, f64 y, PointerSource pointerSource);
     void RestoreCursorPosition(const vec2& position);
     void CancelCursorRestore();
+    bool BeginPointerCapture();
+    bool EndPointerCapture();
+    bool IsPointerCaptureActive() const { return _pointerCaptureActive; }
 
     Renderer::Renderer* GetRenderer() { return _renderer; }
 
@@ -143,8 +148,11 @@ private:
     u8 _frameIndex = 0;
     vec2 _lastWindowSize = vec2(1, 1);
     vec2 _cursorRestorePosition = vec2(0.0f);
+    vec2 _pointerCapturePosition = vec2(0.0f);
     f64 _cursorRestoreDeadline = 0.0;
     bool _cursorRestorePending = false;
+    bool _pointerCaptureActive = false;
+    CursorMode _pointerCapturePreviousMode = CursorMode::Hardware;
     RenderResources _resources;
 
     Renderer::ComputePipelineID _allDescriptorSetComputePipeline;

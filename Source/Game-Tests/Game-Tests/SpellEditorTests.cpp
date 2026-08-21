@@ -1,5 +1,6 @@
 #include "Game-Lib/Editor/SpellEditorData.h"
 
+#include <MetaGen/Shared/DatabaseEditor/DatabaseEditor.h>
 #include <MetaGen/Shared/Spell/Spell.h>
 
 #include <catch2/catch2.hpp>
@@ -10,27 +11,13 @@ TEST_CASE("Spell editor mutation results remain request correlated", "[SpellEdit
     const u32 firstRequestID = data.StartMutationRequest();
     const u32 secondRequestID = data.StartMutationRequest();
 
-    data.RecordMutationResult({
-        .requestID = secondRequestID,
-        .artifact = MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell,
-        .artifactID = 42,
-        .mutationType = MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Update,
-        .succeeded = true,
-        .response = "second"
-    });
-    data.RecordMutationResult({
-        .requestID = firstRequestID,
-        .artifact = MetaGen::Shared::Spell::SpellEditorArtifactEnum::SpellAuraConstraintGroup,
-        .artifactID = 43,
-        .mutationType = MetaGen::Shared::Spell::SpellEditorMutationTypeEnum::Create,
-        .succeeded = false,
-        .response = "first"
-    });
+    data.RecordMutationResult({ .requestID = secondRequestID, .artifact = static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell), .artifactID = 42, .mutationType = MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Update, .succeeded = true, .response = "second" });
+    data.RecordMutationResult({ .requestID = firstRequestID, .artifact = static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::SpellAuraConstraintGroup), .artifactID = 43, .mutationType = MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Create, .succeeded = false, .response = "first" });
 
     const auto firstResult = data.TakeMutationResult(firstRequestID);
     REQUIRE(firstResult);
     CHECK(firstResult->requestID == firstRequestID);
-    CHECK(firstResult->artifact == MetaGen::Shared::Spell::SpellEditorArtifactEnum::SpellAuraConstraintGroup);
+    CHECK(firstResult->artifact == static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::SpellAuraConstraintGroup));
     CHECK(firstResult->artifactID == 43);
     CHECK_FALSE(firstResult->succeeded);
     CHECK(firstResult->response == "first");
@@ -38,7 +25,7 @@ TEST_CASE("Spell editor mutation results remain request correlated", "[SpellEdit
     const auto secondResult = data.TakeMutationResult(secondRequestID);
     REQUIRE(secondResult);
     CHECK(secondResult->requestID == secondRequestID);
-    CHECK(secondResult->artifact == MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell);
+    CHECK(secondResult->artifact == static_cast<u8>(MetaGen::Shared::Spell::SpellEditorArtifactEnum::Spell));
     CHECK(secondResult->artifactID == 42);
     CHECK(secondResult->succeeded);
     CHECK_FALSE(data.TakeMutationResult(secondRequestID));

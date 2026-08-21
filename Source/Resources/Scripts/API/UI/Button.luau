@@ -11,6 +11,7 @@ export type Options =
     hoverColor : vec?,
     highlightColor : vec?,
     alpha : number?,
+    clipChildren : boolean?,
     hoverAlpha : number?,
     highlightAlpha : number?,
     disabledAlpha : number?,
@@ -29,6 +30,7 @@ export type Button =
     SetInteractable : (self : Button, interactable : boolean) -> (),
     SetVisualEnabled : (self : Button, enabled : boolean) -> (),
     SetFocusable : (self : Button, focusable : boolean) -> (),
+    SetClipChildren : (self : Button, clipChildren : boolean) -> (),
     SetHighlighted : (self : Button, highlighted : boolean) -> (),
     SetSize : (self : Button, size : vec) -> (),
     NewWidget : (self : Button, position : vec, layer : integer) -> Widget,
@@ -76,6 +78,11 @@ local DEFAULT_BASE_ALPHA = 1.0;
 local DEFAULT_HOVER_ALPHA = 1.0;
 local DEFAULT_DISABLED_ALPHA = 0.08;
 
+local function GetTextPrefix(value : string, characterCount : number) : string
+    local endByte = utf8.offset(value, characterCount + 1);
+    return if endByte == nil then value else string.sub(value, 1, endByte - 1);
+end
+
 function buttonAPI.New(parent : Widget, position : vec, size : vec, layer : integer, options : Options?) : Button
     local opts = options or { };
     local root = parent:NewPanel(position, size, layer, opts.panelTemplate or "DefaultButtonPanel");
@@ -111,13 +118,40 @@ function buttonAPI.New(parent : Widget, position : vec, size : vec, layer : inte
         _highlighted = false,
         _hovered = false,
         _interactable = true,
+        _rawText = opts.text or "",
         _onHoverBegin = nil,
         _onHoverEnd = nil,
     } :: any;
     RootedWidget.Attach(self);
 
+    local function RefreshText()
+        local maximumWidth = math.max(0, root:GetWidth() - textPadding * 2);
+        local rawText = self._rawText;
+        text:SetText(rawText);
+        if rawText == "" or text:GetWidth() <= maximumWidth then return; end
+
+        local suffix = "...";
+        text:SetText(suffix);
+        if text:GetWidth() > maximumWidth then
+            text:SetText("");
+            return;
+        end
+
+        local characterCount = utf8.len(rawText) or #rawText;
+        local low = 0;
+        local high = characterCount;
+        while low < high do
+            local candidateLength = math.ceil((low + high) / 2);
+            local candidate = GetTextPrefix(rawText, candidateLength) .. suffix;
+            text:SetText(candidate);
+            if text:GetWidth() <= maximumWidth then low = candidateLength else high = candidateLength - 1; end
+        end
+        text:SetText(GetTextPrefix(rawText, low) .. suffix);
+    end
+
     if opts.color ~= nil then root:SetColor(self._baseColor); end
     if opts.alpha ~= nil then root:SetAlpha(self._baseAlpha); end
+    if opts.clipChildren ~= nil then root:SetClipChildren(opts.clipChildren); end
     if opts.borderColor ~= nil then root:SetBorderColor(opts.borderColor); end
     if opts.borderSize ~= nil then root:SetBorderSize(opts.borderSize); end
 
@@ -152,12 +186,22 @@ function buttonAPI.New(parent : Widget, position : vec, size : vec, layer : inte
         if self._onHoverEnd ~= nil then self._onHoverEnd(...); end
     end);
 
-    function self:SetText(value : string) text:SetText(value); end
-    function self:SetFontSize(value : number) text:SetFontSize(value); end
+    function self:SetText(value : string)
+        self._rawText = value;
+        RefreshText();
+    end
+    function self:SetFontSize(value : number)
+        text:SetFontSize(value);
+        RefreshText();
+    end
     function self:SetEnabled(value : boolean) root:SetEnabled(value); end
     function self:SetVisible(value : boolean) root:SetVisible(value); end
     function self:SetFocusable(value : boolean) root:SetFocusable(value); end
-    function self:SetSize(sizeValue : vec) root:SetSize(sizeValue); end
+    function self:SetClipChildren(value : boolean) root:SetClipChildren(value); end
+    function self:SetSize(sizeValue : vec)
+        root:SetSize(sizeValue);
+        RefreshText();
+    end
     function self:SetInteractable(value : boolean)
         self._interactable = value;
         if not value then self._hovered = false; end
@@ -204,6 +248,8 @@ function buttonAPI.New(parent : Widget, position : vec, size : vec, layer : inte
     function self:SetOnFocusHeld(callback : MouseEventCallback?) root:SetOnFocusHeld(callback); end
     function self:SetOnKeyboard(callback : KeyboardEventCallback?) root:SetOnKeyboard(callback); end
     function self:ForceRefresh() root:ForceRefresh(); text:ForceRefresh(); end
+
+    RefreshText();
 
     return self :: Button;
 end

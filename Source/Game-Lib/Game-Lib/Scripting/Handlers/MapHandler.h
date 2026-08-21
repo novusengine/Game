@@ -20,6 +20,8 @@ namespace Scripting::Map
         static i32 GetList(Zenith* zenith);
         static i32 Load(Zenith* zenith);
         static i32 LoadByID(Zenith* zenith);
+        static i32 HasLocalHeader(Zenith* zenith);
+        static i32 CreateEmptyLocalHeader(Zenith* zenith);
         static i32 Unload(Zenith* zenith);
         static i32 SetOnCurrentMapChanged(Zenith* zenith);
 
@@ -36,6 +38,8 @@ namespace Scripting::Map
         { "GetList",                MapHandler::GetList },
         { "Load",                   MapHandler::Load,             Scripting::LuaMethodFlags::DeveloperOnly },
         { "LoadByID",               MapHandler::LoadByID,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "HasLocalHeader",         MapHandler::HasLocalHeader,   Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateEmptyLocalHeader", MapHandler::CreateEmptyLocalHeader, Scripting::LuaMethodFlags::DeveloperOnly },
         { "Unload",                 MapHandler::Unload,           Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetOnCurrentMapChanged", MapHandler::SetOnCurrentMapChanged },
     };

@@ -50,8 +50,6 @@ public:
     static bool HandleCheatResurrect(GameConsole* gameConsole, MetaGen::Game::Command::CheatResurrectCommand& command);
     static bool HandleCheatCast(GameConsole* gameConsole, MetaGen::Game::Command::CheatCastCommand& command);
     static bool HandleCheatPathGenerate(GameConsole* gameConsole, MetaGen::Game::Command::CheatPathGenerateCommand& command);
-    static bool HandleMapSync(GameConsole* gameConsole, MetaGen::Game::Command::MapSyncCommand& command);
-    static bool HandleMapSyncAll(GameConsole* gameConsole, MetaGen::Game::Command::MapSyncAllCommand& command);
     static bool HandleGotoAdd(GameConsole* gameConsole, MetaGen::Game::Command::GotoAddCommand& command);
     static bool HandleGotoAddHere(GameConsole* gameConsole, MetaGen::Game::Command::GotoAddHereCommand& command);
     static bool HandleGotoRemove(GameConsole* gameConsole, MetaGen::Game::Command::GotoRemoveCommand& command);

@@ -98,6 +98,12 @@ type InputTableAPI =
     IsContextActive : (name : string) -> boolean,
     GetContexts : () -> { InputContextInfo },
     IsMouseCaptured : () -> boolean,
+    GetPenPressure : () -> number,
+    IsPenInRange : () -> boolean,
+    IsPenInContact : () -> boolean,
+    GetPointerDelta : () -> vec,
+    BeginPointerCapture : () -> boolean,
+    EndPointerCapture : () -> boolean,
 }
 
 local inputTableAPI : InputTableAPI = { };
@@ -432,6 +438,30 @@ end
 
 function inputTableAPI.IsMouseCaptured() : boolean
     return Input.IsMouseCaptured();
+end
+
+function inputTableAPI.GetPenPressure() : number
+    return Input.GetPenPressure();
+end
+
+function inputTableAPI.IsPenInRange() : boolean
+    return Input.IsPenInRange();
+end
+
+function inputTableAPI.IsPenInContact() : boolean
+    return Input.IsPenInContact();
+end
+
+function inputTableAPI.GetPointerDelta() : vec
+    return Input.GetPointerDelta();
+end
+
+function inputTableAPI.BeginPointerCapture() : boolean
+    return Input.BeginPointerCapture();
+end
+
+function inputTableAPI.EndPointerCapture() : boolean
+    return Input.EndPointerCapture();
 end
 
 return inputTableAPI;

@@ -64,6 +64,8 @@ public:
 
     u32 AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos);
     u32 AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset);
+    bool HideChunk(u32 chunkDataIndex);
+    bool ReplaceChunk(u32 chunkDataIndex, u32 chunkHash, const Map::Chunk& chunk, ivec2 chunkGridPos);
     bool UpdateChunkCells(u32 chunkDataIndex, const Map::Chunk& chunk, std::span<const u16> cellIDs);
     bool UpdateChunkTextureLayers(u32 chunkDataIndex, const Map::Chunk& chunk, std::span<const u16> cellIDs);
     bool CreateEditableAlphaMap(u32 chunkDataIndex, u64 alphaMapHash, std::span<const u8> rgbaData, Renderer::TextureID& outTextureID);

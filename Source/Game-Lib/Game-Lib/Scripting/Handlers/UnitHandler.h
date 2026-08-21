@@ -17,6 +17,7 @@ namespace Scripting::Unit
 
     public: // Registered Functions
         static i32 GetLocal(Zenith* zenith);
+        static i32 GetTarget(Zenith* zenith);
         static i32 GetHovered(Zenith* zenith);
         static i32 GetName(Zenith* zenith);
         static i32 GetHealth(Zenith* zenith);
@@ -43,6 +44,7 @@ namespace Scripting::Unit
     static LuaRegister<> unitGlobalMethods[] =
     {
         { "GetLocal", UnitHandler::GetLocal },
+        { "GetTarget", UnitHandler::GetTarget },
         { "GetHovered", UnitHandler::GetHovered },
         { "GetName", UnitHandler::GetName },
         { "GetHealth", UnitHandler::GetHealth },

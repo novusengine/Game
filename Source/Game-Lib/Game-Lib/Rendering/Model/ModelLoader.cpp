@@ -711,12 +711,11 @@ entt::entity ModelLoader::CreateModelEntity(const std::string& name)
 
 f32 ModelLoader::GetLoadingProgress() const
 {
-    u32 numModelsToLoad = _numTerrainModelsToLoad;
-    u32 min = _numTerrainModelsLoaded;
-    u32 max = glm::max(1u, numModelsToLoad);
+    const u32 numModelsToLoad = _numTerrainModelsToLoad;
+    if (numModelsToLoad == 0)
+        return 1.0f;
 
-    f32 terrainModelProgress = static_cast<f32>(min) / static_cast<f32>(max);
-    return terrainModelProgress;
+    return static_cast<f32>(_numTerrainModelsLoaded) / static_cast<f32>(numModelsToLoad);
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
@@ -1420,12 +1419,7 @@ void ModelLoader::EnqueueLoadResult(const LoadRequestInternal& request, bool suc
 {
     NC_ASSERT(request.requestID != ModelLoading::INVALID_MODEL_LOAD_REQUEST_ID, "ModelLoader cannot complete a request without a stable request ID");
 
-    _loadRequestResults.enqueue({
-        .requestID = request.requestID,
-        .request = request,
-        .success = success,
-        .isStatic = isStatic,
-    });
+    _loadRequestResults.enqueue({ .requestID = request.requestID, .request = request, .success = success, .isStatic = isStatic });
 }
 
 bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)

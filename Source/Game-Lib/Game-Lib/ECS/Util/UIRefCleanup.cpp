@@ -17,6 +17,7 @@ namespace ECS::Util::UIRefCleanup
         auto& info = registry.get<ECS::Components::UI::EventInputInfo>(entity);
         Scripting::Util::Zenith::Unref(zenith, info.onMouseDownEvent);
         Scripting::Util::Zenith::Unref(zenith, info.onMouseUpEvent);
+        Scripting::Util::Zenith::Unref(zenith, info.onMouseReleaseEvent);
         Scripting::Util::Zenith::Unref(zenith, info.onMouseHeldEvent);
         Scripting::Util::Zenith::Unref(zenith, info.onMouseScrollEvent);
         Scripting::Util::Zenith::Unref(zenith, info.onHoverBeginEvent);

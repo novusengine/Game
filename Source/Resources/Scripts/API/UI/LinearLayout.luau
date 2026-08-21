@@ -46,6 +46,8 @@ local LayoutCommon = require("@src/API/UI/LayoutCommon")
 export type SizeMode = "fixed" | "shrink" | "stretch" | "auto"
 export type ChildMode = "fixed" | "flex"
 export type AlignKind = "start" | "center" | "end"
+export type SlotAlignH = "left" | "center" | "right"
+export type SlotAlignV = "top" | "center" | "bottom"
 
 export type LinearChildOpts =
 {
@@ -61,6 +63,15 @@ export type LinearChildOpts =
     aspectRatio : number?,                                      -- cross = main / aspectRatio (overrides crossMode)
     alignH : AlignKind?,                                        -- per-child cross-axis position override (V layout only)
     alignV : AlignKind?,                                        -- per-child cross-axis position override (H layout only)
+
+    -- Optional alignment of the child's actual widget bounds inside the slot
+    -- allocated by this layout. This is direction-independent: left/right and
+    -- top/bottom keep their physical meaning even with reverse=true. Useful for
+    -- intrinsically-sized children (e.g. Text) that cannot resize to the slot.
+    slotAlignH : SlotAlignH?,
+    slotAlignV : SlotAlignV?,
+    slotInset : vec?,
+
     skip : boolean?,
 }
 
@@ -89,6 +100,14 @@ export type LinearLayoutAPI =
 }
 
 local linearLayoutAPI : LinearLayoutAPI = {}
+
+local function GetSlotOffset(available : number, content : number, alignment : string, leadingAlignment : string, inset : number) : number
+    local slack = math.max(0, available - content);
+    if slack <= 0 then return 0; end
+    if alignment == "center" then return math.floor(slack / 2); end
+    if alignment == leadingAlignment then return math.min(inset, slack); end
+    return math.max(0, slack - math.min(inset, slack));
+end
 
 -- Run the layout pass. Idempotent given the same inputs; called via the
 -- C++ pre-render hook (RegisterLayoutRefresh) and via outer-layout RefreshLocal.
@@ -379,6 +398,18 @@ local function DoRefresh(self)
         if it.proxy and it.proxy._innerLayout then
             it.proxy._innerLayout:RefreshLocal()
         end
+
+        -- Capture the child's actual post-resize bounds. Intrinsically-sized
+        -- widgets such as Text may not expose SetWidth/SetHeight, so their
+        -- actual bounds can remain smaller than the layout slot allocated to them.
+        if it.hasSize then
+            local actualSize = it.raw:GetSize()
+            it.actualX = actualSize.x
+            it.actualY = actualSize.y
+        else
+            it.actualX = 0
+            it.actualY = 0
+        end
     end
 
     -- Phase E: place children.
@@ -434,6 +465,31 @@ local function DoRefresh(self)
             setX = if reverse then -cursor else cursor
             setY = -crossDist
         end
+
+        if co.slotAlignH ~= nil or co.slotAlignV ~= nil or co.slotInset ~= nil then
+            local rawInset = co.slotInset or vec.New(0, 0)
+            local inset = vec.New(math.max(0, rawInset.x), math.max(0, rawInset.y))
+            local slotWidth = if mainAxisIsY then it.resolvedCross else it.resolvedMain
+            local slotHeight = if mainAxisIsY then it.resolvedMain else it.resolvedCross
+            local actualWidth = it.actualX or it.intrinsicX
+            local actualHeight = it.actualY or it.intrinsicY
+            local alignH : SlotAlignH = co.slotAlignH or "left"
+            local alignV : SlotAlignV = co.slotAlignV or "top"
+            if alignH ~= "left" and alignH ~= "center" and alignH ~= "right" then error(`LinearLayout: invalid slotAlignH '{alignH}'`, 2) end
+            if alignV ~= "top" and alignV ~= "center" and alignV ~= "bottom" then error(`LinearLayout: invalid slotAlignV '{alignV}'`, 2) end
+
+            -- The child is anchored to the layout's leading corner. Convert
+            -- absolute physical alignment into an offset from that corner so
+            -- reverse=true never flips left/right or top/bottom semantics.
+            local leadingH = if anchorX == 0 then "left" else "right"
+            local leadingV = if anchorY == 1 then "top" else "bottom"
+            local offsetX = GetSlotOffset(slotWidth, actualWidth, alignH, leadingH, inset.x)
+            local offsetY = GetSlotOffset(slotHeight, actualHeight, alignV, leadingV, inset.y)
+
+            setX += if anchorX == 0 then offsetX else -offsetX
+            setY += if anchorY == 0 then offsetY else -offsetY
+        end
+
         it.raw:SetPos(vec.New(setX, setY))
 
         cursor += it.resolvedMain + spacing
@@ -464,6 +520,10 @@ function linearLayoutAPI.New(parent : Widget, position : vec, size : vec, layer 
     local layoutTable = LayoutCommon.MakeBaseLayout(panel, opts, DoRefresh)
     layoutTable._measuredMain = 0
     layoutTable._measuredCross = 0
+
+    function layoutTable.GetAxis(sf)
+        return sf._opts.axis
+    end
 
     function layoutTable.GetMeasuredHeight(sf)
         sf:Refresh()

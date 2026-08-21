@@ -27,6 +27,7 @@ export type FrameManagerAPI =
     Register : (name : string, options : Options) -> Frame,
     Get : (name : string) -> Frame?,
     IsOpen : (name : string) -> boolean,
+    IsRoleOpen : (role : Role) -> boolean,
     Open : (name : string) -> boolean,
     Close : (name : string) -> boolean,
     Toggle : (name : string) -> boolean,
@@ -90,6 +91,14 @@ end
 function frameManagerAPI.IsOpen(name : string) : boolean
     local frame = frames[name];
     return frame ~= nil and frame.isOpen;
+end
+
+function frameManagerAPI.IsRoleOpen(role : Role) : boolean
+    for _, name in openOrder do
+        local frame = frames[name];
+        if frame ~= nil and frame.isOpen and frame.role == role then return true; end
+    end
+    return false;
 end
 
 function frameManagerAPI.Close(name : string) : boolean

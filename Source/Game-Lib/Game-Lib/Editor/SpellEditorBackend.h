@@ -5,6 +5,7 @@
 #include <Gameplay/GameDefine.h>
 
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/DatabaseEditor/DatabaseEditor.h>
 #include <MetaGen/Shared/Spell/Spell.h>
 
 #include <array>
@@ -127,18 +128,12 @@ namespace Editor
         bool RemoveConstraint(u32 constraintID);
         bool SetConstraintNumber(u32 constraintID, std::string_view field, u64 value);
         bool ResetConstraintField(u32 constraintID, std::string_view field);
-        u32 CreateConstraintGroup(std::string name, u8 defaultScope,
-            u16 defaultMaximumApplications, u8 defaultOverflowBehavior);
-        bool UpdateConstraintGroup(u32 groupID, std::string name, u8 defaultScope,
-            u16 defaultMaximumApplications, u8 defaultOverflowBehavior);
+        u32 CreateConstraintGroup(std::string name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior);
+        bool UpdateConstraintGroup(u32 groupID, std::string name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior);
         bool DeleteConstraintGroup(u32 groupID);
 
-        u32 CreateProcData(u32 ownerSpellID, std::string name, u32 phaseMask,
-            u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute,
-            f32 chanceToProc, u32 internalCooldownMS, i32 charges);
-        bool UpdateProcData(u32 procDataID, u32 ownerSpellID, std::string name,
-            u32 phaseMask, u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute,
-            f32 chanceToProc, u32 internalCooldownMS, i32 charges);
+        u32 CreateProcData(u32 ownerSpellID, std::string name, u32 phaseMask, u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute, f32 chanceToProc, u32 internalCooldownMS, i32 charges);
+        bool UpdateProcData(u32 procDataID, u32 ownerSpellID, std::string name, u32 phaseMask, u64 typeMask, u64 hitMask, u64 flags, f32 procsPerMinute, f32 chanceToProc, u32 internalCooldownMS, i32 charges);
         bool DeleteProcData(u32 procDataID);
         u32 AddProcLink(u32 procDataID);
         bool RemoveProcLink(u32 procLinkID);
@@ -160,9 +155,9 @@ namespace Editor
     private:
         SpellEditorData* GetData() const;
         bool LoadDraft(u32 spellID, SpellEditorDraft& draft) const;
-        bool SendDraft(const SpellEditorDraft& draft, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType);
-        bool SendConstraintGroupMutation(u32 groupID, std::string_view name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType);
-        bool SendProcDataMutation(const GameDefine::Database::SpellProcData& value, u32 ownerSpellID, std::string_view name, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType);
+        bool SendDraft(const SpellEditorDraft& draft, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType);
+        bool SendConstraintGroupMutation(u32 groupID, std::string_view name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType);
+        bool SendProcDataMutation(const GameDefine::Database::SpellProcData& value, u32 ownerSpellID, std::string_view name, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType);
         bool BuildPayload(const SpellEditorDraft& draft, std::shared_ptr<Bytebuffer>& payload) const;
         u32 AllocateID(MetaGen::Shared::Spell::SpellEditorArtifactEnum artifact, const std::vector<u32>& additionalIDs = {}) const;
         bool CanEdit() const;

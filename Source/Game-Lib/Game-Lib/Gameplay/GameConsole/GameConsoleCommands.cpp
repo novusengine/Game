@@ -35,6 +35,7 @@
 
 #include <MetaGen/Game/Command/Command.h>
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Localization/Localization.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Network/Client.h>
@@ -896,9 +897,7 @@ bool GameConsoleCommands::HandleCheatLogin(GameConsole* gameConsole, MetaGen::Ga
     const char* connectIP = CVarSystem::Get()->GetStringCVar(CVarCategory::Network, "connectIP");
     if (networkState.client->Connect(connectIP, 4000))
     {
-        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{
-            .accountName = command.accountName
-        });
+        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{ .accountName = command.accountName, .locale = static_cast<u8>(MetaGen::Shared::Localization::LocaleEnum::EnUS) });
     }
 
     return true;
@@ -997,11 +996,7 @@ bool GameConsoleCommands::HandleCheatCast(GameConsole* gameConsole, MetaGen::Gam
                 targetGUID = target->networkID;
         }
 
-        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSpellCastPacket{
-            .spellID = command.spellID,
-            .targetGUID = targetGUID,
-            .targetPosition = vec3(0.0f)
-        });
+        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSpellCastPacket{ .spellID = command.spellID, .targetGUID = targetGUID, .targetPosition = vec3(0.0f) });
     }
     else
     {
@@ -1029,62 +1024,8 @@ bool GameConsoleCommands::HandleCheatPathGenerate(GameConsole* gameConsole, Meta
     vec3 startPos = transform.GetWorldPosition();
     vec3 endPos = startPos + (14.2222f * -transform.GetLocalForward());
 
-    ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientPathGeneratePacket {
-        .start = startPos,
-        .end = endPos
-    });
+    ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientPathGeneratePacket{ .start = startPos, .end = endPos });
 
-    return true;
-}
-
-bool GameConsoleCommands::HandleMapSync(GameConsole* gameConsole, MetaGen::Game::Command::MapSyncCommand& command)
-{
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-
-    if (!ECS::Util::Network::IsConnected(networkState))
-        return false;
-
-    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
-    auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
-
-    if (!mapStorage->Has(command.mapID))
-        return false;
-
-    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<1024>();
-
-    auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(command.mapID);
-    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatMapAdd(buffer, mapStorage, command.mapID, map))
-        return false;
-
-    networkState.client->Send(buffer);
-    return true;
-}
-
-bool GameConsoleCommands::HandleMapSyncAll(GameConsole* gameConsole, MetaGen::Game::Command::MapSyncAllCommand& command)
-{
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-
-    if (!ECS::Util::Network::IsConnected(networkState))
-        return false;
-
-    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
-    auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
-
-    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<1048576>();
-
-    mapStorage->Each([&](u32 id, const MetaGen::Shared::ClientDB::MapRecord& map)
-    {
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatMapAdd(buffer, mapStorage, id, map))
-            return false;
-
-        return true;
-    });
-
-    networkState.client->Send(buffer);
     return true;
 }
 

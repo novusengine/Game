@@ -2,6 +2,8 @@ local Input = require("@src/API/Input/Input");
 local UIUnitFrame = require("@src/API/Game/UI/UnitFrame");
 local ActionBar = require("@src/API/Game/UI/ActionBar");
 local SpellAction = require("@src/API/Game/UI/SpellAction");
+local ContextMenu = require("@src/API/UI/ContextMenu");
+local EditorRegistry = require("@src/API/Editor/Registry");
 
 type Aura =
 {
@@ -45,6 +47,8 @@ local unitFrames : PlayerUnitFramesAPI =
     targetBuffBar = { },
     targetDebuffBar = { }
 };
+
+local creatureAIContextMenu : ContextMenu.ContextMenu? = nil;
 
 local unitTargetIDs : { [integer] : integer } = {};
 
@@ -402,6 +406,22 @@ local function OnGameLoaded(eventID : integer, data : any)
     unitFrames.playerUnitFrame:SetEnabled(false);
 
     unitFrames.targetUnitFrame = CreateUnitFrame(INVALID_UNIT_ID, 1150, 500, 170, 50);
+    creatureAIContextMenu = ContextMenu.New(canvas, { items = { }, layer = 1300i, minWidth = 150 });
+    unitFrames.targetUnitFrame.border:SetOnMouseUp(function(_, _, button, mouseX, mouseY)
+        if button ~= 1i or creatureAIContextMenu == nil then return; end
+
+        local creatureAIBrowser : any = EditorRegistry.Get("CreatureAI");
+        if creatureAIBrowser == nil or creatureAIBrowser.InspectUnit == nil then return; end
+
+        local unitID = unitFrames.targetUnitFrame:GetUnitID();
+        creatureAIContextMenu:SetItems({
+            {
+                label = "View in Creature AI",
+                onClick = function() creatureAIBrowser:InspectUnit(unitID); end,
+            },
+        });
+        creatureAIContextMenu:Open(mouseX, mouseY);
+    end);
     unitFrames.targetUnitFrame:SetEnabled(false);
 
     unitFrames.playerBuffBar = {};

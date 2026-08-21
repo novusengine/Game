@@ -4,6 +4,7 @@
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainRenderer.h"
@@ -131,6 +132,7 @@ namespace Editor
                     for (size_t byteOffset = 0; byteOffset < outRGBA.size(); byteOffset += ALPHA_MAP_CHANNEL_COUNT)
                         std::swap(outRGBA[byteOffset], outRGBA[byteOffset + 2]);
                 }
+
                 return true;
             }
 
@@ -244,7 +246,10 @@ namespace Editor
             InputSystem* inputSystem = ServiceLocator::GetInputSystem();
             GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-            if (!inputSystem || inputSystem->IsMouseCaptured() || !gameRenderer || !registries || !registries->gameRegistry || !registries->uiRegistry)
+            if (!inputSystem || !gameRenderer || !registries || !registries->gameRegistry || !registries->uiRegistry)
+                return false;
+
+            if (inputSystem->IsMouseCaptured() && !gameRenderer->IsPointerCaptureActive())
                 return false;
 
             entt::registry& registry = *registries->gameRegistry;
@@ -309,6 +314,8 @@ namespace Editor
     {
         _loadedChunks.reserve(128);
         _dirtyChunks.reserve(128);
+        _unsavedCreatedChunks.reserve(16);
+        _physicsDirtyChunks.reserve(128);
         _editablePaintChunkIDs.reserve(16);
         _editableChunkScratch.reserve(8);
         _chunkCellScratch.reserve(8);
@@ -319,6 +326,8 @@ namespace Editor
         _transactionChunkScratch.reserve(8);
         _candidateScratch.reserve(32768);
         _newHeightScratch.reserve(32768);
+        _sharedVertexHeightScratch.reserve(4096);
+        _sharedVertexColorScratch.reserve(4096);
         _paintCellWorkScratch.reserve(256);
         _paintBeforeScratch.reserve(256 * ALPHA_MAP_CELL_BYTE_SIZE);
     }
@@ -330,7 +339,7 @@ namespace Editor
             ResetForMapChange(currentMapName);
 
         RefreshLoadedChunks();
-        if (_enabled && (_mapName.empty() || _terrainLoader.IsLoading() || _loadedChunks.empty()))
+        if (_enabled && (_mapName.empty() || _terrainLoader.IsLoading()))
             SetEnabled(false);
 
         _hasCursorHit = _enabled && CalculateCursorHit(_cursorPosition);
@@ -362,7 +371,7 @@ namespace Editor
 
     bool TerrainEditSession::SetEnabled(bool enabled)
     {
-        if (enabled && (_terrainLoader.GetCurrentMapInternalName().empty() || _terrainLoader.IsLoading() || _loadedChunks.empty()))
+        if (enabled && (_terrainLoader.GetCurrentMapInternalName().empty() || _terrainLoader.IsLoading()))
             return false;
 
         if (!enabled && _strokeActive)
@@ -388,12 +397,16 @@ namespace Editor
         _activeTransaction = {};
         _activeTransaction.name = name.empty() ? "Sculpt Terrain" : name;
         _activeTransaction.deltaLookup.reserve(2048);
+        _activeTransaction.colorDeltas.reserve(2048);
+        _activeTransaction.colorDeltaLookup.reserve(2048);
         _activeTransaction.textureCellDeltas.reserve(64);
         _activeTransaction.textureCellDeltaLookup.reserve(64);
         _activeTransaction.cellLayerDeltaLookup.reserve(32);
         _activeTransaction.chunkAlphaMapDeltaLookup.reserve(8);
         _activeTransaction.affectedChunkIDs.reserve(8);
         _blockedPaintCellScratch.clear();
+        _vertexColorBlendScratch.clear();
+        _vertexColorBlendScratch.reserve(2048);
         _strokeActive = true;
         _hasLastSample = false;
         return true;
@@ -445,7 +458,8 @@ namespace Editor
         while (!normalizedPath.empty() && normalizedPath.front() == '/')
             normalizedPath.erase(normalizedPath.begin());
 
-        if (!normalizedPath.starts_with("texture/") || !normalizedPath.ends_with(".dds") || normalizedPath.find("..") != std::string::npos)
+        const bool supportedTextureFormat = normalizedPath.ends_with(".dds") || normalizedPath.ends_with(".png");
+        if (!normalizedPath.starts_with("texture/") || !supportedTextureFormat || normalizedPath.find("..") != std::string::npos)
             return false;
 
         PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
@@ -454,6 +468,15 @@ namespace Editor
 
         _paintTexturePath = std::move(normalizedPath);
         _paintTextureHash = Util::AssetPath::Hash(_paintTexturePath);
+        return true;
+    }
+
+    bool TerrainEditSession::SetPaintTargetLayer(u32 layerIndex)
+    {
+        if (_strokeActive || layerIndex > Map::CellsData::CELL_LAYER_COUNT)
+            return false;
+
+        _paintTargetLayerIndex = layerIndex;
         return true;
     }
 
@@ -483,6 +506,8 @@ namespace Editor
         const u32 requestedDabCount = _hasLastSample ? std::max(1u, static_cast<u32>(std::ceil(sampleDistance / spacing))) : 1u;
         const u32 dabCount = glm::min(requestedDabCount, MAX_DABS_PER_SAMPLE);
         const f32 dabDeltaTime = deltaTime / static_cast<f32>(dabCount);
+        const bool snapToEndpoint = pressure >= 1.0f - std::numeric_limits<f32>::epsilon() &&
+            (targetOpacity <= std::numeric_limits<f32>::epsilon() || targetOpacity >= 1.0f - std::numeric_limits<f32>::epsilon());
         TracyPlot("Terrain Paint Radius", static_cast<i64>(radius));
         TracyPlot("Terrain Paint Requested Dabs", static_cast<i64>(requestedDabCount));
         TracyPlot("Terrain Paint Dabs", static_cast<i64>(dabCount));
@@ -494,7 +519,9 @@ namespace Editor
             {
                 const f32 normalizedDistance = std::sqrt(static_cast<f32>(blendIndex) / blendIndexScale);
                 const f32 falloff = CalculateFalloff(normalizedDistance * radius, radius, hardness);
-                _paintBlendScratch[blendIndex] = 1.0f - std::exp(-pressure * dabDeltaTime * 10.0f * falloff);
+                _paintBlendScratch[blendIndex] = snapToEndpoint && falloff >= 1.0f - std::numeric_limits<f32>::epsilon()
+                    ? 1.0f
+                    : 1.0f - std::exp(-pressure * dabDeltaTime * 10.0f * falloff);
             }
         }
 
@@ -514,6 +541,55 @@ namespace Editor
             UploadPaintChanges(_paintCellScratch);
             for (const auto& change : _paintCellScratch)
                 _activeTransaction.affectedChunkIDs.insert(change.first >> 8);
+        }
+
+        _lastSamplePosition = position;
+        _hasLastSample = true;
+        return changed;
+    }
+
+    bool TerrainEditSession::ApplyVertexColorSample(const vec3& position, f32 radius, f32 flow, f32 hardness, f32 deltaTime, const vec3& targetColor)
+    {
+        ZoneScopedN("Terrain Vertex Color Sample");
+
+        if (!_strokeActive || !std::isfinite(radius) || !std::isfinite(flow) || !std::isfinite(hardness) || !std::isfinite(deltaTime) || !std::isfinite(targetColor.x) || !std::isfinite(targetColor.y) || !std::isfinite(targetColor.z))
+        {
+            return false;
+        }
+
+        radius = glm::clamp(radius, MIN_BRUSH_RADIUS, MAX_BRUSH_RADIUS);
+        flow = glm::clamp(flow, 0.0f, 1.0f);
+        hardness = glm::clamp(hardness, 0.0f, 1.0f);
+        deltaTime = glm::clamp(deltaTime, 0.0f, MAX_EDIT_DELTA_TIME);
+        const vec3 clampedTargetColor = glm::clamp(targetColor, vec3(0.0f), vec3(1.0f));
+        _previewRadius = radius;
+        if (flow <= 0.0f || deltaTime <= 0.0f)
+        {
+            _lastSamplePosition = position;
+            _hasLastSample = true;
+            return false;
+        }
+
+        const f32 spacing = glm::max(radius * 0.12f, Terrain::PATCH_HALF_SIZE);
+        const f32 sampleDistance = _hasLastSample ? glm::distance(vec2(_lastSamplePosition.x, _lastSamplePosition.z), vec2(position.x, position.z)) : 0.0f;
+        const u32 requestedDabCount = _hasLastSample ? std::max(1u, static_cast<u32>(std::ceil(sampleDistance / spacing))) : 1u;
+        const u32 dabCount = glm::min(requestedDabCount, MAX_DABS_PER_SAMPLE);
+        const f32 dabDeltaTime = deltaTime / static_cast<f32>(dabCount);
+
+        _changedCellScratch.clear();
+        bool changed = false;
+        for (u32 dabIndex = 1; dabIndex <= dabCount; dabIndex++)
+        {
+            const f32 progress = static_cast<f32>(dabIndex) / static_cast<f32>(dabCount);
+            const vec3 dabPosition = _hasLastSample ? glm::mix(_lastSamplePosition, position, progress) : position;
+            changed |= ApplyVertexColorDab(dabPosition, radius, flow, hardness, dabDeltaTime, clampedTargetColor, _changedCellScratch);
+        }
+
+        if (changed)
+        {
+            UploadChangedVertexCells(_changedCellScratch);
+            for (u32 packedCell : _changedCellScratch)
+                _activeTransaction.affectedChunkIDs.insert(packedCell >> 8);
         }
 
         _lastSamplePosition = position;
@@ -559,12 +635,7 @@ namespace Editor
             if (pactStorage)
                 pactStorage->GetFilePath(layers[layerIndex], path);
 
-            outLayers.push_back({
-                .path = std::move(path),
-                .textureHash = layers[layerIndex],
-                .layerIndex = layerIndex,
-                .averageWeight = static_cast<f32>(weightSums[layerIndex]) / static_cast<f32>(ALPHA_MAP_TEXEL_COUNT * 255u)
-            });
+            outLayers.push_back({ .path = std::move(path), .textureHash = layers[layerIndex], .layerIndex = layerIndex, .averageWeight = static_cast<f32>(weightSums[layerIndex]) / static_cast<f32>(ALPHA_MAP_TEXEL_COUNT * 255u) });
         }
     }
 
@@ -577,7 +648,7 @@ namespace Editor
 
         _strokeActive = false;
         _hasLastSample = false;
-        if (_activeTransaction.deltas.empty() && _activeTransaction.textureCellDeltas.empty() && _activeTransaction.cellLayerDeltas.empty())
+        if (_activeTransaction.deltas.empty() && _activeTransaction.colorDeltas.empty() && _activeTransaction.textureCellDeltas.empty() && _activeTransaction.cellLayerDeltas.empty())
         {
             _activeTransaction = {};
             return false;
@@ -656,7 +727,7 @@ namespace Editor
             return false;
 
         if (_dirtyChunks.empty())
-            return true;
+            return _terrainLoader.SaveMapHeader();
 
         std::vector<u32> chunkIDs(_dirtyChunks.begin(), _dirtyChunks.end());
         std::sort(chunkIDs.begin(), chunkIDs.end());
@@ -674,22 +745,179 @@ namespace Editor
         }
 
         std::vector<u32> savedChunkIDs;
-        const bool savedAllChunks = _terrainLoader.SaveEditableChunks(chunkSaveCandidates, savedChunkIDs);
+        const bool savedAllChunks = _terrainLoader.SaveEditableChunks(chunkSaveCandidates, _physicsDirtyChunks, savedChunkIDs);
         for (u32 chunkID : savedChunkIDs)
         {
             _dirtyChunks.erase(chunkID);
+            _unsavedCreatedChunks.erase(chunkID);
+            _physicsDirtyChunks.erase(chunkID);
             auto alphaItr = _editableAlphaMaps.find(chunkID);
             if (alphaItr != _editableAlphaMaps.end())
                 alphaItr->second.dirty = false;
         }
 
-        return savedAllAlphaMaps && savedAllChunks && _dirtyChunks.empty();
+        const bool savedChunks = savedAllAlphaMaps && savedAllChunks && _dirtyChunks.empty();
+        return savedChunks && _terrainLoader.SaveMapHeader();
+    }
+
+    void TerrainEditSession::GetChunkLayout(TerrainLoader::ChunkLayoutState& outState) const
+    {
+        _terrainLoader.GetChunkLayout(outState);
+    }
+
+    bool TerrainEditSession::AddChunk(u32 chunkID)
+    {
+        if (_strokeActive)
+            return false;
+
+        bool created = false;
+        if (!_terrainLoader.AddChunk(chunkID, created))
+            return false;
+
+        if (created)
+        {
+            _dirtyChunks.insert(chunkID);
+            _unsavedCreatedChunks.insert(chunkID);
+        }
+
+        return true;
+    }
+
+    bool TerrainEditSession::RemoveChunk(u32 chunkID)
+    {
+        const bool discardingUnsavedCreation = _unsavedCreatedChunks.contains(chunkID);
+        if (_strokeActive || (_dirtyChunks.contains(chunkID) && !discardingUnsavedCreation))
+            return false;
+
+        if (!_terrainLoader.RemoveChunk(chunkID))
+            return false;
+
+        _dirtyChunks.erase(chunkID);
+        _unsavedCreatedChunks.erase(chunkID);
+        _editablePaintChunkIDs.erase(chunkID);
+        _editableAlphaMaps.erase(chunkID);
+        _physicsDirtyChunks.erase(chunkID);
+        _undoHistory.clear();
+        _redoHistory.clear();
+        _historyBytes = 0;
+        return true;
+    }
+
+    bool TerrainEditSession::ResetChunk(u32 chunkID)
+    {
+        if (_strokeActive || _dirtyChunks.contains(chunkID) || !_terrainLoader.ResetChunk(chunkID))
+            return false;
+
+        _editablePaintChunkIDs.erase(chunkID);
+        _editableAlphaMaps.erase(chunkID);
+        _undoHistory.clear();
+        _redoHistory.clear();
+        _historyBytes = 0;
+        _dirtyChunks.insert(chunkID);
+        return true;
+    }
+
+    bool TerrainEditSession::GoToChunk(u32 chunkID)
+    {
+        auto chunkItr = _loadedChunks.find(chunkID);
+        if (chunkItr == _loadedChunks.end() || !chunkItr->second.chunk)
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>();
+        if (activeCamera.entity == entt::null || !registry->all_of<ECS::Components::Transform>(activeCamera.entity))
+            return false;
+
+        const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+        const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+        const f32 centerX = -Terrain::MAP_HALF_SIZE + (static_cast<f32>(chunkX) + 0.5f) * Terrain::CHUNK_SIZE;
+        const f32 centerZ = Terrain::MAP_HALF_SIZE - (static_cast<f32>(chunkY) + 0.5f) * Terrain::CHUNK_SIZE;
+        const f32 height = chunkItr->second.chunk->heightHeader.gridMaxHeight;
+        ECS::TransformSystem::Get(*registry).SetWorldPosition(activeCamera.entity, vec3(centerX, height, centerZ));
+        return true;
+    }
+
+    bool TerrainEditSession::PreviewHeightFieldImport(const std::string& path, TerrainHeightFieldManifest& outManifest, std::string& outError) const
+    {
+        if (_mapName.empty() || _terrainLoader.IsLoading())
+        {
+            outError = "Terrain chunk layout is not available.";
+            return false;
+        }
+
+        return LoadTerrainHeightFieldManifest(path, outManifest, outError);
+    }
+
+    bool TerrainEditSession::ImportHeightField(const std::string& path, f32 minimumHeight, f32 maximumHeight, u32& outImportedChunkCount, std::string& outError)
+    {
+        outImportedChunkCount = 0;
+        if (_strokeActive || _mapName.empty() || _terrainLoader.IsLoading())
+        {
+            outError = "Terrain cannot be replaced while it is unavailable or a brush stroke is active.";
+            return false;
+        }
+
+        TerrainHeightFieldData heightField;
+        if (!LoadTerrainHeightField(path, heightField, outError))
+            return false;
+
+        std::vector<GeneratedTerrainChunk> generatedChunks;
+        if (!GenerateTerrainHeightFieldChunks(heightField, minimumHeight, maximumHeight, generatedChunks, outError))
+            return false;
+
+        robin_hood::unordered_set<u32> importedChunkIDs;
+        importedChunkIDs.reserve(generatedChunks.size());
+        for (GeneratedTerrainChunk& generatedChunk : generatedChunks)
+        {
+            if (!_terrainLoader.ReplaceGeneratedChunk(generatedChunk.chunkID, std::move(generatedChunk.chunk)))
+            {
+                outError = "Failed to attach generated terrain chunk " + std::to_string(generatedChunk.chunkID) + ". The terrain may be partially replaced; reload the map before retrying.";
+                return false;
+            }
+            importedChunkIDs.insert(generatedChunk.chunkID);
+            _dirtyChunks.insert(generatedChunk.chunkID);
+            _unsavedCreatedChunks.insert(generatedChunk.chunkID);
+        }
+
+        TerrainLoader::ChunkLayoutState previousLayout;
+        _terrainLoader.GetChunkLayout(previousLayout);
+        for (u32 chunkID : previousLayout.occupiedChunkIDs)
+        {
+            if (!importedChunkIDs.contains(chunkID) && !_terrainLoader.RemoveChunk(chunkID))
+            {
+                outError = "Failed to remove an old terrain chunk. The terrain may be partially replaced; reload the map before retrying.";
+                return false;
+            }
+        }
+
+        _dirtyChunks = importedChunkIDs;
+        _unsavedCreatedChunks = importedChunkIDs;
+        _physicsDirtyChunks.clear();
+        _editablePaintChunkIDs.clear();
+        _editableChunkScratch.clear();
+        _editableAlphaMaps.clear();
+        _chunkCellScratch.clear();
+        _paintCellScratch.clear();
+        _blockedPaintCellScratch.clear();
+        _changedCellScratch.clear();
+        _affectedCellScratch.clear();
+        _transactionChunkScratch.clear();
+        _undoHistory.clear();
+        _redoHistory.clear();
+        _activeTransaction = {};
+        _historyBytes = 0;
+        _hasLastSample = false;
+        RefreshLoadedChunks();
+
+        outImportedChunkCount = static_cast<u32>(importedChunkIDs.size());
+        return true;
     }
 
     TerrainEditSession::State TerrainEditSession::GetState() const
     {
         return {
             .available = !_mapName.empty() && !_terrainLoader.IsLoading() && !_loadedChunks.empty(),
+            .layoutAvailable = !_mapName.empty() && !_terrainLoader.IsLoading(),
             .enabled = _enabled,
             .strokeActive = _strokeActive,
             .cursorHit = _hasCursorHit,
@@ -697,6 +925,8 @@ namespace Editor
             .canRedo = !_redoHistory.empty() && !_strokeActive,
             .dirtyChunkCount = static_cast<u32>(_dirtyChunks.size()),
             .blockedPaintCellCount = static_cast<u32>(_blockedPaintCellScratch.size()),
+            .layoutGeneration = _terrainLoader.GetContentGeneration(),
+            .topologyDirty = _terrainLoader.IsMapHeaderDirty(),
             .cursorPosition = _cursorPosition
         };
     }
@@ -766,6 +996,8 @@ namespace Editor
         _affectedCellScratch.clear();
         _transactionChunkScratch.clear();
         _dirtyChunks.clear();
+        _unsavedCreatedChunks.clear();
+        _physicsDirtyChunks.clear();
         _undoHistory.clear();
         _redoHistory.clear();
         _activeTransaction = {};
@@ -896,6 +1128,7 @@ namespace Editor
 
         _editableChunkScratch.clear();
         _newHeightScratch.resize(_candidateScratch.size());
+        std::fill(_newHeightScratch.begin(), _newHeightScratch.end(), std::numeric_limits<f32>::quiet_NaN());
 
         for (u32 index = 0; index < _candidateScratch.size(); index++)
         {
@@ -929,24 +1162,50 @@ namespace Editor
                 }
                 case TerrainSculptOperation::Smooth:
                 {
-                    constexpr f32 SAMPLE_OFFSET = Terrain::PATCH_HALF_SIZE;
-                    f32 sum = oldHeight;
-                    u32 sampleCount = 1;
-                    const std::array<vec2, 4> offsets = {
-                        vec2(-SAMPLE_OFFSET, 0.0f), vec2(SAMPLE_OFFSET, 0.0f), vec2(0.0f, -SAMPLE_OFFSET), vec2(0.0f, SAMPLE_OFFSET)
-                    };
-                    for (const vec2& offset : offsets)
+                    const u16 packedX = candidate.address.vertexID % Terrain::CELL_GRID_ROW_SIZE;
+                    const u16 packedY = candidate.address.vertexID / Terrain::CELL_GRID_ROW_SIZE;
+                    const bool innerVertex = packedX >= Terrain::CELL_OUTER_GRID_STRIDE;
+                    f32 smoothedHeight = oldHeight;
+                    if (innerVertex)
                     {
-                        f32 neighborHeight = 0.0f;
-                        if (SampleHeight(candidate.position + offset, neighborHeight))
+                        const u16 patchX = packedX - Terrain::CELL_OUTER_GRID_STRIDE;
+                        const u16 topLeft = patchX + packedY * Terrain::CELL_GRID_ROW_SIZE;
+                        const std::array<u16, 4> cornerVertexIDs = {
+                            topLeft,
+                            static_cast<u16>(topLeft + 1),
+                            static_cast<u16>(topLeft + Terrain::CELL_GRID_ROW_SIZE),
+                            static_cast<u16>(topLeft + Terrain::CELL_GRID_ROW_SIZE + 1)
+                        };
+
+                        f32 cornerHeightSum = 0.0f;
+                        for (u16 cornerVertexID : cornerVertexIDs)
                         {
-                            sum += neighborHeight;
-                            sampleCount++;
+                            cornerHeightSum += chunk.cellsData.heightField[candidate.address.cellID][cornerVertexID];
                         }
+                        smoothedHeight = cornerHeightSum / static_cast<f32>(cornerVertexIDs.size());
+                    }
+                    else
+                    {
+                        f32 heightSum = oldHeight;
+                        u32 sampleCount = 1;
+                        constexpr f32 SAMPLE_OFFSET = Terrain::PATCH_SIZE;
+                        const std::array<vec2, 4> offsets = {
+                            vec2(-SAMPLE_OFFSET, 0.0f), vec2(SAMPLE_OFFSET, 0.0f), vec2(0.0f, -SAMPLE_OFFSET), vec2(0.0f, SAMPLE_OFFSET)
+                        };
+                        for (const vec2& offset : offsets)
+                        {
+                            f32 neighborHeight = 0.0f;
+                            if (SampleHeight(candidate.position + offset, neighborHeight))
+                            {
+                                heightSum += neighborHeight;
+                                sampleCount++;
+                            }
+                        }
+                        smoothedHeight = heightSum / static_cast<f32>(sampleCount);
                     }
 
                     const f32 blend = 1.0f - std::exp(-glm::abs(strength) * deltaTime * falloff);
-                    newHeight = glm::mix(oldHeight, sum / static_cast<f32>(sampleCount), blend);
+                    newHeight = glm::mix(oldHeight, smoothedHeight, blend);
                     break;
                 }
             }
@@ -958,6 +1217,9 @@ namespace Editor
         for (u32 index = 0; index < _candidateScratch.size(); index++)
         {
             const VertexCandidate& candidate = _candidateScratch[index];
+            if (!std::isfinite(_newHeightScratch[index]))
+                continue;
+
             auto editableItr = _editableChunkScratch.find(candidate.address.chunkID);
             if (editableItr == _editableChunkScratch.end())
                 continue;
@@ -974,6 +1236,66 @@ namespace Editor
             changed = true;
         }
 
+        if (changed)
+            SynchronizeSharedOuterVertices(outChangedCells);
+
+        return changed;
+    }
+
+    bool TerrainEditSession::ApplyVertexColorDab(const vec3& position, f32 radius, f32 flow, f32 hardness, f32 deltaTime, const vec3& targetColor, robin_hood::unordered_set<u32>& outChangedCells)
+    {
+        GatherVertices(vec2(position.x, position.z), radius, _candidateScratch);
+        if (_candidateScratch.empty())
+            return false;
+
+        _editableChunkScratch.clear();
+        const std::array<f32, 3> target = { targetColor.r * 255.0f, targetColor.g * 255.0f, targetColor.b * 255.0f };
+        bool changed = false;
+        for (const VertexCandidate& candidate : _candidateScratch)
+        {
+            auto editableItr = _editableChunkScratch.find(candidate.address.chunkID);
+            if (editableItr == _editableChunkScratch.end())
+            {
+                TerrainLoader::LoadedChunkView editableChunk;
+                if (!_terrainLoader.GetEditableChunk(candidate.address.chunkID, editableChunk))
+                    continue;
+
+                _loadedChunks[editableChunk.chunkID] = editableChunk;
+                editableItr = _editableChunkScratch.emplace(editableChunk.chunkID, editableChunk).first;
+            }
+
+            u8* color = editableItr->second.chunk->cellsData.colors[candidate.address.cellID][candidate.address.vertexID];
+            const u64 vertexKey = PackVertexAddress(candidate.address);
+            auto [blendItr, inserted] = _vertexColorBlendScratch.try_emplace(vertexKey);
+            if (inserted)
+            {
+                for (u32 channel = 0; channel < blendItr->second.size(); channel++)
+                    blendItr->second[channel] = static_cast<f32>(color[channel]);
+            }
+
+            const f32 falloff = CalculateFalloff(candidate.distance, radius, hardness);
+            const f32 blend = 1.0f - std::exp(-flow * deltaTime * 10.0f * falloff);
+            std::array<u8, 3> newColor;
+            bool vertexChanged = false;
+            for (u32 channel = 0; channel < newColor.size(); channel++)
+            {
+                f32& blendedColor = blendItr->second[channel];
+                blendedColor = glm::mix(blendedColor, target[channel], blend);
+                newColor[channel] = static_cast<u8>(glm::round(blendedColor));
+                vertexChanged |= newColor[channel] != color[channel];
+            }
+            if (!vertexChanged)
+                continue;
+
+            RecordVertexColorBeforeChange(candidate.address, color);
+            std::copy(newColor.begin(), newColor.end(), color);
+            _activeTransaction.colorDeltas[_activeTransaction.colorDeltaLookup[PackVertexAddress(candidate.address)]].after = newColor;
+            outChangedCells.insert(PackCellAddress(candidate.address.chunkID, candidate.address.cellID));
+            changed = true;
+        }
+
+        if (changed)
+            SynchronizeSharedVertexColors(outChangedCells);
         return changed;
     }
 
@@ -1018,9 +1340,7 @@ namespace Editor
 
                     const i32 closestTexelX = glm::clamp(static_cast<i32>(std::round((center.x - cellMinWorldX) / texelSize - 0.5f)), minTexelX, maxTexelX);
                     const i32 closestTexelY = glm::clamp(static_cast<i32>(std::round((cellMaxWorldZ - center.y) / texelSize - 0.5f)), minTexelY, maxTexelY);
-                    const vec2 closestTexelPosition(
-                        cellMinWorldX + (static_cast<f32>(closestTexelX) + 0.5f) * texelSize,
-                        cellMaxWorldZ - (static_cast<f32>(closestTexelY) + 0.5f) * texelSize);
+                    const vec2 closestTexelPosition(cellMinWorldX + (static_cast<f32>(closestTexelX) + 0.5f) * texelSize, cellMaxWorldZ - (static_cast<f32>(closestTexelY) + 0.5f) * texelSize);
                     const vec2 closestTexelOffset = closestTexelPosition - center;
                     if (glm::dot(closestTexelOffset, closestTexelOffset) > radiusSquared)
                         continue;
@@ -1210,6 +1530,52 @@ namespace Editor
             }
         }
 
+        // Exact endpoint strokes can leave assigned layers with no contribution. Compact them here
+        // so the cell's layer table remains an accurate description of its blend map.
+        const bool targetsEndpoint = targetWeight <= std::numeric_limits<f32>::epsilon() || targetWeight >= 255.0f - std::numeric_limits<f32>::epsilon();
+        if (targetsEndpoint)
+        {
+            for (PaintCellWork& work : _paintCellWorkScratch)
+            {
+                if (!work.alphaMap)
+                    continue;
+
+                const size_t cellOffset = static_cast<size_t>(work.cellID) * ALPHA_MAP_CELL_BYTE_SIZE;
+                u8 layerUsageMask = 0;
+                for (u32 texelID = 0; texelID < ALPHA_MAP_TEXEL_COUNT; texelID++)
+                {
+                    const u8* texel = work.alphaMap->rgba.data() + cellOffset + static_cast<size_t>(texelID) * ALPHA_MAP_CHANNEL_COUNT;
+                    const auto weights = DecodeLayerWeights(texel);
+                    for (u32 layerIndex = 0; layerIndex < work.layerCount; layerIndex++)
+                    {
+                        if (weights[layerIndex] != 0)
+                            layerUsageMask |= static_cast<u8>(1u << layerIndex);
+                    }
+
+                    if (layerUsageMask == static_cast<u8>((1u << work.layerCount) - 1u))
+                        break;
+                }
+
+                if (layerUsageMask == static_cast<u8>((1u << work.layerCount) - 1u))
+                    continue;
+
+                RecordCellLayersBeforeChange(work.chunkID, work.cellID, work.chunk->cellsData.layerTextureIDs[work.cellID]);
+                for (u32 layerIndex = work.layerCount; layerIndex > 0; layerIndex--)
+                {
+                    const u32 candidateLayer = layerIndex - 1;
+                    if ((layerUsageMask & static_cast<u8>(1u << candidateLayer)) == 0)
+                        RemoveTextureLayer(*work.chunk, *work.alphaMap, work.cellID, candidateLayer);
+                }
+
+                work.layersChanged = true;
+                work.change.minTexelX = 0;
+                work.change.minTexelY = 0;
+                work.change.maxTexelX = static_cast<u16>(ALPHA_MAP_RESOLUTION);
+                work.change.maxTexelY = static_cast<u16>(ALPHA_MAP_RESOLUTION);
+                work.change.alphaChanged = true;
+            }
+        }
+
         bool changed = false;
         for (PaintCellWork& work : _paintCellWorkScratch)
         {
@@ -1223,8 +1589,6 @@ namespace Editor
             work.chunk->chunkAlphaMapTextureHash = Util::AssetPath::Hash(work.alphaMap->virtualPath);
             _activeTransaction.chunkAlphaMapDeltas[_activeTransaction.chunkAlphaMapDeltaLookup[work.chunkID]].after = work.chunk->chunkAlphaMapTextureHash;
             work.alphaMap->dirty = true;
-            if (work.change.alphaChanged)
-                work.alphaMap->layerUsageValid[work.cellID] = false;
             auto layerDeltaItr = _activeTransaction.cellLayerDeltaLookup.find(PackCellAddress(work.chunkID, work.cellID));
             if (layerDeltaItr != _activeTransaction.cellLayerDeltaLookup.end())
             {
@@ -1328,36 +1692,47 @@ namespace Editor
         return true;
     }
 
-    u8 TerrainEditSession::GetLayerUsageMask(EditableAlphaMap& alphaMap, u16 cellID)
-    {
-        if (alphaMap.layerUsageValid[cellID])
-            return alphaMap.layerUsageMasks[cellID];
-
-        ZoneScopedN("Terrain Paint Calculate Layer Usage");
-
-        u8 usageMask = 0;
-        const size_t cellOffset = static_cast<size_t>(cellID) * ALPHA_MAP_CELL_BYTE_SIZE;
-        for (u32 texelID = 0; texelID < ALPHA_MAP_TEXEL_COUNT && usageMask != 0xf; texelID++)
-        {
-            const u8* texel = alphaMap.rgba.data() + cellOffset + static_cast<size_t>(texelID) * ALPHA_MAP_CHANNEL_COUNT;
-            const std::array<u8, Map::CellsData::CELL_LAYER_COUNT> weights = DecodeLayerWeights(texel);
-            for (u32 layerIndex = 0; layerIndex < Map::CellsData::CELL_LAYER_COUNT; layerIndex++)
-            {
-                if (weights[layerIndex] != 0)
-                    usageMask |= static_cast<u8>(1u << layerIndex);
-            }
-        }
-
-        alphaMap.layerUsageMasks[cellID] = usageMask;
-        alphaMap.layerUsageValid[cellID] = true;
-        return usageMask;
-    }
-
     bool TerrainEditSession::PrepareCellForTexture(Map::Chunk& chunk, EditableAlphaMap& alphaMap, u32 chunkID, u16 cellID, u32& outLayerIndex, bool& outAlphaMapRepacked)
     {
         outAlphaMapRepacked = false;
         u64* layers = chunk.cellsData.layerTextureIDs[cellID];
         u32 layerCount = GetLayerCount(layers);
+        if (_paintTargetLayerIndex < Map::CellsData::CELL_LAYER_COUNT)
+        {
+            if (_paintTargetLayerIndex > layerCount)
+            {
+                _blockedPaintCellScratch.insert(PackCellAddress(chunkID, cellID));
+                return false;
+            }
+
+            outLayerIndex = _paintTargetLayerIndex;
+            bool layerAssignmentChanged = false;
+            if (_paintTargetLayerIndex < layerCount)
+            {
+                if (layers[_paintTargetLayerIndex] != _paintTextureHash)
+                {
+                    RecordCellLayersBeforeChange(chunkID, cellID, layers);
+                    layers[_paintTargetLayerIndex] = _paintTextureHash;
+                    layerAssignmentChanged = true;
+                }
+            }
+            else
+            {
+                RecordCellLayersBeforeChange(chunkID, cellID, layers);
+                layers[_paintTargetLayerIndex] = _paintTextureHash;
+                layerAssignmentChanged = true;
+                for (u32 layerIndex = layerCount + 1; layerIndex < Map::CellsData::CELL_LAYER_COUNT; layerIndex++)
+                {
+                    layers[layerIndex] = Terrain::TEXTURE_ID_INVALID;
+                }
+            }
+
+            if (layerAssignmentChanged && SanitizeTextureLayerWeights(alphaMap, chunkID, cellID, layerCount))
+                outAlphaMapRepacked = true;
+
+            return true;
+        }
+
         for (u32 layerIndex = 0; layerIndex < layerCount; layerIndex++)
         {
             if (layers[layerIndex] == _paintTextureHash)
@@ -1370,7 +1745,18 @@ namespace Editor
         if (layerCount == Map::CellsData::CELL_LAYER_COUNT)
         {
             const size_t cellOffset = static_cast<size_t>(cellID) * ALPHA_MAP_CELL_BYTE_SIZE;
-            const u8 layerUsageMask = GetLayerUsageMask(alphaMap, cellID);
+            u8 layerUsageMask = 0;
+            for (u32 texelID = 0; texelID < ALPHA_MAP_TEXEL_COUNT && layerUsageMask != 0xf; texelID++)
+            {
+                const u8* texel = alphaMap.rgba.data() + cellOffset + static_cast<size_t>(texelID) * ALPHA_MAP_CHANNEL_COUNT;
+                const auto weights = DecodeLayerWeights(texel);
+                for (u32 layerIndex = 0; layerIndex < Map::CellsData::CELL_LAYER_COUNT; layerIndex++)
+                {
+                    if (weights[layerIndex] != 0)
+                        layerUsageMask |= static_cast<u8>(1u << layerIndex);
+                }
+            }
+
             u32 zeroWeightLayer = Map::CellsData::CELL_LAYER_COUNT;
             for (u32 layerIndex = 0; layerIndex < layerCount; layerIndex++)
             {
@@ -1397,10 +1783,39 @@ namespace Editor
         RecordCellLayersBeforeChange(chunkID, cellID, layers);
         layers[layerCount] = _paintTextureHash;
         for (u32 layerIndex = layerCount + 1; layerIndex < Map::CellsData::CELL_LAYER_COUNT; layerIndex++)
+        {
             layers[layerIndex] = Terrain::TEXTURE_ID_INVALID;
+        }
 
         outLayerIndex = layerCount;
         return true;
+    }
+
+    bool TerrainEditSession::SanitizeTextureLayerWeights(EditableAlphaMap& alphaMap, u32 chunkID, u16 cellID, u32 layerCount)
+    {
+        const size_t cellOffset = static_cast<size_t>(cellID) * ALPHA_MAP_CELL_BYTE_SIZE;
+        bool changed = false;
+        for (u32 texelID = 0; texelID < ALPHA_MAP_TEXEL_COUNT; texelID++)
+        {
+            u8* texel = alphaMap.rgba.data() + cellOffset + static_cast<size_t>(texelID) * ALPHA_MAP_CHANNEL_COUNT;
+            auto weights = DecodeLayerWeights(texel);
+            for (u32 layerIndex = layerCount; layerIndex < Map::CellsData::CELL_LAYER_COUNT; layerIndex++)
+            {
+                weights[layerIndex] = 0;
+            }
+
+            const std::array<u8, 3> encodedWeights = { weights[1], weights[2], weights[3] };
+            if (std::equal(encodedWeights.begin(), encodedWeights.end(), texel))
+                continue;
+
+            if (!changed)
+                RecordTextureCellBeforeChange(chunkID, cellID, alphaMap.rgba.data() + cellOffset);
+
+            EncodeLayerWeights(weights, texel);
+            changed = true;
+        }
+
+        return changed;
     }
 
     void TerrainEditSession::RemoveTextureLayer(Map::Chunk& chunk, EditableAlphaMap& alphaMap, u16 cellID, u32 layerIndex)
@@ -1417,10 +1832,7 @@ namespace Editor
             for (u32 shiftedLayer = layerIndex; shiftedLayer + 1 < layerCount; shiftedLayer++)
                 weights[shiftedLayer] = weights[shiftedLayer + 1];
             weights[layerCount - 1] = 0;
-
-            const std::array<u8, 4> after = { weights[1], weights[2], weights[3], 255 };
-            if (!std::equal(after.begin(), after.end(), texel))
-                std::copy(after.begin(), after.end(), texel);
+            EncodeLayerWeights(weights, texel);
         }
 
         for (u32 shiftedLayer = layerIndex; shiftedLayer + 1 < layerCount; shiftedLayer++)
@@ -1530,6 +1942,29 @@ namespace Editor
         }
     }
 
+    void TerrainEditSession::UploadChangedVertexCells(const robin_hood::unordered_set<u32>& changedCells)
+    {
+        for (auto& [chunkID, cellIDs] : _chunkCellScratch)
+            cellIDs.clear();
+
+        for (u32 packedCell : changedCells)
+            _chunkCellScratch[packedCell >> 8].push_back(static_cast<u16>(packedCell & 0xff));
+
+        for (auto& [chunkID, cellIDs] : _chunkCellScratch)
+        {
+            if (cellIDs.empty())
+                continue;
+
+            auto chunkItr = _loadedChunks.find(chunkID);
+            if (chunkItr == _loadedChunks.end() || !chunkItr->second.chunk)
+                continue;
+
+            std::sort(cellIDs.begin(), cellIDs.end());
+            cellIDs.erase(std::unique(cellIDs.begin(), cellIDs.end()), cellIDs.end());
+            _terrainRenderer.UpdateChunkCells(chunkItr->second.rendererChunkIndex, *chunkItr->second.chunk, cellIDs);
+        }
+    }
+
     bool TerrainEditSession::SaveAlphaMaps(const std::vector<u32>& chunkIDs, robin_hood::unordered_set<u32>& outSavedChunkIDs)
     {
         outSavedChunkIDs.clear();
@@ -1546,14 +1981,13 @@ namespace Editor
 
             EditableAlphaMap& alphaMap = alphaItr->second;
             auto chunkItr = _loadedChunks.find(chunkID);
-            if (chunkItr != _loadedChunks.end() && chunkItr->second.chunk &&
-                (chunkItr->second.chunk->chunkAlphaMapTextureHash == 0 || chunkItr->second.chunk->chunkAlphaMapTextureHash == Terrain::TEXTURE_ID_INVALID))
+            if (chunkItr != _loadedChunks.end() && chunkItr->second.chunk && (chunkItr->second.chunk->chunkAlphaMapTextureHash == 0 || chunkItr->second.chunk->chunkAlphaMapTextureHash == Terrain::TEXTURE_ID_INVALID))
             {
                 outSavedChunkIDs.insert(chunkID);
                 continue;
             }
 
-            gli::texture2d_array texture(gli::FORMAT_RGBA8_UNORM_PACK8, gli::extent2d(ALPHA_MAP_RESOLUTION), Terrain::CHUNK_NUM_CELLS, 1);
+            gli::texture3d texture(gli::FORMAT_RGBA8_UNORM_PACK8, gli::extent3d(ALPHA_MAP_RESOLUTION, ALPHA_MAP_RESOLUTION, Terrain::CHUNK_NUM_CELLS), 1);
             if (texture.empty() || texture.size() != alphaMap.rgba.size())
             {
                 savedAll = false;
@@ -1604,11 +2038,204 @@ namespace Editor
                     if (distanceSquared > radiusSquared)
                         continue;
 
-                    outCandidates.push_back({
-                        .address = { .chunkID = chunkID, .cellID = cellID, .vertexID = vertexID },
-                        .position = vertexPosition,
-                        .distance = glm::sqrt(distanceSquared)
-                    });
+                    outCandidates.push_back({ .address = { .chunkID = chunkID, .cellID = cellID, .vertexID = vertexID }, .position = vertexPosition, .distance = glm::sqrt(distanceSquared) });
+                }
+            }
+        }
+    }
+
+    void TerrainEditSession::SynchronizeSharedOuterVertices(robin_hood::unordered_set<u32>& outChangedCells)
+    {
+        constexpr i32 MAP_CELL_STRIDE = Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+        _sharedVertexHeightScratch.clear();
+        for (u32 candidateIndex = 0; candidateIndex < _candidateScratch.size(); candidateIndex++)
+        {
+            const VertexCandidate& candidate = _candidateScratch[candidateIndex];
+            if (!std::isfinite(_newHeightScratch[candidateIndex]) || !_editableChunkScratch.contains(candidate.address.chunkID))
+                continue;
+
+            const u16 packedX = candidate.address.vertexID % Terrain::CELL_GRID_ROW_SIZE;
+            const u16 packedY = candidate.address.vertexID / Terrain::CELL_GRID_ROW_SIZE;
+            const bool outerVertex = packedX < Terrain::CELL_OUTER_GRID_STRIDE;
+            const bool sharedVertex = outerVertex && (packedX == 0 || packedX == Terrain::CELL_NUM_PATCHES_PER_STRIDE || packedY == 0 || packedY == Terrain::CELL_NUM_PATCHES_PER_STRIDE);
+            if (!sharedVertex)
+                continue;
+
+            const i32 chunkX = static_cast<i32>(candidate.address.chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+            const i32 chunkY = static_cast<i32>(candidate.address.chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+            const i32 cellX = candidate.address.cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const i32 cellY = candidate.address.cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            // Adjacent cells store independent copies of their outer edge vertices. Collapse those
+            // copies to one map-wide coordinate before propagating the resulting height below.
+            const u16 globalVertexX = static_cast<u16>((chunkX * Terrain::CHUNK_NUM_CELLS_PER_STRIDE + cellX) * Terrain::CELL_NUM_PATCHES_PER_STRIDE + packedX);
+            const u16 globalVertexY = static_cast<u16>((chunkY * Terrain::CHUNK_NUM_CELLS_PER_STRIDE + cellY) * Terrain::CELL_NUM_PATCHES_PER_STRIDE + packedY);
+            const u32 vertexKey = static_cast<u32>(globalVertexX) | (static_cast<u32>(globalVertexY) << 16);
+            SharedVertexHeight& height = _sharedVertexHeightScratch[vertexKey];
+            height.sum += _newHeightScratch[candidateIndex];
+            height.count++;
+        }
+
+        for (const auto& [vertexKey, accumulatedHeight] : _sharedVertexHeightScratch)
+        {
+            if (accumulatedHeight.count == 0)
+                continue;
+
+            const i32 globalVertexX = static_cast<i32>(vertexKey & 0xffff);
+            const i32 globalVertexY = static_cast<i32>(vertexKey >> 16);
+            const f32 synchronizedHeight = accumulatedHeight.sum / static_cast<f32>(accumulatedHeight.count);
+            const i32 primaryCellX = globalVertexX / static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE);
+            const i32 primaryCellY = globalVertexY / static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE);
+            const i32 minCellX = globalVertexX % static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE) == 0 ? primaryCellX - 1 : primaryCellX;
+            const i32 minCellY = globalVertexY % static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE) == 0 ? primaryCellY - 1 : primaryCellY;
+
+            // A vertex on both axes is shared by four cells; an edge vertex is shared by two.
+            for (i32 globalCellY = minCellY; globalCellY <= primaryCellY; globalCellY++)
+            {
+                if (globalCellY < 0 || globalCellY >= MAP_CELL_STRIDE)
+                    continue;
+
+                for (i32 globalCellX = minCellX; globalCellX <= primaryCellX; globalCellX++)
+                {
+                    if (globalCellX < 0 || globalCellX >= MAP_CELL_STRIDE)
+                        continue;
+
+                    const u32 chunkID = static_cast<u32>((globalCellX / static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE)) + (globalCellY / static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE)) * static_cast<i32>(Terrain::CHUNK_NUM_PER_MAP_STRIDE));
+                    if (!_loadedChunks.contains(chunkID))
+                        continue;
+
+                    auto editableItr = _editableChunkScratch.find(chunkID);
+                    if (editableItr == _editableChunkScratch.end())
+                    {
+                        TerrainLoader::LoadedChunkView editableChunk;
+                        if (!_terrainLoader.GetEditableChunk(chunkID, editableChunk))
+                            continue;
+
+                        _loadedChunks[chunkID] = editableChunk;
+                        editableItr = _editableChunkScratch.emplace(chunkID, editableChunk).first;
+                    }
+
+                    const i32 localCellX = globalCellX % static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE);
+                    const i32 localCellY = globalCellY % static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE);
+                    const u16 cellID = static_cast<u16>(localCellX + localCellY * static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE));
+                    const u16 localVertexX = static_cast<u16>(globalVertexX - globalCellX * static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE));
+                    const u16 localVertexY = static_cast<u16>(globalVertexY - globalCellY * static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE));
+                    const u16 vertexID = static_cast<u16>(localVertexX + localVertexY * Terrain::CELL_GRID_ROW_SIZE);
+                    Map::Chunk& chunk = *editableItr->second.chunk;
+                    f32& height = chunk.cellsData.heightField[cellID][vertexID];
+                    if (glm::abs(height - synchronizedHeight) <= HEIGHT_EPSILON)
+                        continue;
+
+                    const VertexAddress address = { .chunkID = chunkID, .cellID = cellID, .vertexID = vertexID };
+                    RecordBeforeChange(address, height);
+                    height = synchronizedHeight;
+                    _activeTransaction.deltas[_activeTransaction.deltaLookup[PackVertexAddress(address)]].after = height;
+                    outChangedCells.insert(PackCellAddress(chunkID, cellID));
+                }
+            }
+        }
+    }
+
+    void TerrainEditSession::SynchronizeSharedVertexColors(robin_hood::unordered_set<u32>& outChangedCells)
+    {
+        constexpr i32 MAP_CELL_STRIDE = Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+        _sharedVertexColorScratch.clear();
+        for (const VertexCandidate& candidate : _candidateScratch)
+        {
+            const u16 packedX = candidate.address.vertexID % Terrain::CELL_GRID_ROW_SIZE;
+            const u16 packedY = candidate.address.vertexID / Terrain::CELL_GRID_ROW_SIZE;
+            const bool sharedVertex = packedX < Terrain::CELL_OUTER_GRID_STRIDE && (packedX == 0 || packedX == Terrain::CELL_NUM_PATCHES_PER_STRIDE || packedY == 0 || packedY == Terrain::CELL_NUM_PATCHES_PER_STRIDE);
+            if (!sharedVertex || !_activeTransaction.colorDeltaLookup.contains(PackVertexAddress(candidate.address)))
+                continue;
+
+            const i32 chunkX = static_cast<i32>(candidate.address.chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+            const i32 chunkY = static_cast<i32>(candidate.address.chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+            const i32 cellX = candidate.address.cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const i32 cellY = candidate.address.cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const u16 globalVertexX = static_cast<u16>((chunkX * Terrain::CHUNK_NUM_CELLS_PER_STRIDE + cellX) * Terrain::CELL_NUM_PATCHES_PER_STRIDE + packedX);
+            const u16 globalVertexY = static_cast<u16>((chunkY * Terrain::CHUNK_NUM_CELLS_PER_STRIDE + cellY) * Terrain::CELL_NUM_PATCHES_PER_STRIDE + packedY);
+            _sharedVertexColorScratch.try_emplace(static_cast<u32>(globalVertexX) | (static_cast<u32>(globalVertexY) << 16));
+        }
+
+        for (const VertexCandidate& candidate : _candidateScratch)
+        {
+            const u16 packedX = candidate.address.vertexID % Terrain::CELL_GRID_ROW_SIZE;
+            const u16 packedY = candidate.address.vertexID / Terrain::CELL_GRID_ROW_SIZE;
+            if (packedX >= Terrain::CELL_OUTER_GRID_STRIDE)
+                continue;
+
+            const i32 chunkX = static_cast<i32>(candidate.address.chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+            const i32 chunkY = static_cast<i32>(candidate.address.chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+            const i32 cellX = candidate.address.cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const i32 cellY = candidate.address.cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const u16 globalVertexX = static_cast<u16>((chunkX * Terrain::CHUNK_NUM_CELLS_PER_STRIDE + cellX) * Terrain::CELL_NUM_PATCHES_PER_STRIDE + packedX);
+            const u16 globalVertexY = static_cast<u16>((chunkY * Terrain::CHUNK_NUM_CELLS_PER_STRIDE + cellY) * Terrain::CELL_NUM_PATCHES_PER_STRIDE + packedY);
+            const u32 vertexKey = static_cast<u32>(globalVertexX) | (static_cast<u32>(globalVertexY) << 16);
+            auto colorItr = _sharedVertexColorScratch.find(vertexKey);
+            auto chunkItr = _editableChunkScratch.find(candidate.address.chunkID);
+            if (colorItr == _sharedVertexColorScratch.end() || chunkItr == _editableChunkScratch.end())
+                continue;
+
+            const u8* color = chunkItr->second.chunk->cellsData.colors[candidate.address.cellID][candidate.address.vertexID];
+            for (u32 channel = 0; channel < colorItr->second.sums.size(); channel++)
+                colorItr->second.sums[channel] += color[channel];
+            colorItr->second.count++;
+        }
+
+        for (const auto& [vertexKey, accumulatedColor] : _sharedVertexColorScratch)
+        {
+            if (accumulatedColor.count == 0)
+                continue;
+
+            std::array<u8, 3> synchronizedColor;
+            for (u32 channel = 0; channel < synchronizedColor.size(); channel++)
+                synchronizedColor[channel] = static_cast<u8>((accumulatedColor.sums[channel] + accumulatedColor.count / 2) / accumulatedColor.count);
+
+            const i32 globalVertexX = static_cast<i32>(vertexKey & 0xffff);
+            const i32 globalVertexY = static_cast<i32>(vertexKey >> 16);
+            const i32 primaryCellX = globalVertexX / static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE);
+            const i32 primaryCellY = globalVertexY / static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE);
+            const i32 minCellX = globalVertexX % static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE) == 0 ? primaryCellX - 1 : primaryCellX;
+            const i32 minCellY = globalVertexY % static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE) == 0 ? primaryCellY - 1 : primaryCellY;
+
+            for (i32 globalCellY = minCellY; globalCellY <= primaryCellY; globalCellY++)
+            {
+                if (globalCellY < 0 || globalCellY >= MAP_CELL_STRIDE)
+                    continue;
+
+                for (i32 globalCellX = minCellX; globalCellX <= primaryCellX; globalCellX++)
+                {
+                    if (globalCellX < 0 || globalCellX >= MAP_CELL_STRIDE)
+                        continue;
+
+                    const u32 chunkID = static_cast<u32>((globalCellX / static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE)) + (globalCellY / static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE)) * static_cast<i32>(Terrain::CHUNK_NUM_PER_MAP_STRIDE));
+                    if (!_loadedChunks.contains(chunkID))
+                        continue;
+
+                    auto editableItr = _editableChunkScratch.find(chunkID);
+                    if (editableItr == _editableChunkScratch.end())
+                    {
+                        TerrainLoader::LoadedChunkView editableChunk;
+                        if (!_terrainLoader.GetEditableChunk(chunkID, editableChunk))
+                            continue;
+                        _loadedChunks[chunkID] = editableChunk;
+                        editableItr = _editableChunkScratch.emplace(chunkID, editableChunk).first;
+                    }
+
+                    const i32 localCellX = globalCellX % static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE);
+                    const i32 localCellY = globalCellY % static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE);
+                    const u16 cellID = static_cast<u16>(localCellX + localCellY * static_cast<i32>(Terrain::CHUNK_NUM_CELLS_PER_STRIDE));
+                    const u16 localVertexX = static_cast<u16>(globalVertexX - globalCellX * static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE));
+                    const u16 localVertexY = static_cast<u16>(globalVertexY - globalCellY * static_cast<i32>(Terrain::CELL_NUM_PATCHES_PER_STRIDE));
+                    const u16 vertexID = static_cast<u16>(localVertexX + localVertexY * Terrain::CELL_GRID_ROW_SIZE);
+                    u8* color = editableItr->second.chunk->cellsData.colors[cellID][vertexID];
+                    if (std::equal(synchronizedColor.begin(), synchronizedColor.end(), color))
+                        continue;
+
+                    const VertexAddress address = { .chunkID = chunkID, .cellID = cellID, .vertexID = vertexID };
+                    RecordVertexColorBeforeChange(address, color);
+                    std::copy(synchronizedColor.begin(), synchronizedColor.end(), color);
+                    _activeTransaction.colorDeltas[_activeTransaction.colorDeltaLookup[PackVertexAddress(address)]].after = synchronizedColor;
+                    outChangedCells.insert(PackCellAddress(chunkID, cellID));
                 }
             }
         }
@@ -1624,6 +2251,20 @@ namespace Editor
         const u32 index = static_cast<u32>(_activeTransaction.deltas.size());
         _activeTransaction.deltaLookup[key] = index;
         _activeTransaction.deltas.push_back({ .address = address, .before = height, .after = height });
+    }
+
+    void TerrainEditSession::RecordVertexColorBeforeChange(const VertexAddress& address, const u8* color)
+    {
+        const u64 key = PackVertexAddress(address);
+        if (_activeTransaction.colorDeltaLookup.contains(key))
+            return;
+
+        VertexColorDelta delta;
+        delta.address = address;
+        std::copy(color, color + delta.before.size(), delta.before.begin());
+        delta.after = delta.before;
+        _activeTransaction.colorDeltaLookup[key] = static_cast<u32>(_activeTransaction.colorDeltas.size());
+        _activeTransaction.colorDeltas.push_back(std::move(delta));
     }
 
     void TerrainEditSession::RecordTextureCellBeforeChange(u32 chunkID, u16 cellID, const u8* cellData)
@@ -1806,6 +2447,28 @@ namespace Editor
             RefreshDerivedTerrain(_changedCellScratch);
 
         _changedCellScratch.clear();
+        _editableChunkScratch.clear();
+        for (const VertexColorDelta& delta : transaction.colorDeltas)
+        {
+            auto editableItr = _editableChunkScratch.find(delta.address.chunkID);
+            if (editableItr == _editableChunkScratch.end())
+            {
+                TerrainLoader::LoadedChunkView editableChunk;
+                if (!_terrainLoader.GetEditableChunk(delta.address.chunkID, editableChunk))
+                    continue;
+
+                _loadedChunks[editableChunk.chunkID] = editableChunk;
+                editableItr = _editableChunkScratch.emplace(editableChunk.chunkID, editableChunk).first;
+            }
+
+            const std::array<u8, 3>& value = useAfterValues ? delta.after : delta.before;
+            std::copy(value.begin(), value.end(), editableItr->second.chunk->cellsData.colors[delta.address.cellID][delta.address.vertexID]);
+            _changedCellScratch.insert(PackCellAddress(delta.address.chunkID, delta.address.cellID));
+        }
+        if (!_changedCellScratch.empty())
+            UploadChangedVertexCells(_changedCellScratch);
+
+        _changedCellScratch.clear();
         for (const CellLayerDelta& delta : transaction.cellLayerDeltas)
         {
             TerrainLoader::LoadedChunkView editableChunk;
@@ -1831,7 +2494,6 @@ namespace Editor
             const size_t cellOffset = static_cast<size_t>(delta.cellID) * ALPHA_MAP_CELL_BYTE_SIZE;
             std::copy(value.begin(), value.end(), alphaMap->rgba.begin() + cellOffset);
             alphaMap->dirty = true;
-            alphaMap->layerUsageValid[delta.cellID] = false;
             _changedCellScratch.insert(PackCellAddress(delta.chunkID, delta.cellID));
         }
 
@@ -1858,6 +2520,8 @@ namespace Editor
         _transactionChunkScratch.insert(transaction.affectedChunkIDs.begin(), transaction.affectedChunkIDs.end());
         for (const VertexDelta& delta : transaction.deltas)
             _transactionChunkScratch.insert(delta.address.chunkID);
+        for (const VertexColorDelta& delta : transaction.colorDeltas)
+            _transactionChunkScratch.insert(delta.address.chunkID);
         for (const TextureCellDelta& delta : transaction.textureCellDeltas)
             _transactionChunkScratch.insert(delta.chunkID);
         for (const CellLayerDelta& delta : transaction.cellLayerDeltas)
@@ -1869,6 +2533,12 @@ namespace Editor
         {
             if (_terrainLoader.MarkChunkEdited(chunkID))
                 _dirtyChunks.insert(chunkID);
+        }
+
+        for (const VertexDelta& delta : transaction.deltas)
+        {
+            if (_dirtyChunks.contains(delta.address.chunkID))
+                _physicsDirtyChunks.insert(delta.address.chunkID);
         }
     }
 
@@ -1886,6 +2556,7 @@ namespace Editor
     {
         size_t size = transaction.name.size() +
             transaction.deltas.size() * sizeof(VertexDelta) +
+            transaction.colorDeltas.size() * sizeof(VertexColorDelta) +
             transaction.textureCellDeltas.size() * sizeof(TextureCellDelta) +
             transaction.cellLayerDeltas.size() * sizeof(CellLayerDelta) +
             transaction.chunkAlphaMapDeltas.size() * sizeof(ChunkAlphaMapDelta);

@@ -24,6 +24,7 @@
 #include "Game-Lib/Input/ImGuiInputBridge.h"
 #include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Input/InputPerformanceTest.h"
+#include "Game-Lib/Input/PenInput.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
@@ -130,6 +131,7 @@ Application::Application()
 Application::~Application()
 {
     delete _imguiInputBridge;
+    delete _penInput;
     delete _gameRenderer;
     delete _editorHandler;
     delete _inputPerformanceTest;
@@ -361,13 +363,7 @@ bool Application::Init(bool enableRenderDoc)
     NC_LOG_INFO("Initialized PACT");
 
     _assetWriter = new Util::AssetWriter();
-    if (!_assetWriter->Init(Util::AssetWriterConfig
-    {
-        .diskRoot = currentPath / "Data",
-        .pactOverlayRoot = stagingOverlayPath,
-        .pactStorage = pactStorage,
-        .pactOverlayHandle = stagingOverlayHandle
-    }))
+    if (!_assetWriter->Init(Util::AssetWriterConfig{ .diskRoot = currentPath / "Data", .pactOverlayRoot = stagingOverlayPath, .pactStorage = pactStorage, .pactOverlayHandle = stagingOverlayHandle }))
     {
         return false;
     }
@@ -434,6 +430,8 @@ bool Application::Init(bool enableRenderDoc)
     Util::ClientDB::DiscoverAll();
 
     _gameRenderer = new GameRenderer(enableRenderDoc);
+    _penInput = new PenInput();
+    _penInput->Initialize(*_gameRenderer->GetWindow(), *_inputSystem);
     _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
 
     NC_LOG_INFO("EditorHandler : Initializing");

@@ -1,6 +1,6 @@
 local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
-MapEditor — Lua port of the C++ ImGui Map selector. Two sections (List with
+MapEditor - Lua port of the C++ ImGui Map selector. Two sections (List with
 filter, Actions). Right-click row opens a ContextMenu with Load/Unload.
 ]]
 
@@ -9,6 +9,7 @@ local ContextMenu = require("@src/API/UI/ContextMenu")
 local Button = require("@src/API/UI/Button")
 local EditorRegistry = require("@src/API/Editor/Registry")
 local InputBox = require("@src/API/UI/InputBox")
+local Modal = require("@src/API/UI/Modal")
 local ScrollBox = require("@src/API/UI/ScrollBox")
 local TextUtil = require("@src/API/UI/TextUtil")
 
@@ -146,6 +147,13 @@ actionsSection._onToggle = function() Restack() end
 Restack()
 
 local rowMenu = ContextMenu.New(canvas, { items = {}, layer = CONTEXT_LAYER })
+local createHeaderModal = Modal.New(canvas, vec.New(0, 0), vec.New(460, 180), integer.add(LAYER, 100i), {
+    name = "MapEditorCreateHeader",
+    title = "Create Empty Terrain Map",
+    message = "",
+    confirmText = "Create",
+    cancelText = "Cancel",
+})
 
 local allMaps = nil
 local rowBtns = {}
@@ -174,10 +182,26 @@ local function RefreshHighlights()
     end
 end
 
+local function LoadMap(mapData)
+    if Map.HasLocalHeader(mapData.internalName) then
+        Map.Load(mapData.internalName)
+        return
+    end
+
+    createHeaderModal:Open({
+        message = `Map '{mapData.name}' has no local terrain header. Create an empty header for '{string.lower(mapData.internalName)}' and load it?`,
+        onConfirm = function()
+            if Map.CreateEmptyLocalHeader(mapData.internalName) then
+                Map.Load(mapData.internalName)
+            end
+        end,
+    })
+end
+
 local function OpenRowMenu(rowData, mouseX, mouseY)
     local current = Map.GetCurrent()
     rowMenu:SetItems({
-        { label = "Load",   onClick = function() Map.Load(rowData.internalName) end },
+        { label = "Load",   onClick = function() LoadMap(rowData) end },
         { label = "Unload", onClick = function() Map.Unload() end, enabled = current ~= "" },
     })
     rowMenu:Open(mouseX, mouseY)
@@ -213,7 +237,7 @@ local function BuildRows(filterText)
             btn:SetRelativePoint(vec.New(0.0, 1.0))
             btn.data = mapData
 
-            local iconTemplate = ICON_TEMPLATES[mapData.instanceType] or DEFAULT_ICON_TEMPLATE
+            local iconTemplate = ICON_TEMPLATES[mapData.type] or DEFAULT_ICON_TEMPLATE
             local icon = btn.root:NewPanel(vec.New(4, 0), vec.New(ICON_SIZE, ICON_SIZE), 1i, iconTemplate)
             icon:SetAnchor(vec.New(0.0, 0.5))
             icon:SetRelativePoint(vec.New(0.0, 0.5))
@@ -228,7 +252,7 @@ local function BuildRows(filterText)
                 end
                 local now = os.clock()
                 if lastClickRowID == mapData.id and (now - lastClickTime) <= DOUBLE_CLICK_S then
-                    Map.Load(mapData.internalName)
+                    LoadMap(mapData)
                     lastClickRowID = nil
                 else
                     lastClickRowID = mapData.id
@@ -255,7 +279,7 @@ loadBtn:SetOnMouseUp(function()
     if selectedRowID == nil then return end
     for _, row in rowBtns do
         if row.data.id == selectedRowID then
-            Map.Load(row.data.internalName)
+            LoadMap(row.data)
             break
         end
     end
@@ -277,6 +301,7 @@ end
 function methods:Hide()
     windowPanel:SetVisible(false)
     rowMenu:Close()
+    createHeaderModal:Close()
     Map.SetOnCurrentMapChanged(nil)
 end
 

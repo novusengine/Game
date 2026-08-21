@@ -56,6 +56,183 @@
 
 namespace fs = std::filesystem;
 
+namespace
+{
+    std::shared_ptr<Map::Chunk> CreateDefaultChunk()
+    {
+        auto chunk = std::make_shared<Map::Chunk>();
+        std::memset(&chunk->cellsData, 0, sizeof(chunk->cellsData));
+        chunk->heightHeader.gridMinHeight = 0.0f;
+        chunk->heightHeader.gridMaxHeight = 0.0f;
+        chunk->chunkAlphaMapTextureHash = Terrain::TEXTURE_ID_INVALID;
+
+        for (u32 cellID = 0; cellID < Terrain::CHUNK_NUM_CELLS; cellID++)
+        {
+            chunk->cellsData.heightBounds[cellID] = vec2(0.0f);
+            for (u32 vertexID = 0; vertexID < Terrain::CELL_TOTAL_GRID_SIZE; vertexID++)
+            {
+                chunk->cellsData.normals[cellID][vertexID][0] = 127;
+                chunk->cellsData.normals[cellID][vertexID][1] = 254;
+                chunk->cellsData.normals[cellID][vertexID][2] = 127;
+                chunk->cellsData.colors[cellID][vertexID][0] = 255;
+                chunk->cellsData.colors[cellID][vertexID][1] = 255;
+                chunk->cellsData.colors[cellID][vertexID][2] = 255;
+            }
+        }
+
+        return chunk;
+    }
+
+    bool BuildChunkPhysics(const Map::Chunk& chunk, std::vector<u8>& outPhysicsData)
+    {
+        JPH::VertexList vertices;
+        JPH::IndexedTriangleList triangles;
+        vertices.reserve(Terrain::CHUNK_NUM_CELLS * Terrain::CELL_TOTAL_GRID_SIZE);
+        triangles.reserve(Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_TRIANGLES);
+
+        for (u32 cellID = 0; cellID < Terrain::CHUNK_NUM_CELLS; cellID++)
+        {
+            for (u32 vertexID = 0; vertexID < Terrain::CELL_TOTAL_GRID_SIZE; vertexID++)
+            {
+                const vec2 position = Util::Map::GetCellVertexPosition(cellID, vertexID);
+                vertices.push_back({ position.x, chunk.cellsData.heightField[cellID][vertexID], position.y });
+            }
+
+            const u32 cellVertexOffset = cellID * Terrain::CELL_TOTAL_GRID_SIZE;
+            for (u32 triangleID = 0; triangleID < Terrain::CELL_NUM_TRIANGLES; triangleID++)
+            {
+                const u32 patchID = triangleID / 4;
+                if ((chunk.cellsData.holes[cellID] & (1ull << patchID)) != 0)
+                    continue;
+
+                const u32 patchRow = patchID / 8;
+                const u32 patchColumn = patchID % 8;
+                const u32 patchVertices[5] = {
+                    patchColumn + patchRow * Terrain::CELL_GRID_ROW_SIZE,
+                    patchColumn + patchRow * Terrain::CELL_GRID_ROW_SIZE + 1,
+                    patchColumn + patchRow * Terrain::CELL_GRID_ROW_SIZE + Terrain::CELL_GRID_ROW_SIZE,
+                    patchColumn + patchRow * Terrain::CELL_GRID_ROW_SIZE + Terrain::CELL_GRID_ROW_SIZE + 1,
+                    patchColumn + patchRow * Terrain::CELL_GRID_ROW_SIZE + Terrain::CELL_OUTER_GRID_STRIDE
+                };
+                const u32 triangleWithinPatch = triangleID % 4;
+                const uvec2 componentOffsets(triangleWithinPatch > 1, triangleWithinPatch == 0 || triangleWithinPatch == 3);
+                const u32 vertexID1 = cellVertexOffset + patchVertices[4];
+                const u32 vertexID2 = cellVertexOffset + patchVertices[componentOffsets.x * 2 + componentOffsets.y];
+                const u32 vertexID3 = cellVertexOffset + patchVertices[(!componentOffsets.y) * 2 + componentOffsets.x];
+                triangles.push_back({ vertexID3, vertexID2, vertexID1 });
+            }
+        }
+
+        JPH::MeshShapeSettings shapeSettings(vertices, triangles);
+        JPH::ShapeSettings::ShapeResult shapeResult = shapeSettings.Create();
+        if (shapeResult.HasError())
+            return false;
+
+        JPH::Shape::ShapeToIDMap shapeMap;
+        JPH::Shape::MaterialToIDMap materialMap;
+        std::shared_ptr<Bytebuffer> physicsBuffer = Bytebuffer::BorrowRuntime(16 * 1024 * 1024);
+        JoltStreamOut stream(physicsBuffer.get());
+        shapeResult.Get()->SaveWithChildren(stream, shapeMap, materialMap);
+        if (stream.IsFailed() || physicsBuffer->writtenData == 0)
+            return false;
+
+        outPhysicsData.assign(physicsBuffer->GetDataPointer(), physicsBuffer->GetDataPointer() + physicsBuffer->writtenData);
+        return true;
+    }
+
+    struct ChunkPayload
+    {
+    public:
+        std::vector<Terrain::Placement> placements;
+        Map::LiquidInfo liquidInfo;
+        std::vector<u8> physicsData;
+    };
+
+    template <typename T>
+    bool ReadChunkPayloadElements(const std::shared_ptr<Bytebuffer>& buffer, u64 offset, u32 count, std::vector<T>& outElements)
+    {
+        if (count == 0)
+        {
+            outElements.clear();
+            return true;
+        }
+
+        const size_t byteCount = static_cast<size_t>(count) * sizeof(T);
+        if (!buffer || offset > buffer->writtenData || byteCount > buffer->writtenData - static_cast<size_t>(offset))
+            return false;
+
+        outElements.resize(count);
+        std::memcpy(outElements.data(), buffer->GetDataPointer() + offset, byteCount);
+        return true;
+    }
+
+    bool ReadChunkPayload(const Map::Chunk& chunk, const std::shared_ptr<Bytebuffer>& buffer, ChunkPayload& outPayload)
+    {
+        if (!ReadChunkPayloadElements(buffer, chunk.placementHeader.dataOffset, chunk.placementHeader.numPlacements, outPayload.placements))
+            return false;
+
+        u64 liquidOffset = chunk.liquidHeader.dataOffset;
+        if (!ReadChunkPayloadElements(buffer, liquidOffset, chunk.liquidHeader.numHeaders, outPayload.liquidInfo.headers))
+            return false;
+        liquidOffset += static_cast<u64>(chunk.liquidHeader.numHeaders) * sizeof(Map::CellLiquidHeader);
+
+        if (!ReadChunkPayloadElements(buffer, liquidOffset, chunk.liquidHeader.numInstances, outPayload.liquidInfo.instances))
+            return false;
+        liquidOffset += static_cast<u64>(chunk.liquidHeader.numInstances) * sizeof(Map::CellLiquidInstance);
+
+        if (!ReadChunkPayloadElements(buffer, liquidOffset, chunk.liquidHeader.numAttributes, outPayload.liquidInfo.attributes))
+            return false;
+        liquidOffset += static_cast<u64>(chunk.liquidHeader.numAttributes) * sizeof(Map::CellLiquidAttributes);
+
+        if (!ReadChunkPayloadElements(buffer, liquidOffset, chunk.liquidHeader.numBitmapBytes, outPayload.liquidInfo.bitmapData))
+            return false;
+        liquidOffset += chunk.liquidHeader.numBitmapBytes;
+
+        if (!ReadChunkPayloadElements(buffer, liquidOffset, chunk.liquidHeader.numVertexBytes, outPayload.liquidInfo.vertexData))
+            return false;
+
+        return ReadChunkPayloadElements(buffer, chunk.physicsHeader.dataOffset, chunk.physicsHeader.numBytes, outPayload.physicsData);
+    }
+
+    bool SerializeChunk(Map::Chunk& chunk, std::shared_ptr<Bytebuffer>& outBuffer)
+    {
+        std::vector<u8> physicsData;
+        if (!BuildChunkPhysics(chunk, physicsData))
+            return false;
+
+        std::shared_ptr<Bytebuffer> workingBuffer = Bytebuffer::BorrowRuntime(16 * 1024 * 1024);
+        const std::vector<Terrain::Placement> placements;
+        const Map::LiquidInfo liquidInfo;
+        if (!chunk.Save(workingBuffer, placements, liquidInfo, physicsData))
+            return false;
+
+        outBuffer = std::make_shared<Bytebuffer>(nullptr, workingBuffer->writtenData);
+        std::memcpy(outBuffer->GetDataPointer(), workingBuffer->GetDataPointer(), workingBuffer->writtenData);
+        outBuffer->writtenData = workingBuffer->writtenData;
+        return true;
+    }
+
+    bool SerializeEditedChunkWithPhysics(Map::Chunk& chunk, std::shared_ptr<Bytebuffer> sourceBuffer, std::shared_ptr<Bytebuffer>& outBuffer)
+    {
+        if (!sourceBuffer || sourceBuffer->writtenData < sizeof(Map::Chunk))
+            return false;
+
+        Map::Chunk sourceChunk;
+        if (!Map::Chunk::Read(sourceBuffer, sourceChunk))
+            return false;
+
+        ChunkPayload payload;
+        if (!ReadChunkPayload(sourceChunk, sourceBuffer, payload))
+            return false;
+
+        if (!BuildChunkPhysics(chunk, payload.physicsData))
+            return false;
+
+        outBuffer = Bytebuffer::BorrowRuntime(16 * 1024 * 1024);
+        return chunk.Save(outBuffer, payload.placements, payload.liquidInfo, payload.physicsData);
+    }
+}
+
 AutoCVar_Int CVAR_TerrainChunkLoadsPerFrame(CVarCategory::Client | CVarCategory::Rendering, "terrainChunkLoadsPerFrame", "maximum terrain chunks prepared and committed per frame", 32, CVarFlags::None);
 
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader)
@@ -70,6 +247,7 @@ TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* mode
     _chunkIDToLoadedID.reserve(4096);
     _chunkIDToBodyID.reserve(4096);
     _chunkIDToChunkInfo.reserve(4096);
+    _unlinkedChunkRendererIndices.reserve(4096);
 }
 
 static void NotifyCurrentMapChanged()
@@ -131,6 +309,9 @@ void TerrainLoader::Clear()
     
     _chunkIDToLoadedID.clear();
     _chunkIDToBodyID.clear();
+    _unlinkedChunkRendererIndices.clear();
+    _mapHeader = {};
+    _mapHeaderDirty = false;
 
     {
         std::scoped_lock lock(_chunkLoadingMutex);
@@ -221,7 +402,6 @@ void TerrainLoader::Update(f32 deltaTime)
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
-        JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
         const u32 configuredChunkLoadsPerFrame = static_cast<u32>(std::max(1, CVAR_TerrainChunkLoadsPerFrame.Get()));
         u32 maxChunkLoadsThisTick = glm::min(numPendingRequests, configuredChunkLoadsPerFrame);
@@ -232,7 +412,7 @@ void TerrainLoader::Update(f32 deltaTime)
         _chunkIDToLoadedID.reserve(_chunkIDToLoadedID.size() + maxChunkLoadsThisTick);
         _chunkIDToBodyID.reserve(_chunkIDToBodyID.size() + maxChunkLoadsThisTick);
 
-        enki::TaskSet loadChunksTask(maxChunkLoadsThisTick, [this, &bodyInterface, &joltState, &reserveOffsets, physicsEnabled](enki::TaskSetPartition range, uint32_t threadNum)
+        enki::TaskSet loadChunksTask(maxChunkLoadsThisTick, [this, &reserveOffsets](enki::TaskSetPartition range, uint32_t threadNum)
         {
             ZoneScopedN("Load Chunk Task");
             u32 numProcessedLoads = 0;
@@ -280,50 +460,11 @@ void TerrainLoader::Update(f32 deltaTime)
                 }
 
                 u32 physicsBodyID = JPH::BodyID::cInvalidBodyID;
-
-                u32 numPhysicsBytes = chunk->physicsHeader.numBytes;
-                if (physicsEnabled && numPhysicsBytes > 0)
+                if (!CreateChunkPhysics(workRequest.chunkID, workRequest.buffer, *chunk, physicsBodyID))
                 {
-                    ZoneScopedN("Load Physics");
-                    JPH::ShapeRefC shape = nullptr;
-                    JPH::Body* body = nullptr;
-
-                    {
-                        ZoneScopedN("Read Shape");
-                        Bytebuffer physicsBuffer = Bytebuffer(chunk->physicsHeader.GetPhysicsData(workRequest.buffer), numPhysicsBytes);
-                        physicsBuffer.SkipWrite(numPhysicsBytes);
-
-                        JoltStreamIn streamIn(&physicsBuffer);
-
-                        {
-                            ZoneScopedN("Restore Shape");
-                            JPH::Shape::IDToShapeMap shapeMap;
-                            JPH::Shape::IDToMaterialMap materialMap;
-                            JPH::ShapeSettings::ShapeResult shapeResult = JPH::Shape::sRestoreWithChildren(streamIn, shapeMap, materialMap);
-                            shape = shapeResult.Get(); // We don't expect an error here, but you can check floor_shape_result for HasError() / GetError()
-                        }
-                    }
-                   
-                    {
-                        ZoneScopedN("Create Body");
-                        // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-                        vec2 chunkPos = Util::Map::GetChunkPosition(workRequest.chunkID);
-                        JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(chunkPos.x, 0.0f, chunkPos.y), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
-
-                        // Create the actual rigid body
-                        body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
-                        joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::TerrainChunk, body != nullptr);
-                    }
-
-                    if (body)
-                    {
-                        ZoneScopedN("Add Body");
-                        body->SetUserData(Jolt::PhysicsBodyUserData::Pack(entt::null, Jolt::PhysicsSurfaceType::Terrain, Jolt::PhysicsBodyFlags::CanSupport | Jolt::PhysicsBodyFlags::CanSnapTo));
-
-                        JPH::BodyID bodyID = body->GetID();
-                        bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
-                        physicsBodyID = bodyID.GetIndexAndSequenceNumber();
-                    }
+                    NC_LOG_ERROR("TerrainLoader : Failed to restore physics for chunk {0}", workRequest.chunkID);
+                    numFailedLoads++;
+                    continue;
                 }
 
                 // Load into Terrain Renderer
@@ -431,12 +572,7 @@ void TerrainLoader::GetLoadedChunks(std::vector<LoadedChunkView>& outChunks) con
         if (loadedIDItr == _chunkIDToLoadedID.end())
             continue;
 
-        outChunks.push_back({
-            .chunk = chunkInfo.editableChunk ? chunkInfo.editableChunk.get() : chunkInfo.chunk,
-            .chunkID = chunkID,
-            .rendererChunkIndex = loadedIDItr->second,
-            .revision = chunkInfo.revision
-        });
+        outChunks.push_back({ .chunk = chunkInfo.editableChunk ? chunkInfo.editableChunk.get() : chunkInfo.chunk, .chunkID = chunkID, .rendererChunkIndex = loadedIDItr->second, .revision = chunkInfo.revision });
     }
 }
 
@@ -476,7 +612,7 @@ bool TerrainLoader::MarkChunkEdited(u32 chunkID)
     return true;
 }
 
-bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, std::vector<u32>& outSavedChunkIDs)
+bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, const robin_hood::unordered_set<u32>& physicsDirtyChunkIDs, std::vector<u32>& outSavedChunkIDs)
 {
     struct ChunkSaveSnapshot
     {
@@ -484,8 +620,11 @@ bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, std::ve
         u32 chunkID = Terrain::CHUNK_INVALID_ID;
         u64 revision = 0;
         std::string virtualPath;
-        std::vector<u8> editedChunkBytes;
+        Map::Chunk editedChunk;
+        std::vector<u8> sourceBytes;
         std::vector<u8> bytes;
+        bool replaceFile = false;
+        bool rebuildPhysics = false;
     };
 
     outSavedChunkIDs.clear();
@@ -515,8 +654,14 @@ bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, std::ve
             snapshot.chunkID = chunkID;
             snapshot.revision = chunkInfo.revision;
             snapshot.virtualPath = Util::AssetPath::Map(_currentMapInternalName + "/" + _currentMapInternalName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + ".chunk");
-            snapshot.editedChunkBytes.resize(sizeof(Map::Chunk));
-            std::memcpy(snapshot.editedChunkBytes.data(), chunkInfo.editableChunk.get(), snapshot.editedChunkBytes.size());
+            snapshot.editedChunk = *chunkInfo.editableChunk;
+            snapshot.replaceFile = chunkInfo.replaceFileOnSave;
+            snapshot.rebuildPhysics = physicsDirtyChunkIDs.contains(chunkID);
+            if (snapshot.replaceFile && chunkInfo.buffer)
+            {
+                snapshot.sourceBytes.resize(chunkInfo.buffer->writtenData);
+                std::memcpy(snapshot.sourceBytes.data(), chunkInfo.buffer->GetDataPointer(), snapshot.sourceBytes.size());
+            }
         }
     }
 
@@ -528,6 +673,9 @@ bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, std::ve
     bool savedAllChunks = snapshots.size() == chunkIDs.size();
     for (ChunkSaveSnapshot& snapshot : snapshots)
     {
+        if (!snapshot.sourceBytes.empty())
+            continue;
+
         PACT::PactFileHandle sourceFile;
         if (pactStorage->ReadFile(snapshot.virtualPath, sourceFile) != PACT::PactReadResult::Success || sourceFile.GetSize() < sizeof(Map::Chunk))
         {
@@ -535,13 +683,37 @@ bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, std::ve
             continue;
         }
 
-        snapshot.bytes.resize(sourceFile.GetSize());
-        std::memcpy(snapshot.bytes.data(), sourceFile.GetData(), snapshot.bytes.size());
-        std::memcpy(snapshot.bytes.data(), snapshot.editedChunkBytes.data(), snapshot.editedChunkBytes.size());
-        snapshot.editedChunkBytes.clear();
+        snapshot.sourceBytes.resize(sourceFile.GetSize());
+        std::memcpy(snapshot.sourceBytes.data(), sourceFile.GetData(), snapshot.sourceBytes.size());
     }
 
-    for (const ChunkSaveSnapshot& snapshot : snapshots)
+    for (ChunkSaveSnapshot& snapshot : snapshots)
+    {
+        if (snapshot.sourceBytes.empty())
+            continue;
+
+        if (!snapshot.rebuildPhysics)
+        {
+            snapshot.bytes = std::move(snapshot.sourceBytes);
+            std::memcpy(snapshot.bytes.data(), &snapshot.editedChunk, sizeof(Map::Chunk));
+            continue;
+        }
+
+        std::shared_ptr<Bytebuffer> sourceBuffer = std::make_shared<Bytebuffer>(snapshot.sourceBytes.data(), snapshot.sourceBytes.size());
+        sourceBuffer->writtenData = snapshot.sourceBytes.size();
+        std::shared_ptr<Bytebuffer> serializedBuffer;
+        if (!SerializeEditedChunkWithPhysics(snapshot.editedChunk, sourceBuffer, serializedBuffer))
+        {
+            NC_LOG_ERROR("TerrainLoader : Failed to serialize edited chunk {0} with rebuilt physics", snapshot.chunkID);
+            savedAllChunks = false;
+            continue;
+        }
+
+        snapshot.bytes.resize(serializedBuffer->writtenData);
+        std::memcpy(snapshot.bytes.data(), serializedBuffer->GetDataPointer(), snapshot.bytes.size());
+    }
+
+    for (ChunkSaveSnapshot& snapshot : snapshots)
     {
         if (snapshot.bytes.empty())
             continue;
@@ -560,10 +732,354 @@ bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, std::ve
             continue;
         }
 
+        if (snapshot.rebuildPhysics)
+        {
+            std::shared_ptr<Bytebuffer> serializedBuffer = std::make_shared<Bytebuffer>(snapshot.bytes.data(), snapshot.bytes.size());
+            serializedBuffer->writtenData = snapshot.bytes.size();
+            u32 bodyID = JPH::BodyID::cInvalidBodyID;
+            if (!CreateChunkPhysics(snapshot.chunkID, serializedBuffer, snapshot.editedChunk, bodyID))
+            {
+                NC_LOG_ERROR("TerrainLoader : Failed to replace physics for saved chunk {0}", snapshot.chunkID);
+                savedAllChunks = false;
+                continue;
+            }
+
+            RemoveChunkPhysics(snapshot.chunkID);
+            if (bodyID != JPH::BodyID::cInvalidBodyID)
+                _chunkIDToBodyID[snapshot.chunkID] = bodyID;
+        }
+
         outSavedChunkIDs.push_back(snapshot.chunkID);
+        itr->second.editableChunk->placementHeader = snapshot.editedChunk.placementHeader;
+        itr->second.editableChunk->liquidHeader = snapshot.editedChunk.liquidHeader;
+        itr->second.editableChunk->physicsHeader = snapshot.editedChunk.physicsHeader;
+        itr->second.replaceFileOnSave = false;
     }
 
     return savedAllChunks;
+}
+
+void TerrainLoader::GetChunkLayout(ChunkLayoutState& outState) const
+{
+    std::scoped_lock lock(_chunkLoadingMutex);
+    outState.occupiedChunkIDs.clear();
+    outState.occupiedChunkIDs.reserve(_mapHeader.chunkHashes.size());
+
+    robin_hood::unordered_set<u64> occupiedHashes(_mapHeader.chunkHashes.begin(), _mapHeader.chunkHashes.end());
+    const u32 chunkCount = Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    for (u32 chunkID = 0; chunkID < chunkCount; chunkID++)
+    {
+        if (occupiedHashes.contains(Util::AssetPath::Hash(GetChunkPath(chunkID))))
+            outState.occupiedChunkIDs.push_back(chunkID);
+    }
+
+    outState.generation = _contentGeneration.load(std::memory_order_relaxed);
+    outState.headerDirty = _mapHeaderDirty;
+}
+
+std::string TerrainLoader::GetChunkPath(u32 chunkID) const
+{
+    const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    return Util::AssetPath::Map(_currentMapInternalName + "/" + _currentMapInternalName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + Map::CHUNK_FILE_EXTENSION);
+}
+
+bool TerrainLoader::CreateChunkPhysics(u32 chunkID, std::shared_ptr<Bytebuffer>& buffer, Map::Chunk& chunk, u32& outBodyID)
+{
+    outBodyID = JPH::BodyID::cInvalidBodyID;
+    const i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
+    if (!physicsEnabled || chunk.physicsHeader.numBytes == 0)
+        return true;
+
+    if (chunk.physicsHeader.numBytes > buffer->writtenData || chunk.physicsHeader.dataOffset > buffer->writtenData - chunk.physicsHeader.numBytes)
+        return false;
+
+    Bytebuffer physicsBuffer(chunk.physicsHeader.GetPhysicsData(buffer), chunk.physicsHeader.numBytes);
+    physicsBuffer.SkipWrite(chunk.physicsHeader.numBytes);
+    JoltStreamIn stream(&physicsBuffer);
+    JPH::Shape::IDToShapeMap shapeMap;
+    JPH::Shape::IDToMaterialMap materialMap;
+    JPH::ShapeSettings::ShapeResult shapeResult = JPH::Shape::sRestoreWithChildren(stream, shapeMap, materialMap);
+    if (shapeResult.HasError())
+        return false;
+
+    auto& joltState = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<ECS::Singletons::JoltState>();
+    JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+    const vec2 chunkPosition = Util::Map::GetChunkPosition(chunkID);
+    JPH::BodyCreationSettings bodySettings(shapeResult.Get(), JPH::RVec3(chunkPosition.x, 0.0f, chunkPosition.y), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+    JPH::Body* body = bodyInterface.CreateBody(bodySettings);
+    joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::TerrainChunk, body != nullptr);
+    if (!body)
+        return false;
+
+    body->SetUserData(Jolt::PhysicsBodyUserData::Pack(entt::null, Jolt::PhysicsSurfaceType::Terrain, Jolt::PhysicsBodyFlags::CanSupport | Jolt::PhysicsBodyFlags::CanSnapTo));
+    bodyInterface.AddBody(body->GetID(), JPH::EActivation::Activate);
+    outBodyID = body->GetID().GetIndexAndSequenceNumber();
+    return true;
+}
+
+void TerrainLoader::RemoveChunkPhysics(u32 chunkID)
+{
+    auto bodyItr = _chunkIDToBodyID.find(chunkID);
+    if (bodyItr == _chunkIDToBodyID.end())
+        return;
+
+    auto& joltState = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<ECS::Singletons::JoltState>();
+    JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+    const JPH::BodyID bodyID = static_cast<JPH::BodyID>(bodyItr->second);
+    bodyInterface.RemoveBody(bodyID);
+    bodyInterface.DestroyBody(bodyID);
+    _chunkIDToBodyID.erase(bodyItr);
+}
+
+bool TerrainLoader::AttachChunk(u32 chunkID, bool replaceFileOnSave, std::shared_ptr<Bytebuffer> buffer, std::shared_ptr<PACT::PactFileHandle> fileHandle, std::shared_ptr<Map::Chunk> editableChunk)
+{
+    if (!buffer || buffer->writtenData < sizeof(Map::Chunk))
+        return false;
+
+    Map::Chunk* chunk = editableChunk ? editableChunk.get() : reinterpret_cast<Map::Chunk*>(buffer->GetDataPointer());
+    if (!chunk || chunk->header.type != FileHeader::Type::MapChunk || chunk->header.version != Map::Chunk::CURRENT_VERSION)
+        return false;
+
+    u32 bodyID = JPH::BodyID::cInvalidBodyID;
+    if (!CreateChunkPhysics(chunkID, buffer, *chunk, bodyID))
+        return false;
+
+    const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    const std::string chunkPath = GetChunkPath(chunkID);
+    const u32 chunkHash = StringUtils::fnv1a_32(chunkPath.c_str(), chunkPath.size());
+    u32 rendererChunkIndex = 0;
+    auto unlinkedItr = _unlinkedChunkRendererIndices.find(chunkID);
+    if (unlinkedItr != _unlinkedChunkRendererIndices.end())
+    {
+        rendererChunkIndex = unlinkedItr->second;
+        if (!_terrainRenderer->ReplaceChunk(rendererChunkIndex, chunkHash, *chunk, ivec2(chunkX, chunkY)))
+            return false;
+        _unlinkedChunkRendererIndices.erase(unlinkedItr);
+    }
+    else
+    {
+        rendererChunkIndex = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
+    }
+
+    ChunkInfo chunkInfo = {
+        .chunk = chunk,
+        .editableChunk = std::move(editableChunk),
+        .buffer = std::move(buffer),
+        .fileHandle = std::move(fileHandle),
+        .replaceFileOnSave = replaceFileOnSave
+    };
+    _chunkIDToChunkInfo[chunkID] = std::move(chunkInfo);
+    _chunkIDToLoadedID[chunkID] = rendererChunkIndex;
+    if (bodyID != JPH::BodyID::cInvalidBodyID)
+        _chunkIDToBodyID[chunkID] = bodyID;
+    return true;
+}
+
+bool TerrainLoader::AddChunk(u32 chunkID, bool& outCreated)
+{
+    outCreated = false;
+    const u32 chunkCount = Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    if (_currentMapInternalName.empty() || IsLoading() || chunkID >= chunkCount || _chunkIDToChunkInfo.contains(chunkID))
+        return false;
+
+    const std::string chunkPath = GetChunkPath(chunkID);
+    const u64 fileHash = Util::AssetPath::Hash(chunkPath);
+    std::shared_ptr<PACT::PactFileHandle> fileHandle = std::make_shared<PACT::PactFileHandle>();
+    std::shared_ptr<Bytebuffer> buffer;
+    std::shared_ptr<Map::Chunk> editableChunk;
+    if (ServiceLocator::GetPactStorage()->ReadFile(chunkPath, *fileHandle) == PACT::PactReadResult::Success)
+    {
+        buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle->GetData()), fileHandle->GetSize());
+        buffer->writtenData = fileHandle->GetSize();
+    }
+    else
+    {
+        fileHandle.reset();
+        editableChunk = CreateDefaultChunk();
+        if (!SerializeChunk(*editableChunk, buffer))
+            return false;
+        outCreated = true;
+    }
+
+    const bool replaceFileOnSave = !fileHandle;
+    if (!AttachChunk(chunkID, replaceFileOnSave, std::move(buffer), std::move(fileHandle), std::move(editableChunk)))
+        return false;
+
+    if (std::find(_mapHeader.chunkHashes.begin(), _mapHeader.chunkHashes.end(), fileHash) == _mapHeader.chunkHashes.end())
+        _mapHeader.chunkHashes.push_back(fileHash);
+    _mapHeaderDirty = true;
+    _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool TerrainLoader::RemoveChunk(u32 chunkID)
+{
+    const u64 fileHash = Util::AssetPath::Hash(GetChunkPath(chunkID));
+    if (std::find(_mapHeader.chunkHashes.begin(), _mapHeader.chunkHashes.end(), fileHash) == _mapHeader.chunkHashes.end())
+        return false;
+
+    auto loadedItr = _chunkIDToLoadedID.find(chunkID);
+    if (IsLoading())
+        return false;
+
+    if (loadedItr != _chunkIDToLoadedID.end())
+    {
+        if (!_terrainRenderer->HideChunk(loadedItr->second))
+            return false;
+
+        RemoveChunkPhysics(chunkID);
+        _unlinkedChunkRendererIndices[chunkID] = loadedItr->second;
+        _chunkIDToLoadedID.erase(loadedItr);
+        _chunkIDToChunkInfo.erase(chunkID);
+
+        // Chunk placements and liquids currently have no per-chunk ownership handle. They
+        // intentionally remain live until the map is unloaded and must not be loaded again
+        // if this chunk is linked again during the same map session.
+    }
+
+    std::erase(_mapHeader.chunkHashes, fileHash);
+    _mapHeaderDirty = true;
+    _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool TerrainLoader::ResetChunk(u32 chunkID)
+{
+    auto loadedItr = _chunkIDToLoadedID.find(chunkID);
+    if (IsLoading() || loadedItr == _chunkIDToLoadedID.end())
+        return false;
+
+    std::shared_ptr<Map::Chunk> chunk = CreateDefaultChunk();
+    std::shared_ptr<Bytebuffer> buffer;
+    if (!SerializeChunk(*chunk, buffer))
+        return false;
+
+    RemoveChunkPhysics(chunkID);
+    const u32 rendererChunkIndex = loadedItr->second;
+    const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    const std::string chunkPath = GetChunkPath(chunkID);
+    const u32 chunkHash = StringUtils::fnv1a_32(chunkPath.c_str(), chunkPath.size());
+    if (!_terrainRenderer->ReplaceChunk(rendererChunkIndex, chunkHash, *chunk, ivec2(chunkX, chunkY)))
+        return false;
+
+    u32 bodyID = JPH::BodyID::cInvalidBodyID;
+    if (!CreateChunkPhysics(chunkID, buffer, *chunk, bodyID))
+        return false;
+
+    _chunkIDToChunkInfo[chunkID] = {
+        .chunk = chunk.get(),
+        .editableChunk = std::move(chunk),
+        .buffer = std::move(buffer),
+        .revision = 1,
+        .replaceFileOnSave = true
+    };
+    if (bodyID != JPH::BodyID::cInvalidBodyID)
+        _chunkIDToBodyID[chunkID] = bodyID;
+    _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool TerrainLoader::ReplaceGeneratedChunk(u32 chunkID, std::shared_ptr<Map::Chunk> chunk)
+{
+    const u32 chunkCount = Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    if (_currentMapInternalName.empty() || IsLoading() || !chunk || chunkID >= chunkCount)
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer;
+    if (!SerializeChunk(*chunk, buffer))
+        return false;
+
+    auto loadedItr = _chunkIDToLoadedID.find(chunkID);
+    if (loadedItr == _chunkIDToLoadedID.end())
+    {
+        if (!AttachChunk(chunkID, true, std::move(buffer), nullptr, std::move(chunk)))
+            return false;
+    }
+    else
+    {
+        RemoveChunkPhysics(chunkID);
+        const u32 rendererChunkIndex = loadedItr->second;
+        const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+        const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+        const std::string chunkPath = GetChunkPath(chunkID);
+        const u32 chunkHash = StringUtils::fnv1a_32(chunkPath.c_str(), chunkPath.size());
+        if (!_terrainRenderer->ReplaceChunk(rendererChunkIndex, chunkHash, *chunk, ivec2(chunkX, chunkY)))
+            return false;
+
+        u32 bodyID = JPH::BodyID::cInvalidBodyID;
+        if (!CreateChunkPhysics(chunkID, buffer, *chunk, bodyID))
+            return false;
+
+        _chunkIDToChunkInfo[chunkID] = {
+            .chunk = chunk.get(),
+            .editableChunk = std::move(chunk),
+            .buffer = std::move(buffer),
+            .revision = 1,
+            .replaceFileOnSave = true
+        };
+        if (bodyID != JPH::BodyID::cInvalidBodyID)
+            _chunkIDToBodyID[chunkID] = bodyID;
+    }
+
+    const u64 fileHash = Util::AssetPath::Hash(GetChunkPath(chunkID));
+    if (std::find(_mapHeader.chunkHashes.begin(), _mapHeader.chunkHashes.end(), fileHash) == _mapHeader.chunkHashes.end())
+        _mapHeader.chunkHashes.push_back(fileHash);
+    _mapHeaderDirty = true;
+    _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool TerrainLoader::SaveMapHeader()
+{
+    if (!_mapHeaderDirty)
+        return true;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(64 * 1024);
+    if (!_mapHeader.Save(buffer))
+        return false;
+
+    const std::string headerPath = Util::AssetPath::Map(_currentMapInternalName + "/" + _currentMapInternalName + Map::HEADER_FILE_EXTENSION);
+    Util::AssetWriter* assetWriter = ServiceLocator::GetAssetWriter();
+    if (!assetWriter || !assetWriter->WriteBytes(headerPath, *buffer, Util::AssetWriteTarget::PactOverlay))
+        return false;
+
+    _mapHeaderDirty = false;
+    _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool TerrainLoader::HasMapHeader(std::string_view mapInternalName) const
+{
+    if (mapInternalName.empty())
+        return false;
+
+    PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
+    if (!pactStorage)
+        return false;
+
+    const std::string headerPath = Util::AssetPath::Map(std::string(mapInternalName) + "/" + std::string(mapInternalName) + Map::HEADER_FILE_EXTENSION);
+    PACT::PactFileHandle fileHandle;
+    return pactStorage->ReadFile(headerPath, fileHandle) == PACT::PactReadResult::Success;
+}
+
+bool TerrainLoader::CreateEmptyMapHeader(std::string_view mapInternalName) const
+{
+    if (mapInternalName.empty())
+        return false;
+    if (HasMapHeader(mapInternalName))
+        return true;
+
+    Map::MapHeader mapHeader;
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(64 * 1024);
+    if (!mapHeader.Save(buffer))
+        return false;
+
+    const std::string headerPath = Util::AssetPath::Map(std::string(mapInternalName) + "/" + std::string(mapInternalName) + Map::HEADER_FILE_EXTENSION);
+    Util::AssetWriter* assetWriter = ServiceLocator::GetAssetWriter();
+    return assetWriter && assetWriter->WriteBytes(headerPath, *buffer, Util::AssetWriteTarget::PactOverlay);
 }
 
 void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
@@ -607,10 +1123,7 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
     {
         const PartialChunk& partialChunk = chunks[i];
         const auto* chunk = reinterpret_cast<const Map::Chunk*>(partialChunk.file.GetData());
-        _terrainRenderer->AddChunk(static_cast<u32>(partialChunk.hash), chunk, ivec2(partialChunk.x, partialChunk.y),
-            reserveOffsets.chunkDataStartOffset + i,
-            reserveOffsets.cellDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS),
-            reserveOffsets.vertexDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES));
+        _terrainRenderer->AddChunk(static_cast<u32>(partialChunk.hash), chunk, ivec2(partialChunk.x, partialChunk.y), reserveOffsets.chunkDataStartOffset + i, reserveOffsets.cellDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS), reserveOffsets.vertexDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES));
 
         for (u32 placementIndex = 0; placementIndex < chunk->placementHeader.numPlacements; placementIndex++)
         {
@@ -628,7 +1141,8 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     assert(request.loadType == LoadType::Full);
     assert(request.mapName.size() > 0);
 
-    const std::string& mapName = request.mapName;
+    std::string mapName = request.mapName;
+    StringUtils::ToLower(mapName);
     if (mapName == _currentMapInternalName)
     {
         // The requested map is already current, so do not load it again.
@@ -639,6 +1153,7 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
             const u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
             ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
         }
+
         return false;
     }
 
@@ -666,13 +1181,6 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     }
 
     u32 numChunks = static_cast<u32>(mapHeader.chunkHashes.size());
-    if (numChunks == 0)
-    {
-        NC_LOG_ERROR("TerrainLoader : Map '{0}' has no chunks", request.mapName);
-        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
-        mapLoader->ReportLoadFailure(mapLoader->GetCurrentMapID(), ECS::Components::MapLoadFailureReason::NoChunks);
-        return false;
-    }
 
     NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
 
@@ -710,7 +1218,7 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
 
-    if (numChunksToLoad == 0)
+    if (numChunksToLoad == 0 && numChunks != 0)
     {
         NC_LOG_ERROR("TerrainLoader : Map '{0}' could not prepare chunks", request.mapName);
         MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
@@ -723,14 +1231,14 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     Clear();
 
     _currentMapInternalName = mapName;
+    _mapHeader = std::move(mapHeader);
+    _mapHeaderDirty = false;
     registry->ctx().get<ECS::Singletons::JoltState>().ResetPhysicsTelemetry(mapName);
     NotifyCurrentMapChanged();
     _numChunksToLoad = numChunksToLoad;
 
     Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-    zenith->CallEvent(MetaGen::Game::Lua::GameEvent::MapLoading, MetaGen::Game::Lua::GameEventDataMapLoading{
-        .mapInternalName = mapName
-    });
+    zenith->CallEvent(MetaGen::Game::Lua::GameEvent::MapLoading, MetaGen::Game::Lua::GameEventDataMapLoading{ .mapInternalName = mapName });
 
     NC_LOG_INFO("TerrainLoader : Started Chunk Queueing");
 

@@ -59,6 +59,10 @@
 #include <glm/geometric.hpp>
 #include "RenderUtils.h"
 
+#if defined(_WIN32)
+#include <Windows.h>
+#endif
+
 AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
 AutoCVar_Float CVAR_CursorRestoreGuardPeriod(CVarCategory::Client, "cursorRestoreGuardPeriod", "Time in milliseconds to reject stale cursor events after restoring a captured cursor", 100.0f, CVarFlags::EditFloatDrag);
 
@@ -123,6 +127,23 @@ InputModifier TranslateGlfwInputModifiers(i32 modifiers)
     return result;
 }
 
+PointerSource GetCurrentPointerSource()
+{
+#if defined(_WIN32)
+    // Windows promotes pen and touch input through GLFW's legacy mouse callbacks. Preserve the
+    // original device so consumers can choose whether mouse-specific behavior is appropriate.
+    constexpr ULONG_PTR POINTER_MESSAGE_SIGNATURE = 0xFF515700;
+    constexpr ULONG_PTR POINTER_MESSAGE_SIGNATURE_MASK = 0xFFFFFF00;
+    constexpr ULONG_PTR TOUCH_MESSAGE_MASK = 0x80;
+
+    const ULONG_PTR messageInfo = static_cast<ULONG_PTR>(GetMessageExtraInfo());
+    if ((messageInfo & POINTER_MESSAGE_SIGNATURE_MASK) == POINTER_MESSAGE_SIGNATURE)
+        return (messageInfo & TOUCH_MESSAGE_MASK) != 0 ? PointerSource::Touch : PointerSource::Pen;
+#endif
+
+    return PointerSource::Mouse;
+}
+
 void KeyCallback(GLFWwindow* /*window*/, i32 key, i32 /*scancode*/, i32 action, i32 modifiers)
 {
     if (key <= GLFW_KEY_UNKNOWN || key > GLFW_KEY_LAST)
@@ -141,13 +162,13 @@ void MouseCallback(GLFWwindow* /*window*/, i32 button, i32 action, i32 modifiers
     if (button < GLFW_MOUSE_BUTTON_1 || button > GLFW_MOUSE_BUTTON_LAST)
         return;
 
-    ServiceLocator::GetInputSystem()->QueueMouseButtonEvent(static_cast<MouseButton>(button), TranslateGlfwInputPhase(action), TranslateGlfwInputModifiers(modifiers));
+    ServiceLocator::GetInputSystem()->QueueMouseButtonEvent(static_cast<MouseButton>(button), TranslateGlfwInputPhase(action), TranslateGlfwInputModifiers(modifiers), GetCurrentPointerSource());
 }
 
 void CursorPositionCallback(GLFWwindow* /*window*/, f64 x, f64 y)
 {
     ZoneScopedN("Game Cursor Position Callback");
-    ServiceLocator::GetGameRenderer()->HandleCursorPosition(x, y);
+    ServiceLocator::GetGameRenderer()->HandleCursorPosition(x, y, GetCurrentPointerSource());
 }
 
 void ScrollCallback(GLFWwindow* /*window*/, f64 x, f64 y)
@@ -248,6 +269,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
 GameRenderer::~GameRenderer()
 {
+    EndPointerCapture();
     delete _renderTargetCapture;
     delete _renderer;
     delete _renderDocCapture;
@@ -602,12 +624,12 @@ bool GameRenderer::SetCursor(u64 nameHash, u32 imguiMouseCursor /*= 0*/)
     return true;
 }
 
-void GameRenderer::HandleCursorPosition(f64 x, f64 y)
+void GameRenderer::HandleCursorPosition(f64 x, f64 y, PointerSource pointerSource)
 {
     InputSystem* inputSystem = ServiceLocator::GetInputSystem();
     if (inputSystem->IsMouseCaptured())
     {
-        inputSystem->QueueCursorPositionEvent(static_cast<f32>(x), static_cast<f32>(y));
+        inputSystem->QueueCursorPositionEvent(static_cast<f32>(x), static_cast<f32>(y), pointerSource);
         return;
     }
 
@@ -633,7 +655,7 @@ void GameRenderer::HandleCursorPosition(f64 x, f64 y)
         }
     }
 
-    inputSystem->QueueCursorPositionEvent(position.x, position.y);
+    inputSystem->QueueCursorPositionEvent(position.x, position.y, pointerSource);
 }
 
 void GameRenderer::RestoreCursorPosition(const vec2& position)
@@ -650,6 +672,46 @@ void GameRenderer::RestoreCursorPosition(const vec2& position)
 void GameRenderer::CancelCursorRestore()
 {
     _cursorRestorePending = false;
+}
+
+bool GameRenderer::BeginPointerCapture()
+{
+    InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+    if (_pointerCaptureActive || inputSystem->IsMouseCaptured())
+        return false;
+
+    _pointerCapturePosition = inputSystem->GetMousePosition();
+    _pointerCapturePreviousMode = inputSystem->GetCursorMode();
+    _pointerCaptureActive = true;
+    CancelCursorRestore();
+
+    inputSystem->SetCursorMode(CursorMode::Captured);
+    glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+    glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    if (glfwRawMouseMotionSupported())
+        glfwSetInputMode(_window->GetWindow(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+
+    return true;
+}
+
+bool GameRenderer::EndPointerCapture()
+{
+    if (!_pointerCaptureActive)
+        return false;
+
+    if (glfwRawMouseMotionSupported())
+        glfwSetInputMode(_window->GetWindow(), GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+
+    glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+    RestoreCursorPosition(_pointerCapturePosition);
+
+    InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+    inputSystem->SetCursorMode(_pointerCapturePreviousMode);
+    if (_pointerCapturePreviousMode == CursorMode::Hardware)
+        glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+    _pointerCaptureActive = false;
+    return true;
 }
 
 const Renderer::ShaderEntry* GameRenderer::GetShaderEntry(u32 shaderNameHash, const std::string& debugName)

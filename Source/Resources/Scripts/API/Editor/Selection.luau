@@ -1,5 +1,5 @@
 --[[
-EditorSelection — shared selection state for the Lua editor tools.
+EditorSelection - shared selection state for the Lua editor tools.
 
 The C++ "Editor" handler holds a single selection-changed callback, but both the
 Hierarchy and the Inspector need to react. This module owns that one callback and

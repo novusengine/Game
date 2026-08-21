@@ -56,10 +56,7 @@ namespace Scripting::UI
 
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
 
-            Panel* pushPanel = zenith->PushUserData<Panel>([](void* x)
-            {
-
-            });
+            Panel* pushPanel = zenith->PushUserData<Panel>([](void* x) { });
             memcpy(pushPanel, panel, sizeof(Panel));
             luaL_getmetatable(zenith->state, panel->metaTableName.c_str());
             lua_setmetatable(zenith->state, -2);
@@ -95,10 +92,7 @@ namespace Scripting::UI
 
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
 
-            Text* pushText = zenith->PushUserData<Text>([](void* x)
-            {
-
-            });
+            Text* pushText = zenith->PushUserData<Text>([](void* x) { });
             memcpy(pushText, text, sizeof(Text));
             luaL_getmetatable(zenith->state, text->metaTableName.c_str());
             lua_setmetatable(zenith->state, -2);
@@ -126,10 +120,7 @@ namespace Scripting::UI
 
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
-            Widget* pushWidget = zenith->PushUserData<Widget>([](void* x)
-            {
-
-            });
+            Widget* pushWidget = zenith->PushUserData<Widget>([](void* x) { });
             memcpy(pushWidget, widget, sizeof(Widget));
             luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
             lua_setmetatable(zenith->state, -2);
@@ -315,10 +306,7 @@ i32 Scripting::UI::WidgetMethods::GetParent(Zenith* zenith, Widget* widget)
 
     Widget* parentWidget = parentWidgetComp->scriptWidget;
 
-    Widget* pushWidget = zenith->PushUserData<Widget>([](void* x)
-    {
-
-    });
+    Widget* pushWidget = zenith->PushUserData<Widget>([](void* x) { });
     memcpy(pushWidget, parentWidget, sizeof(Widget));
     luaL_getmetatable(zenith->state, parentWidget->metaTableName.c_str());
     lua_setmetatable(zenith->state, -2);
@@ -338,10 +326,7 @@ i32 Scripting::UI::WidgetMethods::GetChildren(Zenith* zenith, Widget* widget)
         auto* widgetComp = registry->try_get<ECS::Components::UI::Widget>(childEntity);
         if (widgetComp != nullptr)
         {
-            Widget* pushWidget = zenith->PushUserData<Widget>([](void* x)
-            {
-
-            });
+            Widget* pushWidget = zenith->PushUserData<Widget>([](void* x) { });
 
             Widget* parentWidget = widgetComp->scriptWidget;
             memcpy(pushWidget, parentWidget, sizeof(Widget));
@@ -367,10 +352,7 @@ i32 Scripting::UI::WidgetMethods::GetChildrenRecursive(Zenith* zenith, Widget* w
         auto* widgetComp = registry->try_get<ECS::Components::UI::Widget>(childEntity);
         if (widgetComp != nullptr)
         {
-            Widget* pushWidget = zenith->PushUserData<Widget>([](void* x)
-            {
-
-            });
+            Widget* pushWidget = zenith->PushUserData<Widget>([](void* x) { });
 
             Widget* parentWidget = widgetComp->scriptWidget;
             memcpy(pushWidget, parentWidget, sizeof(Widget));
@@ -810,6 +792,19 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseUp(Zenith* zenith, Widget* widg
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onMouseUpEvent = callback;
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnMouseRelease(Zenith* zenith, Widget* widget)
+{
+    i32 callback = zenith->IsFunction(2) ? zenith->GetRef(2) : -1;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onMouseReleaseEvent = callback;
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 

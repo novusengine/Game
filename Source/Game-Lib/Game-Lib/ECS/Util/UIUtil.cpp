@@ -575,12 +575,11 @@ namespace ECS::Util
                     {
                         if (ancestorClipper->clipChildren)
                             return ancestorEntity;
-                        if (ancestorClipper->clipRegionOverrideEntity != entt::null)
-                            return ancestorClipper->clipRegionOverrideEntity;
                     }
                 }
                 cursor = cursor->GetParentTransform();
             }
+
             return entt::null;
         }
 
@@ -599,14 +598,50 @@ namespace ECS::Util
             auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
 
             const vec2 refSize(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-            const vec2 size = rect->max - rect->min;
+            vec2 rectMin = rect->min;
+            vec2 size = rect->max - rect->min;
+            if (auto* transform = registry->try_get<ECS::Components::Transform2D>(entity))
+            {
+                rectMin = transform->ComputeWorldTranslation();
+                size = transform->GetSize();
+            }
 
             if (hasClipSlot)
             {
-                vec2 clipMin = (rect->min + size * clipper->clipRegionMin) / refSize;
-                vec2 clipMax = (rect->min + size * clipper->clipRegionMax) / refSize;
+                vec2 clipMin = rectMin + size * clipper->clipRegionMin;
+                vec2 clipMax = rectMin + size * clipper->clipRegionMax;
 
-                canvasRenderer->UpdateClipRect(clipper->clipRectBufferIndex, vec4(clipMin.x, clipMin.y, clipMax.x, clipMax.y));
+                // A widget has one clip-rectangle index, so a nested clip
+                // source must carry the intersection of its own bounds and
+                // every clipped ancestor. Descendants can then continue to
+                // use the nearest source without escaping an outer clip.
+                if (clipper->clipChildren)
+                {
+                    auto* transform = registry->try_get<ECS::Components::Transform2D>(entity);
+                    auto* parentTransform = transform != nullptr ? transform->GetParentTransform() : nullptr;
+                    while (parentTransform != nullptr)
+                    {
+                        entt::entity ancestorEntity = parentTransform->ownerNode != nullptr ? parentTransform->ownerNode->GetOwner() : entt::null;
+                        if (ancestorEntity != entt::null)
+                        {
+                            auto* ancestorClipper = registry->try_get<ECS::Components::UI::Clipper>(ancestorEntity);
+                            if (ancestorClipper != nullptr && ancestorClipper->clipChildren)
+                            {
+                                auto* ancestorTransform = registry->try_get<ECS::Components::Transform2D>(ancestorEntity);
+                                if (ancestorTransform != nullptr)
+                                {
+                                    vec2 ancestorMin = ancestorTransform->ComputeWorldTranslation();
+                                    vec2 ancestorSize = ancestorTransform->GetSize();
+                                    clipMin = glm::max(clipMin, ancestorMin + ancestorSize * ancestorClipper->clipRegionMin);
+                                    clipMax = glm::min(clipMax, ancestorMin + ancestorSize * ancestorClipper->clipRegionMax);
+                                }
+                            }
+                        }
+                        parentTransform = parentTransform->GetParentTransform();
+                    }
+                }
+
+                canvasRenderer->UpdateClipRect(clipper->clipRectBufferIndex, vec4(clipMin.x / refSize.x, clipMin.y / refSize.y, clipMax.x / refSize.x, clipMax.y / refSize.y));
             }
 
             if (hasMaskSlot)

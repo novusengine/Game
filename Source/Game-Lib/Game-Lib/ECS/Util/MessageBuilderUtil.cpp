@@ -9,6 +9,7 @@
 #include <Gameplay/Network/Define.h>
 
 #include <MetaGen/PacketList.h>
+#include <MetaGen/Shared/Localization/Localization.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 
 #include <entt/entt.hpp>
@@ -72,6 +73,7 @@ namespace ECS::Util::MessageBuilder
             bool createPacketResult = CreatePacket(buffer, MetaGen::Shared::Packet::ClientConnectPacket::PACKET_ID, [&]()
             {
                 buffer->PutString(charName);
+                buffer->PutU8(static_cast<u8>(MetaGen::Shared::Localization::LocaleEnum::EnUS));
             });
 
             return createPacketResult;
@@ -532,26 +534,6 @@ namespace ECS::Util::MessageBuilder
             });
         }
 
-        bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map)
-        {
-            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, mapID]()
-            {
-                GameDefine::Database::Map mapTemplate =
-                {
-                    .id = mapID,
-                    .flags = 0,
-                    .internalName = mapStorage->GetString(map.nameInternal),
-                    .name = mapStorage->GetString(map.name),
-                    .type = map.instanceType,
-                    .maxPlayers = map.maxPlayers,
-                };
-
-                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::MapAdd);
-                GameDefine::Database::Map::Write(buffer.get(), mapTemplate);
-            });
-
-            return result;
-        }
         bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddCommand& command)
         {
             bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
@@ -645,21 +627,28 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatSpellSync(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType, const u8* bytes, u32 size)
+        bool BuildDatabaseEditorSnapshotRequest(std::shared_ptr<Bytebuffer>& buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor, u32 requestID)
         {
-            enum class Phase : u8
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                Begin,
-                Chunk,
-                Commit
-            };
+                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                       buffer->Put(MetaGen::Shared::DatabaseEditor::DatabaseEditorActionEnum::Snapshot) &&
+                       buffer->Put(editor) && buffer->PutU32(requestID);
+            });
+        }
+
+        bool BuildDatabaseEditorMutation(std::shared_ptr<Bytebuffer>& buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor, u8 artifact, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType, u32 requestID, const u8* bytes, u32 size)
+        {
             constexpr u32 chunkCapacity = 1024;
+            using Action = MetaGen::Shared::DatabaseEditor::DatabaseEditorActionEnum;
+            using Phase = MetaGen::Shared::DatabaseEditor::DatabaseEditorTransferPhaseEnum;
 
             bool writeSucceeded = true;
             bool packetSucceeded = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellSet) &&
-                                 buffer->Put(Phase::Begin) && buffer->Put(mutationType) &&
+                writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                                 buffer->Put(Action::Mutation) && buffer->Put(Phase::Begin) &&
+                                 buffer->Put(editor) && buffer->PutU8(artifact) && buffer->Put(mutationType) &&
                                  buffer->PutU32(requestID) && buffer->PutU32(size);
             });
             if (!packetSucceeded || !writeSucceeded)
@@ -671,8 +660,9 @@ namespace ECS::Util::MessageBuilder
                 writeSucceeded = true;
                 packetSucceeded = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
                 {
-                    writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellSet) &&
-                                     buffer->Put(Phase::Chunk) && buffer->PutU32(requestID) && buffer->PutU32(offset) &&
+                    writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                                     buffer->Put(Action::Mutation) && buffer->Put(Phase::Chunk) &&
+                                     buffer->PutU32(requestID) && buffer->PutU32(offset) &&
                                      buffer->PutU16(chunkSize) && buffer->PutBytes(bytes + offset, chunkSize);
                 });
                 if (!packetSucceeded || !writeSucceeded)
@@ -682,65 +672,10 @@ namespace ECS::Util::MessageBuilder
             writeSucceeded = true;
             packetSucceeded = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellSet) &&
-                                 buffer->Put(Phase::Commit) && buffer->PutU32(requestID);
+                writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                                 buffer->Put(Action::Mutation) && buffer->Put(Phase::Commit) && buffer->PutU32(requestID);
             });
             return packetSucceeded && writeSucceeded;
-        }
-        bool BuildCheatSpellDelete(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, u32 spellID)
-        {
-            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
-            {
-                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellDelete) &&
-                       buffer->PutU32(requestID) && buffer->PutU32(spellID);
-            });
-        }
-        bool BuildCheatSpellEditorSnapshotRequest(std::shared_ptr<Bytebuffer>& buffer, u32 requestID)
-        {
-            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
-            {
-                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellEditorSnapshot) && buffer->PutU32(requestID);
-            });
-        }
-        bool BuildCheatSpellAuraConstraintGroupSet(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType, u32 groupID, std::string_view name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior)
-        {
-            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
-            {
-                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellAuraConstraintGroupSet) &&
-                       buffer->PutU32(requestID) && buffer->Put(mutationType) &&
-                       buffer->PutU32(groupID) && buffer->PutString(name) &&
-                       buffer->PutU8(defaultScope) && buffer->PutU16(defaultMaximumApplications) &&
-                       buffer->PutU8(defaultOverflowBehavior);
-            });
-        }
-        bool BuildCheatSpellAuraConstraintGroupDelete(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, u32 groupID)
-        {
-            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
-            {
-                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellAuraConstraintGroupDelete) &&
-                       buffer->PutU32(requestID) && buffer->PutU32(groupID);
-            });
-        }
-        bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType, const GameDefine::Database::SpellProcData& value, u32 ownerSpellID, std::string_view name)
-        {
-            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
-            {
-                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellProcDataSet) &&
-                       buffer->PutU32(requestID) && buffer->Put(mutationType) &&
-                       buffer->PutU32(value.id) && buffer->PutU32(ownerSpellID) && buffer->PutString(name) &&
-                       buffer->PutU32(value.phaseMask) && buffer->PutU64(value.typeMask) &&
-                       buffer->PutU64(value.hitMask) && buffer->PutU64(value.flags) &&
-                       buffer->PutF32(value.procsPerMinute) && buffer->PutF32(value.chanceToProc) &&
-                       buffer->PutU32(value.internalCooldownMS) && buffer->PutI32(value.charges);
-            });
-        }
-        bool BuildCheatSpellProcDataDelete(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, u32 procDataID)
-        {
-            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
-            {
-                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellProcDataDelete) &&
-                       buffer->PutU32(requestID) && buffer->PutU32(procDataID);
-            });
         }
         bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName)
         {

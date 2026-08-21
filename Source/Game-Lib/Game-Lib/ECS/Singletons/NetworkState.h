@@ -1,4 +1,6 @@
 #pragma once
+#include "Game-Lib/ECS/Singletons/InteractionState.h"
+
 #include <Gameplay/GameDefine.h>
 #include <Gameplay/Network/Define.h>
 
@@ -123,6 +125,7 @@ namespace ECS
             AuthenticationInfo authInfo;
             CharacterListInfo characterListInfo;
             PingInfo pingInfo;
+            InteractionState interactionState;
 
             Network::ObjectNetFieldsListener objectNetFieldListener;
             Network::UnitNetFieldsListener unitNetFieldListener;

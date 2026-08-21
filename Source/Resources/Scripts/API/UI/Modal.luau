@@ -80,7 +80,7 @@ end
 function modalAPI.New(parent : Widget, position : vec, size : vec, layer : integer, options : Options) : Modal
     local shield = parent:NewPanel(
         vec.New(0, 0),
-        options.shieldSize or vec.New(8192, 8192),
+        options.shieldSize or vec.New(1920, 1080),
         layer,
         options.shieldTemplate or "DebugDarkGrey"
     );

@@ -9,6 +9,7 @@ export type Options =
     defaultText : string?,
     defaultTextFontSize : number?,
     placeholderText : string?,
+    placeholderTextColor : vec?,
     numericOnly : boolean?,
     secure : boolean?,
     multiline : boolean?,
@@ -81,6 +82,16 @@ local function RefreshText(inputBoxTable)
         and inputBoxTable.placeholderText ~= "";
     local displayText = if isShowingPlaceholder then inputBoxTable.placeholderText else text;
     local cursorCharPos = cursorPos;
+
+    if inputBoxTable.placeholderTextColor ~= nil then
+        if isShowingPlaceholder then
+            if not inputBoxTable.isShowingPlaceholder then inputBoxTable.activeTextColor = inputBoxTable.button.text:GetColor(); end
+            inputBoxTable.button.text:SetColor(inputBoxTable.placeholderTextColor);
+        elseif inputBoxTable.isShowingPlaceholder and inputBoxTable.activeTextColor ~= nil then
+            inputBoxTable.button.text:SetColor(inputBoxTable.activeTextColor);
+        end
+    end
+    inputBoxTable.isShowingPlaceholder = isShowingPlaceholder;
 
     -- Calculate the total width of the text
     local totalTextWidth = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate).x;
@@ -460,6 +471,7 @@ function inputBoxAPI.New(parent : Widget, position : vec, size : vec, layer : in
 
     inputBoxTable.text = defaultText;
     inputBoxTable.placeholderText = inputBoxTemplateTable["placeholderText"] or "";
+    inputBoxTable.placeholderTextColor = inputBoxTemplateTable["placeholderTextColor"];
     inputBoxTable.isFocused = false;
 
     inputBoxTable.timer = 0.0;

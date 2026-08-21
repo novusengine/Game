@@ -1,6 +1,6 @@
 local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
-Hierarchy — Lua port of the C++ ImGui Hierarchy. A filterable, scrollable list of
+Hierarchy - Lua port of the C++ ImGui Hierarchy. A filterable, scrollable list of
 every named entity, virtualized via VirtualList (only visible rows are realized, so
 cost is bounded by the viewport, not the entity count). Clicking a row selects it
 (shared with the Inspector via EditorSelection); double-clicking centers the camera on it.

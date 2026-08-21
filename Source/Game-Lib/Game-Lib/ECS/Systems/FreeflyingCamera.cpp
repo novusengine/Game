@@ -64,6 +64,9 @@ namespace ECS::Systems
         inputActions->RegisterAction(_inputContext, "CaptureFreeCameraMouse", "Capture Free Camera Mouse", "Camera",
             InputBinding::Mouse(MouseButton::Right, InputModifier::None, ModifierMatch::Any), [&settings](const InputActionEvent& event)
         {
+            if (event.pointerSource != PointerSource::Mouse)
+                return InputReply::Handled;
+
             if (event.phase == InputPhase::Pressed && !settings.captureMouse)
             {
                 ECS::Util::CameraUtil::SetCaptureMouse(true);
@@ -75,7 +78,7 @@ namespace ECS::Systems
         InputSystem* inputSystem = ServiceLocator::GetInputSystem();
         _pointerInputContext = inputSystem->CreateContext("FreeFlyingCameraPointer", GameInputPriority::Gameplay, [&settings, &registry, inputActions](const InputEvent& event)
         {
-            if (event.type == InputEventType::CursorMove && settings.captureMouse)
+            if (event.type == InputEventType::CursorMove && event.pointerSource == PointerSource::Mouse && settings.captureMouse)
             {
                 CapturedMouseMoved(registry, event.delta);
                 return InputReply::Consumed;

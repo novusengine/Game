@@ -4,6 +4,11 @@
 #include "Game-Lib/ECS/Singletons/EditorSelection.h"
 #include "Game-Lib/ECS/Util/Database/SpellUtil.h"
 #include "Game-Lib/Editor/SpellEditorBackend.h"
+#include "Game-Lib/Editor/MapEditorBackend.h"
+#include "Game-Lib/Editor/MapEditorData.h"
+#include "Game-Lib/Editor/InteractionEditorBackend.h"
+#include "Game-Lib/Editor/InteractionEditorData.h"
+#include "Game-Lib/Editor/CreatureAIEditorBackend.h"
 #include "Game-Lib/Editor/TerrainEditSession.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
@@ -14,6 +19,8 @@
 #include <MetaGen/Game/Lua/Lua.h>
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 #include <MetaGen/Shared/Spell/Spell.h>
+#include <MetaGen/Shared/Interaction/Interaction.h>
+#include <MetaGen/Shared/Localization/Localization.h>
 
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
@@ -23,6 +30,7 @@
 #include <lualib.h>
 
 #include <algorithm>
+#include <array>
 #include <string>
 #include <type_traits>
 
@@ -130,6 +138,7 @@ namespace Scripting::Editor
                 cvars->SetCurrent(storage.initial, i);
                 ++resetCount;
             }
+
             return resetCount;
         }
 
@@ -143,6 +152,42 @@ namespace Scripting::Editor
             return context.contains<::Editor::SpellEditorBackend>()
                 ? &context.get<::Editor::SpellEditorBackend>()
                 : &context.emplace<::Editor::SpellEditorBackend>();
+        }
+
+        ::Editor::MapEditorBackend* GetMapEditorBackend()
+        {
+            EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+            if (!registries || !registries->dbRegistry)
+                return nullptr;
+
+            entt::registry::context& context = registries->dbRegistry->ctx();
+            return context.contains<::Editor::MapEditorBackend>()
+                ? &context.get<::Editor::MapEditorBackend>()
+                : &context.emplace<::Editor::MapEditorBackend>();
+        }
+
+        ::Editor::InteractionEditorBackend* GetInteractionEditorBackend()
+        {
+            EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+            if (!registries || !registries->dbRegistry)
+                return nullptr;
+
+            entt::registry::context& context = registries->dbRegistry->ctx();
+            return context.contains<::Editor::InteractionEditorBackend>()
+                ? &context.get<::Editor::InteractionEditorBackend>()
+                : &context.emplace<::Editor::InteractionEditorBackend>();
+        }
+
+        ::Editor::CreatureAIEditorBackend* GetCreatureAIEditorBackend()
+        {
+            EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+            if (!registries || !registries->dbRegistry)
+                return nullptr;
+
+            auto& context = registries->dbRegistry->ctx();
+            return context.contains<::Editor::CreatureAIEditorBackend>()
+                ? &context.get<::Editor::CreatureAIEditorBackend>()
+                : &context.emplace<::Editor::CreatureAIEditorBackend>();
         }
 
         ::Editor::TerrainEditSession* GetTerrainEditSession()
@@ -257,8 +302,7 @@ namespace Scripting::Editor
             i32 effectIndex = 0;
             for (const ::Editor::SpellEditorEffectDraft& effect : draft->effects)
             {
-                const auto* descriptor = MetaGen::Shared::Spell::GetSpellEffectDescriptor(
-                    static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.type));
+                const auto* descriptor = MetaGen::Shared::Spell::GetSpellEffectDescriptor(static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.type));
                 zenith->CreateTable();
                 zenith->AddTableField("id", effect.id);
                 zenith->AddTableField("priority", effect.priority);
@@ -328,7 +372,10 @@ namespace Scripting::Editor
 
         LuaMethodTable::Set(zenith, editorGlobalMethods, "Editor", excludeFlags);
         LuaMethodTable::Set(zenith, spellEditorGlobalMethods, "SpellEditor", excludeFlags);
+        LuaMethodTable::Set(zenith, mapEditorGlobalMethods, "MapEditor", excludeFlags);
+        LuaMethodTable::Set(zenith, interactionEditorGlobalMethods, "InteractionEditor", excludeFlags);
         LuaMethodTable::Set(zenith, terrainEditorGlobalMethods, "TerrainEditor", excludeFlags);
+        LuaMethodTable::Set(zenith, creatureAIEditorGlobalMethods, "CreatureAIEditor", excludeFlags);
 
         _onSelectionChangedRef = LUA_NOREF;
     }
@@ -338,6 +385,10 @@ namespace Scripting::Editor
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         if (backend)
             backend->Update();
+
+        ::Editor::CreatureAIEditorBackend* creatureAIBackend = GetCreatureAIEditorBackend();
+        if (creatureAIBackend)
+            creatureAIBackend->Update();
     }
 
     void EditorToolHandler::Clear(Zenith* zenith)
@@ -364,6 +415,7 @@ namespace Scripting::Editor
         const ::Editor::TerrainEditSession::State state = session->GetState();
         zenith->CreateTable();
         zenith->AddTableField("available", state.available);
+        zenith->AddTableField("layoutAvailable", state.layoutAvailable);
         zenith->AddTableField("enabled", state.enabled);
         zenith->AddTableField("strokeActive", state.strokeActive);
         zenith->AddTableField("cursorHit", state.cursorHit);
@@ -371,6 +423,8 @@ namespace Scripting::Editor
         zenith->AddTableField("canRedo", state.canRedo);
         zenith->AddTableField("dirtyChunkCount", state.dirtyChunkCount);
         zenith->AddTableField("blockedPaintCellCount", state.blockedPaintCellCount);
+        zenith->AddTableField("layoutGeneration", state.layoutGeneration);
+        zenith->AddTableField("topologyDirty", state.topologyDirty);
         zenith->AddTableField("cursorPosition", state.cursorPosition);
         return 1;
     }
@@ -420,14 +474,7 @@ namespace Scripting::Editor
             return 1;
         }
 
-        zenith->Push(session->ApplyStrokeSample(
-            static_cast<::Editor::TerrainSculptOperation>(operation),
-            zenith->CheckVal<vec3>(2),
-            zenith->CheckVal<f32>(3),
-            zenith->CheckVal<f32>(4),
-            zenith->CheckVal<f32>(5),
-            zenith->CheckVal<f32>(6),
-            zenith->CheckVal<f32>(7)));
+        zenith->Push(session->ApplyStrokeSample(static_cast<::Editor::TerrainSculptOperation>(operation), zenith->CheckVal<vec3>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5), zenith->CheckVal<f32>(6), zenith->CheckVal<f32>(7)));
         return 1;
     }
 
@@ -439,16 +486,27 @@ namespace Scripting::Editor
         return 1;
     }
 
+    i32 EditorToolHandler::SetTerrainEditorPaintLayer(Zenith* zenith)
+    {
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        const i32 layerIndex = zenith->CheckVal<i32>(1);
+        const bool validLayer = layerIndex >= 0 && layerIndex <= static_cast<i32>(Map::CellsData::CELL_LAYER_COUNT);
+        const u32 targetLayerIndex = layerIndex == 0 ? Map::CellsData::CELL_LAYER_COUNT : static_cast<u32>(layerIndex - 1);
+        zenith->Push(session && validLayer && session->SetPaintTargetLayer(targetLayerIndex));
+        return 1;
+    }
+
     i32 EditorToolHandler::ApplyTerrainEditorPaintSample(Zenith* zenith)
     {
         ::Editor::TerrainEditSession* session = GetTerrainEditSession();
-        zenith->Push(session && session->ApplyPaintSample(
-            zenith->CheckVal<vec3>(1),
-            zenith->CheckVal<f32>(2),
-            zenith->CheckVal<f32>(3),
-            zenith->CheckVal<f32>(4),
-            zenith->CheckVal<f32>(5),
-            zenith->CheckVal<f32>(6)));
+        zenith->Push(session && session->ApplyPaintSample(zenith->CheckVal<vec3>(1), zenith->CheckVal<f32>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5), zenith->CheckVal<f32>(6)));
+        return 1;
+    }
+
+    i32 EditorToolHandler::ApplyTerrainEditorVertexColorSample(Zenith* zenith)
+    {
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        zenith->Push(session && session->ApplyVertexColorSample(zenith->CheckVal<vec3>(1), zenith->CheckVal<f32>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5), zenith->CheckVal<vec3>(6)));
         return 1;
     }
 
@@ -474,6 +532,7 @@ namespace Scripting::Editor
             zenith->AddTableField("averageWeight", layer.averageWeight);
             zenith->SetTableKey(++layerIndex);
         }
+
         return 1;
     }
 
@@ -512,11 +571,150 @@ namespace Scripting::Editor
         return 1;
     }
 
+    i32 EditorToolHandler::GetTerrainEditorChunkLayout(Zenith* zenith)
+    {
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        if (!session)
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        TerrainLoader::ChunkLayoutState state;
+        session->GetChunkLayout(state);
+        zenith->CreateTable();
+        zenith->AddTableField("generation", state.generation);
+        zenith->AddTableField("headerDirty", state.headerDirty);
+        zenith->AddTableField("stride", Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+        zenith->CreateTable();
+        i32 index = 0;
+        for (u32 chunkID : state.occupiedChunkIDs)
+        {
+            zenith->Push(chunkID);
+            zenith->SetTableKey(++index);
+        }
+        zenith->SetTableKey("occupiedChunkIDs");
+        return 1;
+    }
+
+    namespace
+    {
+        u32 GetTerrainChunkID(Zenith* zenith)
+        {
+            if (!zenith->IsInteger(1) || !zenith->IsInteger(2))
+                return Terrain::CHUNK_INVALID_ID;
+
+            const u32 chunkX = zenith->CheckVal<u32>(1);
+            const u32 chunkY = zenith->CheckVal<u32>(2);
+            if (chunkX >= Terrain::CHUNK_NUM_PER_MAP_STRIDE || chunkY >= Terrain::CHUNK_NUM_PER_MAP_STRIDE)
+                return Terrain::CHUNK_INVALID_ID;
+
+            return chunkX + chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+        }
+    }
+
+    i32 EditorToolHandler::AddTerrainEditorChunk(Zenith* zenith)
+    {
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        const u32 chunkID = GetTerrainChunkID(zenith);
+        zenith->Push(session && chunkID != Terrain::CHUNK_INVALID_ID && session->AddChunk(chunkID));
+        return 1;
+    }
+
+    i32 EditorToolHandler::RemoveTerrainEditorChunk(Zenith* zenith)
+    {
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        const u32 chunkID = GetTerrainChunkID(zenith);
+        zenith->Push(session && chunkID != Terrain::CHUNK_INVALID_ID && session->RemoveChunk(chunkID));
+        return 1;
+    }
+
+    i32 EditorToolHandler::ResetTerrainEditorChunk(Zenith* zenith)
+    {
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        const u32 chunkID = GetTerrainChunkID(zenith);
+        zenith->Push(session && chunkID != Terrain::CHUNK_INVALID_ID && session->ResetChunk(chunkID));
+        return 1;
+    }
+
+    i32 EditorToolHandler::GoToTerrainEditorChunk(Zenith* zenith)
+    {
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        const u32 chunkID = GetTerrainChunkID(zenith);
+        zenith->Push(session && chunkID != Terrain::CHUNK_INVALID_ID && session->GoToChunk(chunkID));
+        return 1;
+    }
+
+    i32 EditorToolHandler::PreviewTerrainEditorHeightFieldImport(Zenith* zenith)
+    {
+        zenith->CreateTable();
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        if (!session || !zenith->IsString(1))
+        {
+            zenith->AddTableField("success", false);
+            zenith->AddTableField("error", "A terrain session and manifest path are required.");
+            return 1;
+        }
+
+        ::Editor::TerrainHeightFieldManifest manifest;
+        std::string error;
+        const bool success = session->PreviewHeightFieldImport(zenith->Get<const char*>(1), manifest, error);
+        zenith->AddTableField("success", success);
+        if (!success)
+        {
+            zenith->AddTableField("error", error.c_str());
+            return 1;
+        }
+
+        zenith->AddTableField("sourceWidth", manifest.sourceWidth);
+        zenith->AddTableField("sourceHeight", manifest.sourceHeight);
+        zenith->AddTableField("footprintWidth", manifest.footprintChunks.x);
+        zenith->AddTableField("footprintHeight", manifest.footprintChunks.y);
+        zenith->AddTableField("minChunkX", manifest.chunkCoordinateBounds.x);
+        zenith->AddTableField("minChunkY", manifest.chunkCoordinateBounds.y);
+        zenith->AddTableField("maxChunkX", manifest.chunkCoordinateBounds.z);
+        zenith->AddTableField("maxChunkY", manifest.chunkCoordinateBounds.w);
+        zenith->AddTableField("sourcePixelsPerPatchX", manifest.sourcePixelsPerPatch.x);
+        zenith->AddTableField("sourcePixelsPerPatchY", manifest.sourcePixelsPerPatch.y);
+        zenith->AddTableField("occupiedChunkCount", static_cast<u32>(manifest.occupiedChunkIDs.size()));
+        zenith->CreateTable();
+        i32 index = 0;
+        for (u32 chunkID : manifest.occupiedChunkIDs)
+        {
+            zenith->Push(chunkID);
+            zenith->SetTableKey(++index);
+        }
+        zenith->SetTableKey("occupiedChunkIDs");
+        return 1;
+    }
+
+    i32 EditorToolHandler::ImportTerrainEditorHeightField(Zenith* zenith)
+    {
+        zenith->CreateTable();
+        ::Editor::TerrainEditSession* session = GetTerrainEditSession();
+        if (!session || !zenith->IsString(1) || !zenith->IsNumber(2) || !zenith->IsNumber(3))
+        {
+            zenith->AddTableField("success", false);
+            zenith->AddTableField("error", "A manifest path and numeric minimum/maximum heights are required.");
+            return 1;
+        }
+
+        u32 importedChunkCount = 0;
+        std::string error;
+        const bool success = session->ImportHeightField(zenith->Get<const char*>(1), zenith->Get<f32>(2), zenith->Get<f32>(3), importedChunkCount, error);
+        zenith->AddTableField("success", success);
+        zenith->AddTableField("importedChunkCount", importedChunkCount);
+        if (!success)
+            zenith->AddTableField("error", error.c_str());
+        return 1;
+    }
+
     static EditorToolHandler* GetSelf()
     {
         LuaManager* luaManager = ServiceLocator::GetLuaManager();
         if (!luaManager)
             return nullptr;
+
         return luaManager->GetLuaHandler<EditorToolHandler>(static_cast<LuaHandlerID>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Editor));
     }
 
@@ -584,6 +782,7 @@ namespace Scripting::Editor
         {
             self->_onSelectionChangedRef = zenith->GetRef(1);
         }
+
         return 0;
     }
 
@@ -600,6 +799,7 @@ namespace Scripting::Editor
         {
             self->_onGizmoChangedRef = zenith->GetRef(1);
         }
+
         return 0;
     }
 
@@ -634,6 +834,7 @@ namespace Scripting::Editor
             u32 op = glm::min(zenith->CheckVal<u32>(1), static_cast<u32>(ECS::Singletons::GizmoOperation::Scale));
             selection->gizmoOperation = static_cast<ECS::Singletons::GizmoOperation>(op);
         }
+
         return 0;
     }
 
@@ -652,6 +853,7 @@ namespace Scripting::Editor
             u32 mode = glm::min(zenith->CheckVal<u32>(1), static_cast<u32>(ECS::Singletons::GizmoMode::World));
             selection->gizmoMode = static_cast<ECS::Singletons::GizmoMode>(mode);
         }
+
         return 0;
     }
 
@@ -696,9 +898,7 @@ namespace Scripting::Editor
         switch (parameter->type)
         {
         case CVarType::INT:
-            cvarSystem->GetCVarArray<i32>()->SetCurrent(
-                zenith->IsBoolean(3) ? (zenith->ToBoolean(3) ? 1 : 0) : zenith->CheckVal<i32>(3),
-                parameter->arrayIndex);
+            cvarSystem->GetCVarArray<i32>()->SetCurrent(zenith->IsBoolean(3) ? (zenith->ToBoolean(3) ? 1 : 0) : zenith->CheckVal<i32>(3), parameter->arrayIndex);
             break;
         case CVarType::FLOAT:
             cvarSystem->GetCVarArray<f64>()->SetCurrent(zenith->CheckVal<f64>(3), parameter->arrayIndex);
@@ -707,14 +907,10 @@ namespace Scripting::Editor
             cvarSystem->GetCVarArray<std::string>()->SetCurrent(zenith->CheckVal<const char*>(3), parameter->arrayIndex);
             break;
         case CVarType::FLOATVEC:
-            cvarSystem->GetCVarArray<vec4>()->SetCurrent(vec4(
-                zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4),
-                zenith->CheckVal<f32>(5), zenith->CheckVal<f32>(6)), parameter->arrayIndex);
+            cvarSystem->GetCVarArray<vec4>()->SetCurrent(vec4(zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5), zenith->CheckVal<f32>(6)), parameter->arrayIndex);
             break;
         case CVarType::INTVEC:
-            cvarSystem->GetCVarArray<ivec4>()->SetCurrent(ivec4(
-                zenith->CheckVal<i32>(3), zenith->CheckVal<i32>(4),
-                zenith->CheckVal<i32>(5), zenith->CheckVal<i32>(6)), parameter->arrayIndex);
+            cvarSystem->GetCVarArray<ivec4>()->SetCurrent(ivec4(zenith->CheckVal<i32>(3), zenith->CheckVal<i32>(4), zenith->CheckVal<i32>(5), zenith->CheckVal<i32>(6)), parameter->arrayIndex);
             break;
         case CVarType::SHOWFLAG:
             cvarSystem->GetCVarArray<ShowFlag>()->SetCurrent(zenith->CheckVal<bool>(3) ? ShowFlag::ENABLED : ShowFlag::DISABLED, parameter->arrayIndex);
@@ -840,8 +1036,7 @@ namespace Scripting::Editor
                         if (!effects->Has(effectID))
                             continue;
                         const auto& effect = effects->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(effectID);
-                        if (static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.effectType) ==
-                            MetaGen::Shared::Spell::SpellEffectTypeEnum::ApplyAura && effect.parameters[0] > 0)
+                        if (static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.effectType) == MetaGen::Shared::Spell::SpellEffectTypeEnum::ApplyAura && effect.parameters[0] > 0)
                         {
                             referencedAuraID = static_cast<u32>(effect.parameters[0]);
                             break;
@@ -948,8 +1143,7 @@ namespace Scripting::Editor
             i32 referenceIndex = 0;
             effects->Each([&](u32 effectID, const MetaGen::Shared::ClientDB::SpellEffectsRecord& effect)
             {
-                if (static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.effectType) !=
-                    MetaGen::Shared::Spell::SpellEffectTypeEnum::ApplyAura || effect.parameters[0] <= 0)
+                if (static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.effectType) != MetaGen::Shared::Spell::SpellEffectTypeEnum::ApplyAura || effect.parameters[0] <= 0)
                 {
                     return true;
                 }
@@ -962,6 +1156,795 @@ namespace Scripting::Editor
             });
         }
         zenith->SetTableKey("auraReferences");
+        return 1;
+    }
+
+    i32 EditorToolHandler::GetMapEditorSnapshot(Zenith* zenith)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->dbRegistry)
+            return 0;
+
+        entt::registry::context& context = registries->dbRegistry->ctx();
+        ::Editor::MapEditorData* data = context.contains<::Editor::MapEditorData>() ? &context.get<::Editor::MapEditorData>() : nullptr;
+
+        zenith->CreateTable();
+        zenith->AddTableField("dataState", data ? GetDataStateName(data->state) : "Unavailable");
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            ::ClientDB::Data* maps = data->GetMapStorage();
+            i32 mapIndex = 0;
+            maps->Each([&](u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", mapID);
+                zenith->AddTableField("flags", map.flags);
+                zenith->AddTableField("internalName", maps->GetString(map.internalName).c_str());
+                zenith->AddTableField("name", maps->GetString(map.name).c_str());
+                zenith->AddTableField("type", map.type);
+                zenith->AddTableField("maxPlayers", map.maxPlayers);
+                zenith->SetTableKey(++mapIndex);
+                return true;
+            });
+        }
+        zenith->SetTableKey("maps");
+        return 1;
+    }
+
+    i32 EditorToolHandler::RequestMapEditorSnapshot(Zenith* zenith)
+    {
+        ::Editor::MapEditorBackend* backend = GetMapEditorBackend();
+        zenith->Push(backend && backend->RequestSnapshot());
+        return 1;
+    }
+
+    i32 EditorToolHandler::GetMapEditorState(Zenith* zenith)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->dbRegistry)
+        {
+            zenith->Push("Unavailable");
+            return 1;
+        }
+
+        entt::registry::context& context = registries->dbRegistry->ctx();
+        const ::Editor::MapEditorData* data = context.contains<::Editor::MapEditorData>() ? &context.get<::Editor::MapEditorData>() : nullptr;
+        zenith->Push(data ? GetDataStateName(data->state) : "Unavailable");
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateMapEditorMap(Zenith* zenith)
+    {
+        ::Editor::MapEditorBackend* backend = GetMapEditorBackend();
+        const char* internalName = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        const char* name = zenith->IsString(3) ? zenith->Get<const char*>(3) : nullptr;
+        if (!backend || !zenith->IsInteger(1) || !internalName || !name || !zenith->IsInteger(4) || !zenith->IsInteger(5))
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+
+        const u32 requestID = backend->CreateMap(zenith->CheckVal<u32>(1), internalName, name, zenith->CheckVal<u8>(4), zenith->CheckVal<u16>(5));
+        zenith->Push(requestID);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateMapEditorMap(Zenith* zenith)
+    {
+        ::Editor::MapEditorBackend* backend = GetMapEditorBackend();
+        const char* internalName = zenith->IsString(3) ? zenith->Get<const char*>(3) : nullptr;
+        const char* name = zenith->IsString(4) ? zenith->Get<const char*>(4) : nullptr;
+        if (!backend || !zenith->IsInteger(1) || !zenith->IsInteger(2) || !internalName || !name || !zenith->IsInteger(5) || !zenith->IsInteger(6))
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+
+        GameDefine::Database::Map map = {
+            zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), internalName, name,
+            zenith->CheckVal<u8>(5), zenith->CheckVal<u16>(6)
+        };
+        zenith->Push(backend->UpdateMap(map));
+        return 1;
+    }
+
+    i32 EditorToolHandler::TakeMapEditorMutationResult(Zenith* zenith)
+    {
+        ::Editor::MapEditorBackend* backend = GetMapEditorBackend();
+        if (!backend || !zenith->IsInteger(1))
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        std::optional<::Editor::DatabaseEditorMutationResult> result = backend->TakeMutationResult(zenith->CheckVal<u32>(1));
+        if (!result)
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        zenith->CreateTable();
+        zenith->AddTableField("requestID", result->requestID);
+        zenith->AddTableField("artifact", result->artifact);
+        zenith->AddTableField("artifactID", result->artifactID);
+        zenith->AddTableField("mutationType", static_cast<u8>(result->mutationType));
+        zenith->AddTableField("succeeded", result->succeeded);
+        zenith->AddTableField("revision", result->revision);
+        zenith->AddTableField("response", result->response.c_str());
+        return 1;
+    }
+
+    i32 EditorToolHandler::GetInteractionEditorSnapshot(Zenith* zenith)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->dbRegistry)
+            return 0;
+
+        auto& context = registries->dbRegistry->ctx();
+        ::Editor::InteractionEditorData* data = context.contains<::Editor::InteractionEditorData>() ? &context.get<::Editor::InteractionEditorData>() : nullptr;
+        zenith->CreateTable();
+        zenith->AddTableField("dataState", data ? GetDataStateName(data->state) : "Unavailable");
+        zenith->AddTableField("revision", data ? data->GetRevision() : 0u);
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* texts = data->GetStorage(Artifact::LocalizedText);
+            i32 textIndex = 0;
+            texts->Each([&](u32 textID, const MetaGen::Shared::ClientDB::LocalizedTextEditorRecord& text)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", textID);
+                zenith->AddTableField("internalName", texts->GetString(text.internalName).c_str());
+                zenith->AddTableField("englishValue", texts->GetString(text.englishValue).c_str());
+                zenith->AddTableField("translatorContext", texts->GetString(text.translatorContext).c_str());
+                zenith->SetTableKey(++textIndex);
+                return true;
+            });
+        }
+        zenith->SetTableKey("texts");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* translations = data->GetStorage(Artifact::LocalizedTextTranslation);
+            i32 translationIndex = 0;
+            translations->Each([&](u32, const MetaGen::Shared::ClientDB::LocalizedTextTranslationEditorRecord& translation)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("textID", translation.textID);
+                zenith->AddTableField("locale", translation.locale);
+                zenith->AddTableField("value", translations->GetString(translation.value).c_str());
+                zenith->SetTableKey(++translationIndex);
+                return true;
+            });
+        }
+        zenith->SetTableKey("translations");
+
+        zenith->CreateTable();
+        i32 localeIndex = 0;
+        for (const auto& [name, value] : MetaGen::Shared::Localization::LocaleEnumMeta::ENUM_FIELD_LIST)
+        {
+            if (name == "EnUS" || name == "Count")
+                continue;
+
+            zenith->CreateTable();
+            zenith->AddTableField("name", name.data());
+            zenith->AddTableField("value", value);
+            zenith->SetTableKey(++localeIndex);
+        }
+        zenith->SetTableKey("locales");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* descriptors = data->GetStorage(Artifact::ConditionDescriptor);
+            i32 descriptorIndex = 0;
+            descriptors->Each([&](u32 type, const MetaGen::Shared::ClientDB::ConditionDescriptorEditorRecord& descriptor)
+            {
+                if (type == static_cast<u32>(MetaGen::Shared::Interaction::ConditionTypeEnum::Invalid))
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("type", type);
+                zenith->AddTableField("name", descriptors->GetString(descriptor.name).c_str());
+                zenith->AddTableField("comparisonMask", descriptor.comparisonMask);
+                zenith->CreateTable();
+                for (u8 parameterIndex = 0; parameterIndex < 4; ++parameterIndex)
+                {
+                    zenith->CreateTable();
+                    zenith->AddTableField("name", descriptors->GetString(descriptor.parameterNames[parameterIndex]).c_str());
+                    zenith->AddTableField("kind", descriptor.parameterKinds[parameterIndex]);
+                    zenith->AddTableField("minimum", descriptor.parameterMinimums[parameterIndex]);
+                    zenith->AddTableField("maximum", descriptor.parameterMaximums[parameterIndex]);
+                    zenith->SetTableKey(static_cast<i32>(parameterIndex + 1));
+                }
+                zenith->SetTableKey("parameters");
+                zenith->SetTableKey(++descriptorIndex);
+                return true;
+            });
+        }
+        zenith->SetTableKey("conditionDescriptors");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* sets = data->GetStorage(Artifact::ConditionSet);
+            i32 index = 0;
+            sets->Each([&](u32 id, const MetaGen::Shared::ClientDB::ConditionSetEditorRecord& set)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("internalName", sets->GetString(set.internalName).c_str());
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("conditionSets");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* groups = data->GetStorage(Artifact::ConditionGroup);
+            i32 index = 0;
+            groups->Each([&](u32 id, const MetaGen::Shared::ClientDB::ConditionGroupEditorRecord& group)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("conditionSetID", group.conditionSetID);
+                zenith->AddTableField("parentGroupID", group.parentGroupID);
+                zenith->AddTableField("groupOperator", group.groupOperator);
+                zenith->AddTableField("negated", group.negated != 0);
+                zenith->AddTableField("orderIndex", group.orderIndex);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("conditionGroups");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* conditions = data->GetStorage(Artifact::Condition);
+            i32 index = 0;
+            conditions->Each([&](u32 id, const MetaGen::Shared::ClientDB::ConditionEditorRecord& condition)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("conditionGroupID", condition.conditionGroupID);
+                zenith->AddTableField("orderIndex", condition.orderIndex);
+                zenith->AddTableField("conditionType", condition.conditionType);
+                zenith->AddTableField("comparison", condition.comparison);
+                zenith->CreateTable();
+                for (u8 parameterIndex = 0; parameterIndex < 4; ++parameterIndex)
+                    zenith->AddTableField(static_cast<i32>(parameterIndex + 1), condition.parameters[parameterIndex]);
+                zenith->SetTableKey("parameters");
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("conditions");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* descriptors = data->GetStorage(Artifact::GossipActionDescriptor);
+            i32 index = 0;
+            descriptors->Each([&](u32 type, const MetaGen::Shared::ClientDB::GossipActionDescriptorEditorRecord& descriptor)
+            {
+                if (type == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("type", type);
+                zenith->AddTableField("name", descriptors->GetString(descriptor.name).c_str());
+                zenith->CreateTable();
+                for (u8 parameterIndex = 0; parameterIndex < 4; ++parameterIndex)
+                {
+                    zenith->CreateTable();
+                    zenith->AddTableField("name", descriptors->GetString(descriptor.parameterNames[parameterIndex]).c_str());
+                    zenith->AddTableField("kind", descriptor.parameterKinds[parameterIndex]);
+                    zenith->AddTableField("minimum", descriptor.parameterMinimums[parameterIndex]);
+                    zenith->AddTableField("maximum", descriptor.parameterMaximums[parameterIndex]);
+                    zenith->SetTableKey(static_cast<i32>(parameterIndex + 1));
+                }
+                zenith->SetTableKey("parameters");
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("gossipActionDescriptors");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* menus = data->GetStorage(Artifact::GossipMenu);
+            i32 index = 0;
+            menus->Each([&](u32 id, const MetaGen::Shared::ClientDB::GossipMenuEditorRecord& menu)
+            {
+                if (id == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("internalName", menus->GetString(menu.internalName).c_str());
+                zenith->AddTableField("greetingTextID", menu.greetingTextID);
+                zenith->AddTableField("flags", menu.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("gossipMenus");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* options = data->GetStorage(Artifact::GossipMenuOption);
+            i32 index = 0;
+            options->Each([&](u32 id, const MetaGen::Shared::ClientDB::GossipMenuOptionEditorRecord& option)
+            {
+                if (id == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("menuID", option.menuID);
+                zenith->AddTableField("orderIndex", option.orderIndex);
+                zenith->AddTableField("textID", option.textID);
+                zenith->AddTableField("icon", option.icon);
+                zenith->AddTableField("flags", option.flags);
+                zenith->AddTableField("visibilityConditionSetID", option.visibilityConditionSetID);
+                zenith->AddTableField("enabledConditionSetID", option.enabledConditionSetID);
+                zenith->AddTableField("disabledReasonTextID", option.disabledReasonTextID);
+                zenith->AddTableField("actionType", option.actionType);
+                zenith->CreateTable();
+                for (u8 parameterIndex = 0; parameterIndex < 4; ++parameterIndex)
+                    zenith->AddTableField(static_cast<i32>(parameterIndex + 1), option.actionParameters[parameterIndex]);
+                zenith->SetTableKey("actionParameters");
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("gossipMenuOptions");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* templates = data->GetStorage(Artifact::CreatureTemplateDescriptor);
+            i32 index = 0;
+            templates->Each([&](u32 id, const MetaGen::Shared::ClientDB::CreatureTemplateDescriptorEditorRecord& definition)
+            {
+                if (id == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("name", templates->GetString(definition.name).c_str());
+                zenith->AddTableField("subname", templates->GetString(definition.subname).c_str());
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("creatureTemplates");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* providers = data->GetStorage(Artifact::CreatureTemplateInteraction);
+            i32 index = 0;
+            providers->Each([&](u32 creatureTemplateID, const MetaGen::Shared::ClientDB::CreatureTemplateInteractionEditorRecord& provider)
+            {
+                if (creatureTemplateID == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("creatureTemplateID", creatureTemplateID);
+                zenith->AddTableField("rangePolicy", provider.rangePolicy);
+                zenith->AddTableField("interactionRange", provider.interactionRange);
+                zenith->AddTableField("flags", provider.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("creatureTemplateInteractions");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* bindings = data->GetStorage(Artifact::CreatureTemplateGossip);
+            i32 index = 0;
+            bindings->Each([&](u32 creatureTemplateID, const MetaGen::Shared::ClientDB::CreatureTemplateGossipEditorRecord& binding)
+            {
+                if (creatureTemplateID == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("creatureTemplateID", creatureTemplateID);
+                zenith->AddTableField("rootMenuID", binding.rootMenuID);
+                zenith->AddTableField("flags", binding.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("creatureTemplateGossip");
+
+        PushEnumOptions<MetaGen::Shared::Interaction::ConditionComparisonEnumMeta>(zenith, "conditionComparisons");
+        PushEnumOptions<MetaGen::Shared::Interaction::ConditionGroupOperatorEnumMeta>(zenith, "conditionGroupOperators");
+        PushEnumOptions<MetaGen::Shared::Interaction::InteractionRangePolicyEnumMeta>(zenith, "interactionRangePolicies");
+        return 1;
+    }
+
+    i32 EditorToolHandler::GetInteractionEditorState(Zenith* zenith)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->dbRegistry)
+        {
+            zenith->Push("Unavailable");
+            return 1;
+        }
+
+        auto& context = registries->dbRegistry->ctx();
+        const ::Editor::InteractionEditorData* data = context.contains<::Editor::InteractionEditorData>() ? &context.get<::Editor::InteractionEditorData>() : nullptr;
+        zenith->Push(data ? GetDataStateName(data->state) : "Unavailable");
+        return 1;
+    }
+
+    i32 EditorToolHandler::GetInteractionEditorRevision(Zenith* zenith)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->dbRegistry)
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+
+        auto& context = registries->dbRegistry->ctx();
+        const ::Editor::InteractionEditorData* data = context.contains<::Editor::InteractionEditorData>() ? &context.get<::Editor::InteractionEditorData>() : nullptr;
+        zenith->Push(data ? data->GetRevision() : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::RequestInteractionEditorSnapshot(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && backend->RequestSnapshot());
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorText(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(1) ? zenith->Get<const char*>(1) : nullptr;
+        const char* englishValue = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        const char* translatorContext = zenith->IsString(3) ? zenith->Get<const char*>(3) : nullptr;
+        zenith->Push(backend && internalName && englishValue && translatorContext ? backend->CreateLocalizedText(internalName, englishValue, translatorContext) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorText(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        const char* englishValue = zenith->IsString(3) ? zenith->Get<const char*>(3) : nullptr;
+        const char* translatorContext = zenith->IsString(4) ? zenith->Get<const char*>(4) : nullptr;
+        zenith->Push(backend && zenith->IsInteger(1) && internalName && englishValue && translatorContext ? backend->UpdateLocalizedText(zenith->CheckVal<u32>(1), internalName, englishValue, translatorContext) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorText(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteLocalizedText(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorTranslation(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* value = zenith->IsString(3) ? zenith->Get<const char*>(3) : nullptr;
+        zenith->Push(backend && zenith->IsInteger(1) && zenith->IsInteger(2) && value ? backend->CreateTranslation(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), value) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorTranslation(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* value = zenith->IsString(3) ? zenith->Get<const char*>(3) : nullptr;
+        zenith->Push(backend && zenith->IsInteger(1) && zenith->IsInteger(2) && value ? backend->UpdateTranslation(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), value) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorTranslation(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) && zenith->IsInteger(2) ? backend->DeleteTranslation(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorConditionSet(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* name = zenith->IsString(1) ? zenith->Get<const char*>(1) : nullptr;
+        for (i32 index = 2; index <= 8; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(5), zenith->CheckVal<i64>(6), zenith->CheckVal<i64>(7), zenith->CheckVal<i64>(8) };
+        zenith->Push(backend && name ? backend->CreateConditionSet(name, zenith->CheckVal<u8>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u8>(4), parameters) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorConditionSet(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* name = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        zenith->Push(backend && zenith->IsInteger(1) && name ? backend->UpdateConditionSet(zenith->CheckVal<u32>(1), name) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorConditionSet(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteConditionSet(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorConditionGroup(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        for (i32 index = 1; index <= 11; ++index)
+        {
+            if (index == 4 ? !zenith->IsBoolean(index) : !zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(8), zenith->CheckVal<i64>(9), zenith->CheckVal<i64>(10), zenith->CheckVal<i64>(11) };
+        zenith->Push(backend->CreateConditionGroup(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u8>(3), zenith->CheckVal<bool>(4), zenith->CheckVal<u16>(5), zenith->CheckVal<u16>(6), zenith->CheckVal<u8>(7), parameters));
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorConditionGroup(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        if (!backend || !zenith->IsInteger(1) || !zenith->IsInteger(2) || !zenith->IsBoolean(3) || !zenith->IsInteger(4))
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+        zenith->Push(backend->UpdateConditionGroup(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), zenith->CheckVal<bool>(3), zenith->CheckVal<u16>(4)));
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorConditionGroup(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteConditionGroup(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCondition(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        for (i32 index = 1; index <= 8; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(5), zenith->CheckVal<i64>(6), zenith->CheckVal<i64>(7), zenith->CheckVal<i64>(8) };
+        zenith->Push(backend->CreateCondition(zenith->CheckVal<u32>(1), zenith->CheckVal<u16>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u8>(4), parameters));
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCondition(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        for (i32 index = 1; index <= 9; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(6), zenith->CheckVal<i64>(7), zenith->CheckVal<i64>(8), zenith->CheckVal<i64>(9) };
+        zenith->Push(backend->UpdateCondition(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u16>(4), zenith->CheckVal<u8>(5), parameters));
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCondition(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCondition(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorGossipMenu(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(1) ? zenith->Get<const char*>(1) : nullptr;
+        zenith->Push(backend && internalName && zenith->IsInteger(2) && zenith->IsInteger(3) ? backend->CreateGossipMenu(internalName, zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorGossipMenu(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        zenith->Push(backend && zenith->IsInteger(1) && internalName && zenith->IsInteger(3) && zenith->IsInteger(4) ? backend->UpdateGossipMenu(zenith->CheckVal<u32>(1), internalName, zenith->CheckVal<u32>(3), zenith->CheckVal<u32>(4)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorGossipMenu(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteGossipMenu(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorGossipMenuOption(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        if (!backend)
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+        for (i32 index = 1; index <= 13; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(10), zenith->CheckVal<i64>(11), zenith->CheckVal<i64>(12), zenith->CheckVal<i64>(13) };
+        zenith->Push(backend->CreateGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<u16>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<u16>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u8>(9), parameters));
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorGossipMenuOption(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        if (!backend)
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+        for (i32 index = 1; index <= 14; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(11), zenith->CheckVal<i64>(12), zenith->CheckVal<i64>(13), zenith->CheckVal<i64>(14) };
+        zenith->Push(backend->UpdateGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u16>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9), zenith->CheckVal<u8>(10), parameters));
+        return 1;
+    }
+
+    i32 EditorToolHandler::ReorderInteractionEditorGossipMenuOption(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        if (!backend)
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+        for (i32 index = 1; index <= 14; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(11), zenith->CheckVal<i64>(12), zenith->CheckVal<i64>(13), zenith->CheckVal<i64>(14) };
+        zenith->Push(backend->ReorderGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u16>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9), zenith->CheckVal<u8>(10), parameters));
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorGossipMenuOption(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteGossipMenuOption(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCreatureTemplateInteraction(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsNumber(3) && zenith->IsInteger(4) &&
+            zenith->IsInteger(5) && zenith->IsInteger(6);
+        zenith->Push(valid ? backend->CreateCreatureTemplateInteraction(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCreatureTemplateInteraction(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsNumber(3) && zenith->IsInteger(4);
+        zenith->Push(valid ? backend->UpdateCreatureTemplateInteraction(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<u32>(4)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCreatureTemplateInteraction(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCreatureTemplateInteraction(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCreatureTemplateGossip(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3);
+        zenith->Push(valid ? backend->CreateCreatureTemplateGossip(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCreatureTemplateGossip(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3);
+        zenith->Push(valid ? backend->UpdateCreatureTemplateGossip(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCreatureTemplateGossip(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCreatureTemplateGossip(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::TakeInteractionEditorMutationResult(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        if (!backend || !zenith->IsInteger(1))
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        std::optional<::Editor::DatabaseEditorMutationResult> result = backend->TakeMutationResult(zenith->CheckVal<u32>(1));
+        if (!result)
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        zenith->CreateTable();
+        zenith->AddTableField("requestID", result->requestID);
+        zenith->AddTableField("artifact", result->artifact);
+        zenith->AddTableField("artifactID", result->artifactID);
+        zenith->AddTableField("mutationType", static_cast<u8>(result->mutationType));
+        zenith->AddTableField("succeeded", result->succeeded);
+        zenith->AddTableField("revision", result->revision);
+        zenith->AddTableField("response", result->response.c_str());
         return 1;
     }
 
@@ -1200,8 +2183,7 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         const char* field = zenith->CheckVal<const char*>(2);
-        zenith->Push(backend && field && backend->SetEffectNumber(
-            zenith->CheckVal<u32>(1), field, zenith->CheckVal<i64>(3)));
+        zenith->Push(backend && field && backend->SetEffectNumber(zenith->CheckVal<u32>(1), field, zenith->CheckVal<i64>(3)));
         return 1;
     }
 
@@ -1209,8 +2191,7 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         const u8 parameterIndex = zenith->CheckVal<u8>(2);
-        zenith->Push(backend && parameterIndex > 0 && backend->SetEffectParameter(
-            zenith->CheckVal<u32>(1), parameterIndex - 1, zenith->CheckVal<i32>(3)));
+        zenith->Push(backend && parameterIndex > 0 && backend->SetEffectParameter(zenith->CheckVal<u32>(1), parameterIndex - 1, zenith->CheckVal<i32>(3)));
         return 1;
     }
 
@@ -1232,8 +2213,7 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         const char* name = zenith->CheckVal<const char*>(1);
-        zenith->Push(backend && name ? backend->CreateConstraintGroup(
-            name, zenith->CheckVal<u8>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u8>(4)) : 0u);
+        zenith->Push(backend && name ? backend->CreateConstraintGroup(name, zenith->CheckVal<u8>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u8>(4)) : 0u);
         return 1;
     }
 
@@ -1241,9 +2221,7 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         const char* name = zenith->CheckVal<const char*>(2);
-        zenith->Push(backend && name && backend->UpdateConstraintGroup(
-            zenith->CheckVal<u32>(1), name, zenith->CheckVal<u8>(3),
-            zenith->CheckVal<u16>(4), zenith->CheckVal<u8>(5)));
+        zenith->Push(backend && name && backend->UpdateConstraintGroup(zenith->CheckVal<u32>(1), name, zenith->CheckVal<u8>(3), zenith->CheckVal<u16>(4), zenith->CheckVal<u8>(5)));
         return 1;
     }
 
@@ -1258,8 +2236,7 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         const char* field = zenith->CheckVal<const char*>(2);
-        zenith->Push(backend && field && backend->SetConstraintNumber(
-            zenith->CheckVal<u32>(1), field, zenith->CheckVal<u64>(3)));
+        zenith->Push(backend && field && backend->SetConstraintNumber(zenith->CheckVal<u32>(1), field, zenith->CheckVal<u64>(3)));
         return 1;
     }
 
@@ -1275,12 +2252,7 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         const char* name = zenith->CheckVal<const char*>(2);
-        zenith->Push(backend ? backend->CreateProcData(
-            zenith->CheckVal<u32>(1), name ? name : "",
-            zenith->CheckVal<u32>(3), zenith->CheckVal<u64>(4),
-            zenith->CheckVal<u64>(5), zenith->CheckVal<u64>(6),
-            zenith->CheckVal<f32>(7), zenith->CheckVal<f32>(8),
-            zenith->CheckVal<u32>(9), zenith->CheckVal<i32>(10)) : 0u);
+        zenith->Push(backend ? backend->CreateProcData(zenith->CheckVal<u32>(1), name ? name : "", zenith->CheckVal<u32>(3), zenith->CheckVal<u64>(4), zenith->CheckVal<u64>(5), zenith->CheckVal<u64>(6), zenith->CheckVal<f32>(7), zenith->CheckVal<f32>(8), zenith->CheckVal<u32>(9), zenith->CheckVal<i32>(10)) : 0u);
         return 1;
     }
 
@@ -1288,12 +2260,7 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         const char* name = zenith->CheckVal<const char*>(3);
-        zenith->Push(backend && backend->UpdateProcData(
-            zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), name ? name : "",
-            zenith->CheckVal<u32>(4), zenith->CheckVal<u64>(5),
-            zenith->CheckVal<u64>(6), zenith->CheckVal<u64>(7),
-            zenith->CheckVal<f32>(8), zenith->CheckVal<f32>(9),
-            zenith->CheckVal<u32>(10), zenith->CheckVal<i32>(11)));
+        zenith->Push(backend && backend->UpdateProcData(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), name ? name : "", zenith->CheckVal<u32>(4), zenith->CheckVal<u64>(5), zenith->CheckVal<u64>(6), zenith->CheckVal<u64>(7), zenith->CheckVal<f32>(8), zenith->CheckVal<f32>(9), zenith->CheckVal<u32>(10), zenith->CheckVal<i32>(11)));
         return 1;
     }
 
@@ -1321,16 +2288,14 @@ namespace Scripting::Editor
     i32 EditorToolHandler::SetSpellEditorProcLinkData(Zenith* zenith)
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
-        zenith->Push(backend && backend->SetProcLinkProcData(
-            zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2)));
+        zenith->Push(backend && backend->SetProcLinkProcData(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2)));
         return 1;
     }
 
     i32 EditorToolHandler::SetSpellEditorProcLinkEffect(Zenith* zenith)
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
-        zenith->Push(backend && backend->SetProcLinkEffectSelected(
-            zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<bool>(3)));
+        zenith->Push(backend && backend->SetProcLinkEffectSelected(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<bool>(3)));
         return 1;
     }
 
@@ -1354,6 +2319,135 @@ namespace Scripting::Editor
     {
         ::Editor::SpellEditorBackend* backend = GetSpellEditorBackend();
         zenith->Push(backend && backend->DeleteSpell(zenith->CheckVal<u32>(1)));
+        return 1;
+    }
+
+    i32 EditorToolHandler::GetCreatureAIEditorState(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        if (!backend)
+            return 0;
+
+        zenith->CreateTable();
+        zenith->AddTableField("version", backend->GetChangeVersion());
+        zenith->AddTableField("status", backend->GetStatus().c_str());
+        zenith->AddTableField("busy", backend->IsBusy());
+
+        zenith->CreateTable();
+        i32 catalogIndex = 0;
+        for (const ::Editor::CreatureAIScriptCatalogEntry& entry : backend->GetCatalog())
+        {
+            zenith->CreateTable();
+            zenith->AddTableField("name", entry.name.c_str());
+            zenith->AddTableField("path", entry.relativePath.c_str());
+            zenith->AddTableField("revision", entry.revision);
+            zenith->AddTableField("sourceAvailable", entry.sourceAvailable);
+            zenith->AddTableField("locked", entry.locked);
+            zenith->AddTableField("lockedByRequester", entry.lockedByRequester);
+            zenith->SetTableKey(++catalogIndex);
+        }
+        zenith->SetTableKey("scripts");
+
+        const std::optional<::Editor::CreatureAIInspection>& inspection = backend->GetInspection();
+        if (inspection)
+        {
+            const char* scope = "None";
+            if (inspection->effectiveScope == MetaGen::Shared::Development::CreatureAIScriptBindingScopeEnum::Guid)
+                scope = "GUID override";
+            else if (inspection->effectiveScope == MetaGen::Shared::Development::CreatureAIScriptBindingScopeEnum::Template)
+                scope = "Creature template";
+
+            zenith->CreateTable();
+            zenith->AddTableField("guid", inspection->creatureGUID.ToString().c_str());
+            zenith->AddTableField("templateID", inspection->creatureTemplateID);
+            zenith->AddTableField("guidScriptName", inspection->guidScriptName.c_str());
+            zenith->AddTableField("templateScriptName", inspection->templateScriptName.c_str());
+            zenith->AddTableField("effectiveScriptName", inspection->effectiveScriptName.c_str());
+            zenith->AddTableField("effectiveScope", scope);
+            zenith->SetTableKey("inspection");
+        }
+
+        return 1;
+    }
+
+    i32 EditorToolHandler::RequestCreatureAIEditorCatalog(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        zenith->Push(backend && backend->RequestCatalog());
+        return 1;
+    }
+
+    i32 EditorToolHandler::InspectCreatureAIEditorUnit(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        zenith->Push(backend && backend->InspectUnit(zenith->CheckVal<u32>(1)));
+        return 1;
+    }
+
+    i32 EditorToolHandler::ClearCreatureAIEditorInspection(Zenith*)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        if (backend)
+            backend->ClearInspection();
+        return 0;
+    }
+
+    i32 EditorToolHandler::ViewCreatureAIEditorScript(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        const char* name = zenith->CheckVal<const char*>(1);
+        zenith->Push(backend && name && backend->View(name));
+        return 1;
+    }
+
+    i32 EditorToolHandler::EditCreatureAIEditorScript(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        const char* name = zenith->CheckVal<const char*>(1);
+        zenith->Push(backend && name && backend->Edit(name));
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateCreatureAIEditorScript(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        const char* name = zenith->CheckVal<const char*>(1);
+        const char* path = zenith->CheckVal<const char*>(2);
+        const char* source = zenith->CheckVal<const char*>(3);
+        zenith->Push(backend && name && path && source && backend->Create(name, path, source));
+        return 1;
+    }
+
+    i32 EditorToolHandler::DuplicateCreatureAIEditorScript(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        const char* sourceName = zenith->CheckVal<const char*>(1);
+        const char* name = zenith->CheckVal<const char*>(2);
+        const char* path = zenith->CheckVal<const char*>(3);
+        zenith->Push(backend && sourceName && name && path && backend->Duplicate(sourceName, name, path));
+        return 1;
+    }
+
+    i32 EditorToolHandler::FinishEditingCreatureAIEditorScript(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        const char* name = zenith->CheckVal<const char*>(1);
+        zenith->Push(backend && name && backend->FinishEditing(name));
+        return 1;
+    }
+
+    i32 EditorToolHandler::LinkCreatureAIEditorScript(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        const char* name = zenith->CheckVal<const char*>(2);
+        zenith->Push(backend && name && backend->Link(zenith->CheckVal<bool>(1), name));
+        return 1;
+    }
+
+    i32 EditorToolHandler::UnlinkCreatureAIEditorScript(Zenith* zenith)
+    {
+        ::Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        zenith->Push(backend && backend->Unlink(zenith->CheckVal<bool>(1)));
         return 1;
     }
 

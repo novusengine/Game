@@ -18,6 +18,7 @@ namespace ECS::Components::UI
         // Lua Event Refs
         i32 onMouseDownEvent = -1;
         i32 onMouseUpEvent = -1;
+        i32 onMouseReleaseEvent = -1;
         i32 onMouseHeldEvent = -1;
         i32 onMouseScrollEvent = -1;
 

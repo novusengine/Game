@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
+#include "TerrainHeightFieldImport.h"
 
 #include <Base/Types.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
@@ -33,6 +34,7 @@ namespace Editor
         {
         public:
             bool available = false;
+            bool layoutAvailable = false;
             bool enabled = false;
             bool strokeActive = false;
             bool cursorHit = false;
@@ -40,6 +42,8 @@ namespace Editor
             bool canRedo = false;
             u32 dirtyChunkCount = 0;
             u32 blockedPaintCellCount = 0;
+            u64 layoutGeneration = 0;
+            bool topologyDirty = false;
             vec3 cursorPosition = vec3(0.0f);
         };
 
@@ -62,13 +66,22 @@ namespace Editor
         bool BeginStroke(const std::string& name);
         bool ApplyStrokeSample(TerrainSculptOperation operation, const vec3& position, f32 radius, f32 strength, f32 hardness, f32 deltaTime, f32 targetHeight);
         bool SetPaintTexture(const std::string& virtualPath);
+        bool SetPaintTargetLayer(u32 layerIndex);
         bool ApplyPaintSample(const vec3& position, f32 radius, f32 pressure, f32 hardness, f32 deltaTime, f32 targetOpacity);
+        bool ApplyVertexColorSample(const vec3& position, f32 radius, f32 flow, f32 hardness, f32 deltaTime, const vec3& targetColor);
         void GetCursorTextureLayers(std::vector<TextureLayerState>& outLayers);
         bool CommitStroke();
         bool CancelStroke();
         bool Undo();
         bool Redo();
         bool Save();
+        void GetChunkLayout(TerrainLoader::ChunkLayoutState& outState) const;
+        bool AddChunk(u32 chunkID);
+        bool RemoveChunk(u32 chunkID);
+        bool ResetChunk(u32 chunkID);
+        bool GoToChunk(u32 chunkID);
+        bool PreviewHeightFieldImport(const std::string& path, TerrainHeightFieldManifest& outManifest, std::string& outError) const;
+        bool ImportHeightField(const std::string& path, f32 minimumHeight, f32 maximumHeight, u32& outImportedChunkCount, std::string& outError);
 
         State GetState() const;
 
@@ -87,6 +100,14 @@ namespace Editor
             VertexAddress address;
             f32 before = 0.0f;
             f32 after = 0.0f;
+        };
+
+        struct VertexColorDelta
+        {
+        public:
+            VertexAddress address;
+            std::array<u8, 3> before = {};
+            std::array<u8, 3> after = {};
         };
 
         struct TextureCellDelta
@@ -121,6 +142,8 @@ namespace Editor
             std::string name;
             std::vector<VertexDelta> deltas;
             robin_hood::unordered_map<u64, u32> deltaLookup;
+            std::vector<VertexColorDelta> colorDeltas;
+            robin_hood::unordered_map<u64, u32> colorDeltaLookup;
             std::vector<TextureCellDelta> textureCellDeltas;
             robin_hood::unordered_map<u32, u32> textureCellDeltaLookup;
             std::vector<CellLayerDelta> cellLayerDeltas;
@@ -135,8 +158,6 @@ namespace Editor
         public:
             std::string virtualPath;
             std::vector<u8> rgba;
-            std::array<u8, Terrain::CHUNK_NUM_CELLS> layerUsageMasks = {};
-            std::array<bool, Terrain::CHUNK_NUM_CELLS> layerUsageValid = {};
             Renderer::TextureID textureID = Renderer::TextureID::Invalid();
             bool dirty = false;
         };
@@ -147,6 +168,20 @@ namespace Editor
             VertexAddress address;
             vec2 position = vec2(0.0f);
             f32 distance = 0.0f;
+        };
+
+        struct SharedVertexHeight
+        {
+        public:
+            f32 sum = 0.0f;
+            u32 count = 0;
+        };
+
+        struct SharedVertexColor
+        {
+        public:
+            std::array<u32, 3> sums = {};
+            u32 count = 0;
         };
 
         struct PaintCellChange
@@ -188,19 +223,24 @@ namespace Editor
         bool CalculateCursorHit(vec3& outPosition) const;
         bool SampleHeight(const vec2& worldPosition, f32& outHeight) const;
         bool ApplyDab(TerrainSculptOperation operation, const vec3& position, f32 radius, f32 strength, f32 hardness, f32 deltaTime, f32 targetHeight, robin_hood::unordered_set<u32>& outChangedCells);
+        bool ApplyVertexColorDab(const vec3& position, f32 radius, f32 flow, f32 hardness, f32 deltaTime, const vec3& targetColor, robin_hood::unordered_set<u32>& outChangedCells);
         bool ApplyPaintDab(const vec3& position, f32 radius, f32 targetOpacity, robin_hood::unordered_map<u32, PaintCellChange>& outChangedCells);
         bool GetCellAtWorldPosition(const vec2& worldPosition, u32& outChunkID, u16& outCellID, vec2* outLocalPosition = nullptr) const;
         EditableAlphaMap* GetOrCreateAlphaMap(u32 chunkID);
         bool EnsureAlphaMapRenderable(u32 chunkID, EditableAlphaMap& alphaMap);
-        u8 GetLayerUsageMask(EditableAlphaMap& alphaMap, u16 cellID);
         bool PrepareCellForTexture(Map::Chunk& chunk, EditableAlphaMap& alphaMap, u32 chunkID, u16 cellID, u32& outLayerIndex, bool& outAlphaMapRepacked);
+        bool SanitizeTextureLayerWeights(EditableAlphaMap& alphaMap, u32 chunkID, u16 cellID, u32 layerCount);
         void RemoveTextureLayer(Map::Chunk& chunk, EditableAlphaMap& alphaMap, u16 cellID, u32 layerIndex);
         void UploadPaintChanges(const robin_hood::unordered_map<u32, PaintCellChange>& changedCells);
         void UploadChangedAlphaCells(const robin_hood::unordered_set<u32>& changedCells);
+        void UploadChangedVertexCells(const robin_hood::unordered_set<u32>& changedCells);
         bool SaveAlphaMaps(const std::vector<u32>& chunkIDs, robin_hood::unordered_set<u32>& outSavedChunkIDs);
 
         void GatherVertices(const vec2& center, f32 radius, std::vector<VertexCandidate>& outCandidates) const;
+        void SynchronizeSharedOuterVertices(robin_hood::unordered_set<u32>& outChangedCells);
+        void SynchronizeSharedVertexColors(robin_hood::unordered_set<u32>& outChangedCells);
         void RecordBeforeChange(const VertexAddress& address, f32 height);
+        void RecordVertexColorBeforeChange(const VertexAddress& address, const u8* color);
         void RecordTextureCellBeforeChange(u32 chunkID, u16 cellID, const u8* cellData);
         void RecordCellLayersBeforeChange(u32 chunkID, u16 cellID, const u64* layers);
         void RecordChunkAlphaMapBeforeChange(u32 chunkID, u64 alphaMapHash);
@@ -224,6 +264,8 @@ namespace Editor
 
         robin_hood::unordered_map<u32, TerrainLoader::LoadedChunkView> _loadedChunks;
         robin_hood::unordered_set<u32> _dirtyChunks;
+        robin_hood::unordered_set<u32> _unsavedCreatedChunks;
+        robin_hood::unordered_set<u32> _physicsDirtyChunks;
         robin_hood::unordered_set<u32> _editablePaintChunkIDs;
         robin_hood::unordered_map<u32, TerrainLoader::LoadedChunkView> _editableChunkScratch;
         robin_hood::unordered_map<u32, EditableAlphaMap> _editableAlphaMaps;
@@ -235,6 +277,9 @@ namespace Editor
         robin_hood::unordered_set<u32> _transactionChunkScratch;
         std::vector<VertexCandidate> _candidateScratch;
         std::vector<f32> _newHeightScratch;
+        robin_hood::unordered_map<u32, SharedVertexHeight> _sharedVertexHeightScratch;
+        robin_hood::unordered_map<u32, SharedVertexColor> _sharedVertexColorScratch;
+        robin_hood::unordered_map<u64, std::array<f32, 3>> _vertexColorBlendScratch;
         std::vector<PaintCellWork> _paintCellWorkScratch;
         std::vector<u8> _paintBeforeScratch;
         std::array<f32, 2048> _paintBlendScratch = {};
@@ -254,6 +299,7 @@ namespace Editor
         vec3 _loadedBoundsMax = vec3(0.0f);
         f32 _previewRadius = 10.0f;
         u64 _paintTextureHash = Terrain::TEXTURE_ID_INVALID;
+        u32 _paintTargetLayerIndex = Map::CellsData::CELL_LAYER_COUNT;
         std::string _paintTexturePath;
         bool _enabled = false;
         bool _strokeActive = false;

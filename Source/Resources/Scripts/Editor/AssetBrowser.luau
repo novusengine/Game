@@ -1,6 +1,6 @@
 local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
-AssetBrowser — Lua port of the C++ ImGui Asset Browser. Left column is a collapsible
+AssetBrowser - Lua port of the C++ ImGui Asset Browser. Left column is a collapsible
 folder tree (lazily expanded); selecting a folder lists its files in the right column
 in either a Row or thumbnail Display mode, with a search filter. Right-clicking a
 .complexmodel file spawns it at the camera.
@@ -148,7 +148,7 @@ local fileMenu = ContextMenu.New(canvas, { items = {}, layer = integer.add(LAYER
 
 local selectedPath = ""
 local pickerCallback : ((string) -> ())? = nil
-local pickerExtension : string? = nil
+local pickerExtensions : { [string] : boolean }? = nil
 local displayMode = "row"
 local listing = nil
 local fileItems = {}
@@ -186,7 +186,7 @@ local function FilteredFiles()
     if listing == nil then return out end
     local search = searchInput.text
     for _, file in listing.files do
-        if (pickerExtension == nil or file.ext == pickerExtension) and TextUtil.ContainsIgnoreCase(file.name, search) then
+        if (pickerExtensions == nil or pickerExtensions[file.ext]) and TextUtil.ContainsIgnoreCase(file.name, search) then
             table.insert(out, file)
             if #out >= MAX_FILES then break end
         end
@@ -198,7 +198,7 @@ local function SelectFile(file, button, mouseX, mouseY)
     if button == 0i and pickerCallback ~= nil then
         local callback = pickerCallback
         pickerCallback = nil
-        pickerExtension = nil
+        pickerExtensions = nil
         methods:Hide()
         callback(file.path)
     elseif button == 1i then
@@ -332,7 +332,7 @@ local function BuildDisplay(folders, files)
         local thumb = cell:NewPanel(vec.New(0, 0), vec.New(CELL_W, CELL_W), 1i, "AssetBrowserThumbnailPanel")
         thumb:SetAnchor(vec.New(0.5, 1.0))
         thumb:SetRelativePoint(vec.New(0.5, 1.0))
-        if file.ext == ".dds" then
+        if file.ext == ".dds" or file.ext == ".png" then
             thumb:SetBackground("Data/" .. file.path)
             thumb:SetColor(vec.New(1, 1, 1))
             thumb:SetAlpha(1.0)
@@ -548,15 +548,21 @@ RefreshModeButtons()
 
 function methods:Show()
     pickerCallback = nil
-    pickerExtension = nil
+    pickerExtensions = nil
     windowPanel:SetVisible(true)
     LoadTree()
     SelectFolder("")
 end
 
-function methods:Pick(startPath : string, extension : string?, callback : (string) -> ())
+function methods:Pick(startPath : string, extensions : { string }?, callback : (string) -> ())
     pickerCallback = callback
-    pickerExtension = extension
+    pickerExtensions = nil
+    if extensions ~= nil then
+        pickerExtensions = { }
+        for _, extension in extensions do
+            pickerExtensions[extension] = true
+        end
+    end
     windowPanel:SetVisible(true)
     LoadTree()
     SelectFolder(startPath)
@@ -564,7 +570,7 @@ end
 
 function methods:Hide()
     pickerCallback = nil
-    pickerExtension = nil
+    pickerExtensions = nil
     windowPanel:SetVisible(false)
     fileMenu:Close()
 end

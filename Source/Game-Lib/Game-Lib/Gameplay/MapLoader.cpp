@@ -77,7 +77,7 @@ void MapLoader::Update(f32 deltaTime)
         }
 
         const auto& currentMap = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
-        const std::string& mapInternalName = mapStorage->GetString(currentMap.nameInternal);
+        const std::string& mapInternalName = mapStorage->GetString(currentMap.internalName);
 
         auto* pactStorage = ServiceLocator::GetPactStorage();
         std::string mapHeaderPath = Util::AssetPath::Map(mapInternalName + "/" + mapInternalName + Map::HEADER_FILE_EXTENSION);

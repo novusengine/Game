@@ -894,16 +894,15 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chun
             u32 cellDataIndex = cellDataStartOffset + cellID;
 
             CellData& cellData = _cellDatas[cellDataIndex];
+            cellData = {};
             cellData.hole = chunk->cellsData.holes[cellID];
 
             // Handle textures
-            u8 layerCount = 0;
-            for (const u64 layerTextureID : chunk->cellsData.layerTextureIDs[cellID])
+            for (u32 layerIndex = 0; layerIndex < Map::CellsData::CELL_LAYER_COUNT; layerIndex++)
             {
+                const u64 layerTextureID = chunk->cellsData.layerTextureIDs[cellID][layerIndex];
                 if (layerTextureID == 0 || layerTextureID == Terrain::TEXTURE_ID_INVALID)
-                {
                     break;
-                }
 
                 size_t arrIndex = 0;
                 Renderer::TextureID textureID = Renderer::TextureID::Invalid();
@@ -911,7 +910,10 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chun
                 {
                     PACT::PactFileHandle fileHandle;
                     if (pactStorage->ReadFile(layerTextureID, fileHandle) != PACT::PactReadResult::Success)
+                    {
+                        NC_LOG_ERROR("TerrainRenderer::AddChunk: Failed to read diffuse texture {0} for chunk {1}, cell {2}, layer {3}", layerTextureID, chunkHash, cellID, layerIndex);
                         continue;
+                    }
 
                     textureDesc.hash = layerTextureID;
                     textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
@@ -924,9 +926,12 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chun
                 }
 
                 if (textureID == Renderer::TextureID::Invalid())
+                {
+                    NC_LOG_ERROR("TerrainRenderer::AddChunk: Failed to load diffuse texture {0} for chunk {1}, cell {2}, layer {3}", layerTextureID, chunkHash, cellID, layerIndex);
                     continue;
+                }
 
-                cellData.diffuseIDs[layerCount++] = static_cast<u16>(arrIndex);
+                cellData.diffuseIDs[layerIndex] = static_cast<u16>(arrIndex);
                 maxDiffuseID = glm::max(maxDiffuseID, static_cast<u32>(arrIndex));
             }
 
@@ -1002,6 +1007,42 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chun
     return chunkDataStartOffset;
 }
 
+bool TerrainRenderer::HideChunk(u32 chunkDataIndex)
+{
+    if (chunkDataIndex >= _chunkDatas.Count())
+        return false;
+
+    const u32 cellDataStartOffset = chunkDataIndex * Terrain::CHUNK_NUM_CELLS;
+    if (cellDataStartOffset + Terrain::CHUNK_NUM_CELLS > _cellDatas.Count())
+        return false;
+
+    std::shared_lock lock(_addChunkMutex);
+    for (u32 cellID = 0; cellID < Terrain::CHUNK_NUM_CELLS; cellID++)
+    {
+        _cellDatas[cellDataStartOffset + cellID].hole = std::numeric_limits<u64>::max();
+    }
+
+    _cellDatas.SetDirtyElements(cellDataStartOffset, Terrain::CHUNK_NUM_CELLS);
+    return true;
+}
+
+bool TerrainRenderer::ReplaceChunk(u32 chunkDataIndex, u32 chunkHash, const Map::Chunk& chunk, ivec2 chunkGridPos)
+{
+    if (chunkDataIndex >= _chunkDatas.Count())
+        return false;
+
+    const u32 cellDataStartOffset = chunkDataIndex * Terrain::CHUNK_NUM_CELLS;
+    const u32 vertexDataStartOffset = cellDataStartOffset * Terrain::CELL_NUM_VERTICES;
+    AddChunk(chunkHash, &chunk, chunkGridPos, chunkDataIndex, cellDataStartOffset, vertexDataStartOffset);
+
+    _chunkDatas.SetDirtyElement(chunkDataIndex);
+    _cellDatas.SetDirtyElements(cellDataStartOffset, Terrain::CHUNK_NUM_CELLS);
+    _instanceDatas.SetDirtyElements(cellDataStartOffset, Terrain::CHUNK_NUM_CELLS);
+    _cellHeightRanges.SetDirtyElements(cellDataStartOffset, Terrain::CHUNK_NUM_CELLS);
+    _vertices.SetDirtyElements(vertexDataStartOffset, Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES);
+    return true;
+}
+
 bool TerrainRenderer::UpdateChunkCells(u32 chunkDataIndex, const Map::Chunk& chunk, std::span<const u16> cellIDs)
 {
     if (chunkDataIndex >= _chunkDatas.Count())
@@ -1027,6 +1068,9 @@ bool TerrainRenderer::UpdateChunkCells(u32 chunkDataIndex, const Map::Chunk& chu
             vertex.normal[0] = chunk.cellsData.normals[cellID][vertexID][0];
             vertex.normal[1] = chunk.cellsData.normals[cellID][vertexID][1];
             vertex.normal[2] = chunk.cellsData.normals[cellID][vertexID][2];
+            vertex.color[0] = chunk.cellsData.colors[cellID][vertexID][0];
+            vertex.color[1] = chunk.cellsData.colors[cellID][vertexID][1];
+            vertex.color[2] = chunk.cellsData.colors[cellID][vertexID][2];
             vertex.height = chunk.cellsData.heightField[cellID][vertexID];
         }
         _vertices.SetDirtyElements(vertexStartIndex, Terrain::CELL_NUM_VERTICES);
@@ -1108,7 +1152,6 @@ bool TerrainRenderer::UpdateChunkTextureLayers(u32 chunkDataIndex, const Map::Ch
         _cellDatas.SetDirtyElement(cellDataIndex);
     }
 
-    _renderer->FlushTextureArrayDescriptors(_textures);
     return true;
 }
 
@@ -1136,8 +1179,6 @@ bool TerrainRenderer::CreateEditableAlphaMap(u32 chunkDataIndex, u64 alphaMapHas
         outTextureID = _renderer->CreateDataTextureIntoArray(textureDesc, _alphaTextures, arrayIndex);
         if (outTextureID == Renderer::TextureID::Invalid() || arrayIndex > std::numeric_limits<u32>::max())
             return false;
-
-        _renderer->FlushTextureArrayDescriptors(_alphaTextures);
     }
 
     std::shared_lock lock(_addChunkMutex);
