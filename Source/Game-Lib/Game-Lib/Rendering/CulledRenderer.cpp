@@ -807,8 +807,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
 void CulledRenderer::BindCullingResource(CullingResourcesBase& resources)
 {
-    resources.GetCullingDescriptorSet().Bind("_depthSampler"_h, _occlusionSampler);
-    resources.GetCullingDescriptorSet().Bind("_cullingDatas"_h, _cullingDatas.GetBuffer());
+    resources.BindSharedCullingResources(_occlusionSampler, _cullingDatas.GetBuffer());
 }
 
 void CulledRenderer::CreatePermanentResources()

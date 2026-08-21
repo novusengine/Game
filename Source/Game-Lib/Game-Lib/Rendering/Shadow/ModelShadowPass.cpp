@@ -131,6 +131,7 @@ namespace ShadowRendering
         Bind(_expandSet, "_shadowGeometryGroupMasks"_h, scene.GetGeometryGroupMasks().GetMasks().GetBuffer());
         Bind(_expandSet, "_shadowMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
         Bind(_expandSet, "_shadowSVSMData"_h, svsmData);
+        Bind(_expandSet, "_shadowCasterInstances"_h, scene.GetModelInstances().GetShadowCasters().GetBuffer());
         Bind(_cullSet, "_shadowCullInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
         Bind(_cullSet, "_shadowCullModels"_h, geometry.GetRecords().GetBuffer());
         Bind(_cullSet, "_shadowCullMeshlets"_h, geometry.GetMeshlets().GetBuffer());
@@ -181,7 +182,7 @@ namespace ShadowRendering
                                       u32 numClipmaps, bool dynamicSplit, u8 frameIndex, i32 forcedLOD,
                                       f32 lodTargetTexels)
     {
-        const u32 instanceCapacity = scene.GetStats().instances.slotCapacity;
+        const u32 casterCount = scene.GetModelInstances().GetShadowCasters().Count();
         struct Data
         {
             Renderer::BufferMutableResource stats;
@@ -205,6 +206,7 @@ namespace ShadowRendering
                 using Usage = Renderer::BufferPassUsage;
                 builder.Read(resources.cameras.GetBuffer(), Usage::COMPUTE);
                 builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::COMPUTE);
+                builder.Read(scene.GetModelInstances().GetShadowCasters().GetBuffer(), Usage::COMPUTE);
                 builder.Read(geometry.GetRecords().GetBuffer(), Usage::COMPUTE);
                 builder.Read(geometry.GetMeshes().GetBuffer(), Usage::COMPUTE);
                 builder.Read(geometry.GetMeshLODs().GetBuffer(), Usage::COMPUTE);
@@ -238,7 +240,7 @@ namespace ShadowRendering
                 data.finalizeSet = builder.Use(_finalizeSet);
                 return true;
             },
-            [this, &work, instanceCapacity, numClipmaps, dynamicSplit, frameIndex, forcedLOD,
+            [this, &work, casterCount, numClipmaps, dynamicSplit, frameIndex, forcedLOD,
              lodTargetTexels](Data& data, Renderer::RenderGraphResources& graphResources,
                               Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelShadowWork);
@@ -247,7 +249,7 @@ namespace ShadowRendering
 
                 struct ExpandConstants
                 {
-                    u32 instanceCapacity;
+                    u32 casterCount;
                     u32 numClipmaps;
                     u32 queueCapacity;
                     i32 forcedLOD;
@@ -256,14 +258,14 @@ namespace ShadowRendering
                     u32 frameIndex;
                 };
                 ExpandConstants* expand = graphResources.FrameNew<ExpandConstants>();
-                *expand = {instanceCapacity, numClipmaps, work.GetCapacity(), forcedLOD, lodTargetTexels,
+                *expand = {casterCount, numClipmaps, work.GetCapacity(), forcedLOD, lodTargetTexels,
                            dynamicSplit ? 1u : 0u, frameIndex};
                 commandList.BeginPipeline(_expandPipeline);
                 commandList.PushConstant(expand, 0, sizeof(*expand));
                 commandList.BindDescriptorSet(data.globalSet, frameIndex);
                 commandList.BindDescriptorSet(data.materialSet, frameIndex);
                 commandList.BindDescriptorSet(data.expandSet, frameIndex);
-                const u32 instanceGroups = (instanceCapacity + MODEL_SHADOW_COMPUTE_THREAD_COUNT - 1u) / MODEL_SHADOW_COMPUTE_THREAD_COUNT;
+                const u32 instanceGroups = (casterCount + MODEL_SHADOW_COMPUTE_THREAD_COUNT - 1u) / MODEL_SHADOW_COMPUTE_THREAD_COUNT;
                 commandList.Dispatch(instanceGroups, numClipmaps, 1);
                 commandList.EndPipeline(_expandPipeline);
                 commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::COMPUTE);
@@ -368,6 +370,30 @@ namespace ShadowRendering
                                  const RenderScenes::RenderScene& scene, Renderer::BufferID svsmData,
                                  Renderer::BufferID staticPageTable, Renderer::BufferID dynamicPageTable)
     {
+        const std::array<Renderer::BufferID, 16> uploadBindings = {
+            scene.GetModelInstances().GetRecords().GetBuffer(),
+            scene.GetModelInstances().GetShadowCasters().GetBuffer(),
+            geometry.GetRecords().GetBuffer(),
+            geometry.GetMeshes().GetBuffer(),
+            geometry.GetMeshLODs().GetBuffer(),
+            geometry.GetSubmeshes().GetBuffer(),
+            geometry.GetMeshlets().GetBuffer(),
+            scene.GetGeometryGroupMasks().GetMasks().GetBuffer(),
+            scene.GetModelMaterialTables().GetEntries().GetBuffer(),
+            svsmData,
+            geometry.GetPositions().GetBuffer(),
+            geometry.GetMeshletVertexIndices().GetBuffer(),
+            geometry.GetMeshletTriangles().GetBuffer(),
+            geometry.GetVertexAttributes().GetBuffer(),
+            staticPageTable,
+            dynamicPageTable};
+        if (_uploadBindingsValid && _generation == work.GetGeneration() &&
+            _cullDescriptorWarmupFrames == 0 && _rasterDescriptorWarmupFrames == 0 &&
+            _uploadBindings == uploadBindings)
+        {
+            return true;
+        }
+
         if (_generation != work.GetGeneration())
         {
             _generation = work.GetGeneration();
@@ -377,6 +403,8 @@ namespace ShadowRendering
         const bool cullReady = UploadCullBindings(work, geometry, scene, svsmData);
         const bool rasterReady = UploadRasterBindings(work, geometry, scene, svsmData, staticPageTable,
                                                       dynamicPageTable);
+        _uploadBindings = uploadBindings;
+        _uploadBindingsValid = true;
         return cullReady && rasterReady;
     }
 

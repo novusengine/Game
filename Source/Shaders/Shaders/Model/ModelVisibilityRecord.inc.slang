@@ -11,6 +11,8 @@ struct ModelVisibilityRecord
 {
     uint packedInstanceAndMesh;
     uint packedLODSubmeshAndMeshlet;
+    uint instanceGeneration;
+    uint replayRevision;
 };
 
 struct DecodedModelVisibilityRecord
@@ -22,11 +24,26 @@ struct DecodedModelVisibilityRecord
     uint meshletIndex;
 };
 
+uint PackModelInstanceAndMesh(uint instanceIndex, uint meshIndex)
+{
+    return instanceIndex | (meshIndex << MODEL_VISIBILITY_INSTANCE_BITS);
+}
+
+uint ModelVisibilityInstanceIndex(uint packedInstanceAndMesh)
+{
+    return packedInstanceAndMesh & ((1u << MODEL_VISIBILITY_INSTANCE_BITS) - 1u);
+}
+
+uint ModelVisibilityMeshIndex(uint packedInstanceAndMesh)
+{
+    return packedInstanceAndMesh >> MODEL_VISIBILITY_INSTANCE_BITS;
+}
+
 DecodedModelVisibilityRecord DecodeModelVisibilityRecord(ModelVisibilityRecord record)
 {
     DecodedModelVisibilityRecord result;
-    result.instanceIndex = record.packedInstanceAndMesh & ((1u << MODEL_VISIBILITY_INSTANCE_BITS) - 1u);
-    result.meshIndex = record.packedInstanceAndMesh >> MODEL_VISIBILITY_INSTANCE_BITS;
+    result.instanceIndex = ModelVisibilityInstanceIndex(record.packedInstanceAndMesh);
+    result.meshIndex = ModelVisibilityMeshIndex(record.packedInstanceAndMesh);
     result.lodIndex = record.packedLODSubmeshAndMeshlet & ((1u << MODEL_VISIBILITY_LOD_BITS) - 1u);
     result.submeshIndex = (record.packedLODSubmeshAndMeshlet >> MODEL_VISIBILITY_LOD_BITS) &
                           ((1u << MODEL_VISIBILITY_SUBMESH_BITS) - 1u);
@@ -39,9 +56,11 @@ ModelVisibilityRecord PackModelVisibilityRecord(uint instanceIndex, uint meshInd
                                                 uint submeshIndex, uint meshletIndex)
 {
     ModelVisibilityRecord result;
-    result.packedInstanceAndMesh = instanceIndex | (meshIndex << MODEL_VISIBILITY_INSTANCE_BITS);
+    result.packedInstanceAndMesh = PackModelInstanceAndMesh(instanceIndex, meshIndex);
     result.packedLODSubmeshAndMeshlet = lodIndex | (submeshIndex << MODEL_VISIBILITY_LOD_BITS) |
         (meshletIndex << (MODEL_VISIBILITY_LOD_BITS + MODEL_VISIBILITY_SUBMESH_BITS));
+    result.instanceGeneration = 0u;
+    result.replayRevision = 0u;
     return result;
 }
 

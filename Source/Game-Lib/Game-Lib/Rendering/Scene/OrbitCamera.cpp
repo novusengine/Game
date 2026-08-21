@@ -111,6 +111,9 @@ namespace RenderScenes
         camera.frustum[static_cast<size_t>(FrustumPlane::Left)] = EncodePlane(position, glm::cross(frontFar + right * halfHSide, up));
         camera.frustum[static_cast<size_t>(FrustumPlane::Top)] = EncodePlane(position, glm::cross(frontFar - up * halfVSide, right));
         camera.frustum[static_cast<size_t>(FrustumPlane::Bottom)] = EncodePlane(position, glm::cross(right, frontFar + up * halfVSide));
+        camera.cullingWorldToClip = camera.worldToClip;
+        camera.cullingEyePosition = camera.eyePosition;
+        camera.cullingViewportSize = vec4(_view->GetDimensions(), 0.0f, 0.0f);
         _resources->cameras.SetDirtyElement(_view->GetCameraIndex());
         _view->MarkDirty();
     }

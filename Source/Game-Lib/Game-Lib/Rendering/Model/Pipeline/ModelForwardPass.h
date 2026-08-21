@@ -51,8 +51,10 @@ namespace ModelPipeline
         Renderer::Renderer* _renderer = nullptr;
         GameRenderer* _gameRenderer = nullptr;
         Renderer::DescriptorSet _descriptorSet;
-        Renderer::GraphicsPipelineID _oneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
-        Renderer::GraphicsPipelineID _twoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::GraphicsPipelineID _opaqueOneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::GraphicsPipelineID _opaqueTwoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::GraphicsPipelineID _alphaTestOneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::GraphicsPipelineID _alphaTestTwoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Bindings _bindings;
         ModelGeometryBindings _geometryBindings;
         u32 _queueGeneration = 0;

@@ -28,13 +28,15 @@ bool LoadHighlightInstance(uint2 pixel, out uint instanceIndex, out uint generat
         return false;
 
     TypedVisibilityPayload payload = UnpackTypedVisibility(visibility);
-    uint recordCount = _constants.resourceIndex == 0u
+    uint recordResourceIndex = ModelVisibilityUsesPreviousResource(payload.geometryTypeID) ?
+        1u - _constants.resourceIndex : _constants.resourceIndex;
+    uint recordCount = recordResourceIndex == 0u
         ? _highlightModelVisibilityStats0[MODEL_WORK_STAT_VISIBILITY_RECORDS]
         : _highlightModelVisibilityStats1[MODEL_WORK_STAT_VISIBILITY_RECORDS];
     if (payload.recordID >= recordCount)
         return false;
 
-    ModelVisibilityRecord packedRecord = _constants.resourceIndex == 0u
+    ModelVisibilityRecord packedRecord = recordResourceIndex == 0u
         ? _highlightModelVisibilityRecords0[payload.recordID]
         : _highlightModelVisibilityRecords1[payload.recordID];
     instanceIndex = DecodeModelVisibilityRecord(packedRecord).instanceIndex;

@@ -31,6 +31,5 @@ namespace SkyboxRendering
         u64 _viewID = 0;
         Renderer::ImageID _transparencyAccumulation = Renderer::ImageID::Invalid();
         Renderer::ImageID _transparencyRevealage = Renderer::ImageID::Invalid();
-        Renderer::ImageID _depthPyramid = Renderer::ImageID::Invalid();
     };
 } // namespace SkyboxRendering

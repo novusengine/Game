@@ -2,6 +2,8 @@
 #define MODEL_VIEW_WORK_INCLUDED
 
 #include "Material/MaterialShared.inc.slang"
+#include "Model/ModelRasterQueue.inc.slang"
+#include "Model/ModelVisibilityRecord.inc.slang"
 #include "Model/ModelViewWorkStats.inc.slang"
 
 #define MODEL_INSTANCE_VISIBLE (1u << 0u)
@@ -34,6 +36,7 @@
 #define MODEL_SUBMESH_INDEX_BITS 12u
 #define MODEL_CHUNK_SUBMESH_SHIFT 11u
 #define MODEL_CHUNK_SUBMESH_MASK ((1u << MODEL_SUBMESH_INDEX_BITS) - 1u)
+#define MODEL_CHUNK_RESOLVE_CLASS_SHIFT 23u
 
 #define MODEL_MESH_DISPATCH_MAX_GROUPS_X 1024u
 #define MODEL_MESH_DISPATCH_ARGUMENT_COUNT 3u
@@ -53,26 +56,10 @@ struct ViewInstanceInput
 
 struct ModelMeshletChunk
 {
-    uint instanceIndex;
-    uint meshIndex;
+    uint packedInstanceAndMesh;
     uint meshletBase;
     uint packedCountRasterAndLOD;
     uint lodHistoryIndex;
-    uint reserved0;
-    uint reserved1;
-    uint reserved2;
-};
-
-struct ModelMeshletSurvivor
-{
-    uint instanceIndex;
-    uint instanceGeneration;
-    uint lodHistoryIndex;
-    uint meshIndex;
-    uint lodIndex;
-    uint submeshIndex;
-    uint meshletIndex;
-    uint rasterClass;
 };
 
 struct ModelBounds
@@ -87,39 +74,16 @@ struct ModelBounds
 struct ModelRecord
 {
     ModelBounds bounds;
-    uint2 collisionAssetID;
     uint meshBase;
     uint numMeshes;
     uint meshLODBase;
-    uint numMeshLODs;
     uint submeshBase;
-    uint numSubmeshes;
     uint meshletBase;
     uint numMeshlets;
-    uint lod0Meshlets;
-    uint lod0Triangles;
     uint positionBase;
-    uint numPositions;
     uint vertexAttributeBase;
-    uint numVertexAttributes;
-    uint skinningDataBase;
-    uint numSkinningData;
     uint meshletVertexIndexBase;
-    uint numMeshletVertexIndices;
     uint meshletTriangleBase;
-    uint numMeshletTriangles;
-    uint jointPaletteRemapBase;
-    uint numJointPaletteRemaps;
-    uint materialSlotBase;
-    uint numMaterialSlots;
-    uint embeddedInstanceSetBase;
-    uint numEmbeddedInstanceSets;
-    uint embeddedInstanceBase;
-    uint numEmbeddedInstances;
-    uint defaultMaterialTableOffset;
-    uint defaultMaterialTableCount;
-    uint flags;
-    uint geometryGroupCount;
     uint reserved0;
     uint reserved1;
 };

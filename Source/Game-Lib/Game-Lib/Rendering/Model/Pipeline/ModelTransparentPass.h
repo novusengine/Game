@@ -34,7 +34,7 @@ namespace ModelPipeline
                          ModelView::ModelTransparentWorkResources& work,
                          const ModelLoading::ModelGeometryStorage& geometry,
                          const MaterialLoading::MaterialStorage& materials,
-                         const RenderScenes::RenderScene& scene, u8 frameIndex);
+                         const RenderScenes::RenderScene& scene, u8 frameIndex, bool enableOcclusionCulling);
         void AddRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                            const RenderScenes::RenderView& view,
                            const ModelView::ModelTransparentWorkResources& work,

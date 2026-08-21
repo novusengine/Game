@@ -68,6 +68,7 @@ public:
     Renderer::DescriptorSet& GetCreateIndirectAfterCullDescriptorSet() { return _createIndirectAfterCullingDescriptorSet; }
     Renderer::DescriptorSet& GetGeometryFillDescriptorSet() { return _geometryFillDescriptorSet; }
     Renderer::DescriptorSet& GetGeometryPassDescriptorSet() { return _geometryPassDescriptorSet; }
+    void BindSharedCullingResources(Renderer::SamplerID depthSampler, Renderer::BufferID cullingDatas);
 
     bool HasSupportForTwoStepCulling() { return _enableTwoStepCulling; }
 
@@ -114,6 +115,8 @@ protected:
     Renderer::DescriptorSet _geometryFillDescriptorSet;
     Renderer::DescriptorSet _geometryPassDescriptorSet;
     Renderer::DescriptorSet* _materialPassDescriptorSet;
+    Renderer::SamplerID _boundDepthSampler = Renderer::SamplerID::Invalid();
+    Renderer::BufferID _boundCullingDatas = Renderer::BufferID::Invalid();
 
     u32 _numInstances = 0;
     u32 _numSurvivingOccluderInstances = 0;

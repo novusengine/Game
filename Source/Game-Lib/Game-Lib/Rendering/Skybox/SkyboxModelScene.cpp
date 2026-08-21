@@ -2,6 +2,7 @@
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
@@ -32,11 +33,6 @@ namespace SkyboxRendering
         imageDesc.debugName = "Skybox Model Transparency Revealage";
         _transparencyRevealage = renderer->CreateImage(imageDesc);
 
-        imageDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_PYRAMID_RENDERSIZE;
-        imageDesc.format = Renderer::ImageFormat::R32_FLOAT;
-        imageDesc.debugName = "Skybox Model Depth Pyramid";
-        _depthPyramid = renderer->CreateImage(imageDesc);
-
         RenderScenes::RenderViewDesc viewDesc;
         viewDesc.debugName = "Sky";
         viewDesc.scene = _scene;
@@ -46,7 +42,7 @@ namespace SkyboxRendering
         viewDesc.colorTarget = resources.skyboxColor;
         viewDesc.transparencyAccumulationTarget = _transparencyAccumulation;
         viewDesc.transparencyRevealageTarget = _transparencyRevealage;
-        viewDesc.depthPyramidTarget = _depthPyramid;
+        viewDesc.depthPyramidTarget = resources.depthPyramid;
         viewDesc.depthTarget = resources.skyboxDepth;
         viewDesc.passFamilies = RenderScenes::RenderViewPassFamily::ForwardModels;
         viewDesc.lifetime = RenderScenes::RenderViewLifetime::Transient;
@@ -66,12 +62,13 @@ namespace SkyboxRendering
             _renderer->DestroyImage(_transparencyAccumulation);
         if (_transparencyRevealage != Renderer::ImageID::Invalid())
             _renderer->DestroyImage(_transparencyRevealage);
-        if (_depthPyramid != Renderer::ImageID::Invalid())
-            _renderer->DestroyImage(_depthPyramid);
     }
 
     void SkyboxModelScene::AddStartFramePass(Renderer::RenderGraph* renderGraph)
     {
+        if (!_gameRenderer->GetModelRenderSystem()->HasTransparentWork(_viewID))
+            return;
+
         struct Data
         {
             Renderer::ImageMutableResource accumulation;

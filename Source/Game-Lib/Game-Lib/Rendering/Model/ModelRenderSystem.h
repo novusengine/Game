@@ -65,12 +65,15 @@ namespace ModelRendering
         RenderScenes::RenderView* CreateView(const RenderScenes::RenderViewDesc& desc);
         bool DestroyView(u64 viewID);
         RenderScenes::RenderView* GetView(u64 viewID);
+        bool HasTransparentWork(u64 viewID) const;
         RenderScenes::RenderView* GetMainView() { return _mainView ? &_mainView->GetView() : nullptr; }
         void PreparePreEffectsViews(RenderResources& resources);
         void AddVisibilityPhase1Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddVisibilityPhase2Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddCommonMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                          MaterialRenderer& materialRenderer, u8 frameIndex);
         void AddTransparentCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddTransparentRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                       RenderScenes::RenderViewPassFamily passFamily, u8 frameIndex);

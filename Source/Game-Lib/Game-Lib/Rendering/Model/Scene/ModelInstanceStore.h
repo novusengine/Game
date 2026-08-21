@@ -45,7 +45,8 @@ namespace ModelScene
         u32 packedHighlightColor = 0xFFFFFFFFu;
         f32 highlightIntensity = 1.0f;
         f32 opacity = 1.0f;
-        u32 reserved[3] = {};
+        u32 replayRevision = 1;
+        u32 reserved[2] = {};
     };
 
     struct ModelInstanceCreateInfo
@@ -103,6 +104,7 @@ namespace ModelScene
         bool SetShadowDynamic(RenderScenes::ModelInstanceHandle handle, bool dynamic);
         bool SetMaterialTable(RenderScenes::ModelInstanceHandle handle, RenderScenes::ModelMaterialTableHandle table,
                               u32 offset, u32 count, bool isPrivate);
+        bool InvalidateReplay(RenderScenes::ModelInstanceHandle handle);
         void AdvanceFrame();
         void PublishPending();
         void SyncToGPU(Renderer::Renderer* renderer);
@@ -130,6 +132,7 @@ namespace ModelScene
         {
             return _records;
         }
+        const Renderer::GPUVector<u32>& GetShadowCasters() const { return _shadowCasters; }
         u64 GetMembershipRevision() const
         {
             return _membershipRevision;
@@ -156,6 +159,7 @@ namespace ModelScene
             bool membershipChangeQueued = false;
             bool routingChangeQueued = false;
             u32 meshletCount = 0;
+            u32 shadowCasterIndex = RenderScenes::INVALID_SCENE_INDEX;
         };
 
         struct SlotGenerationEntry
@@ -169,12 +173,15 @@ namespace ModelScene
         void QueueFrameAdvance(u32 slotIndex);
         void QueueSlotClear(u32 slotIndex);
         void QueueMembershipChange(u32 slotIndex);
+        void RefreshShadowCaster(u32 slotIndex);
+        void RemoveShadowCaster(u32 slotIndex);
         void RecordStaleHandle() const
         {
             _staleHandleRejects++;
         }
 
         Renderer::GPUVector<ModelInstanceGPURecord> _records;
+        Renderer::GPUVector<u32> _shadowCasters;
         std::vector<Slot> _slots;
         std::vector<u32> _freeSlots;
         std::vector<u32> _pendingSlotClears;

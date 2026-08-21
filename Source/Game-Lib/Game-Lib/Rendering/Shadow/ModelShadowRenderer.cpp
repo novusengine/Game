@@ -52,6 +52,7 @@ namespace ShadowRendering
     void ModelShadowRenderer::Upload(Renderer::BufferID svsmData, Renderer::BufferID staticPageTable,
                                      Renderer::BufferID dynamicPageTable)
     {
+        ZoneScoped;
         const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
         _descriptorsReady = _pass.Upload(_work, geometry, *_scene, svsmData, staticPageTable, dynamicPageTable);
     }

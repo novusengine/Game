@@ -85,6 +85,12 @@ void ConsoleCommands::CommandRefreshDB(Application& app, std::vector<std::string
     app.PassMessage(message);
 }
 
+void ConsoleCommands::CommandPerformanceSnapshot(Application& app, std::vector<std::string>&)
+{
+    MessageInbound message(MessageInbound::Type::PerformanceSnapshot);
+    app.PassMessage(message);
+}
+
 void ConsoleCommands::CommandGpuPassTimes(Application&, std::vector<std::string>&)
 {
     Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();

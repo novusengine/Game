@@ -71,7 +71,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         case 7u: color = float3(frac(pixel.uv0), frac(pixel.uv0.x + pixel.uv0.y)); break;
         case 8u:
         {
-            uint reason = _constants.resourceIndex == 0u ? _resolvedModelCullReasons0[payload.recordID] : _resolvedModelCullReasons1[payload.recordID];
+            uint recordResourceIndex = ModelVisibilityUsesPreviousResource(payload.geometryTypeID) ?
+                1u - _constants.resourceIndex : _constants.resourceIndex;
+            uint reason = recordResourceIndex == 0u ? _resolvedModelCullReasons0[payload.recordID] :
+                                                      _resolvedModelCullReasons1[payload.recordID];
             color = CullReasonColor(reason);
             break;
         }

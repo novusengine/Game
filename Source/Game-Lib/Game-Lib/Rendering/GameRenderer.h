@@ -198,6 +198,7 @@ private:
     vec2 _cursorRestorePosition = vec2(0.0f);
     f64 _cursorRestoreDeadline = 0.0;
     bool _cursorRestorePending = false;
+    bool _lockedCullingDepthPyramidValid = false;
     RenderResources _resources;
 
     Renderer::ComputePipelineID _allDescriptorSetComputePipeline;

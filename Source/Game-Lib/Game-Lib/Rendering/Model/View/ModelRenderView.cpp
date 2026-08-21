@@ -2,6 +2,7 @@
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/CullUtils.h"
+#include "Game-Lib/Rendering/Material/MaterialRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 
@@ -19,7 +20,6 @@ namespace ModelRendering
     {
         if (_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
         {
-            _materialResources = std::make_unique<MaterialRendering::MaterialResolveResources>(renderer, desc.dimensions, desc.dimensionType);
             _visibilityPass = std::make_unique<ModelPipeline::ModelVisibilityPass>(renderer, gameRenderer);
             _materialResolvePass = std::make_unique<MaterialRendering::MaterialResolvePass>(renderer, gameRenderer);
             _visibilityResolvePass = std::make_unique<ModelPipeline::ModelVisibilityResolvePass>(renderer, gameRenderer);
@@ -98,22 +98,70 @@ namespace ModelRendering
 
     void ModelRenderView::Upload()
     {
+        ZoneScoped;
         _state.SyncToGPU(_renderer);
         if (RenderScenes::RenderScene* scene = _view.GetScene())
         {
             _viewWorkPass.PrepareResources(_state, _work, *scene);
+            _transparentWork.EnsureCapacity(_state.GetQueueCapacity());
+
+            const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
+            const std::array<Renderer::BufferID, 17> uploadBindings = {
+                _state.GetInputs().GetBuffer(),
+                _state.GetTransparentEligibility().GetBuffer(),
+                _state.GetLODHistory().GetBuffer(),
+                _work.GetCullReasons(0),
+                _work.GetCullReasons(1),
+                scene->GetModelInstances().GetRecords().GetBuffer(),
+                geometry.GetRecords().GetBuffer(),
+                geometry.GetMeshes().GetBuffer(),
+                geometry.GetMeshLODs().GetBuffer(),
+                geometry.GetSubmeshes().GetBuffer(),
+                geometry.GetMeshlets().GetBuffer(),
+                geometry.GetPositions().GetBuffer(),
+                geometry.GetVertexAttributes().GetBuffer(),
+                geometry.GetMeshletVertexIndices().GetBuffer(),
+                geometry.GetMeshletTriangles().GetBuffer(),
+                scene->GetGeometryGroupMasks().GetMasks().GetBuffer(),
+                scene->GetModelMaterialTables().GetEntries().GetBuffer()};
+            const u32 queueGeneration = _work.GetQueueGeneration();
+            const u32 selectionGeneration = _work.GetSelectionGeneration();
+            const u32 historyGeneration = _work.GetHistoryGeneration();
+            const u32 transparentGeneration = _transparentWork.GetGeneration();
+            const bool bindingsChanged = !_uploadBindingsValid || _uploadBindings != uploadBindings ||
+                _uploadQueueGeneration != queueGeneration || _uploadSelectionGeneration != selectionGeneration ||
+                _uploadHistoryGeneration != historyGeneration ||
+                _uploadTransparentGeneration != transparentGeneration;
+            const bool selectionReady = _transparentSelectionDepth == Renderer::DepthImageID::Invalid() ||
+                _transparentSelectionDescriptorsReady;
+            if (!bindingsChanged && _uploadWarmupFrames == 0 && _viewWorkDescriptorsReady &&
+                _rasterDescriptorsReady && _transparentDescriptorsReady && selectionReady)
+            {
+                return;
+            }
+
+            if (bindingsChanged)
+            {
+                _uploadBindings = uploadBindings;
+                _uploadQueueGeneration = queueGeneration;
+                _uploadSelectionGeneration = selectionGeneration;
+                _uploadHistoryGeneration = historyGeneration;
+                _uploadTransparentGeneration = transparentGeneration;
+                _uploadWarmupFrames = _renderer->GetFrameIndexCount();
+                _uploadBindingsValid = true;
+            }
+
             _viewWorkDescriptorsReady = _viewWorkPass.Upload(_state, _work, _assets->GetModelGeometryStorage(), *scene);
             if (_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             {
                 _visibilityPass->Upload(_work, _assets->GetModelGeometryStorage(), *scene);
                 _visibilityResolvePass->Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-                _rasterDescriptorsReady = _materialResolvePass->Upload(_view, _work, *_materialResources, _assets->GetModelGeometryStorage(), *scene);
+                _rasterDescriptorsReady = _materialResolvePass->Upload(_work, _assets->GetModelGeometryStorage(), *scene);
             }
             else
             {
                 _rasterDescriptorsReady = _forwardPass->Upload(_work, _assets->GetModelGeometryStorage(), *scene);
             }
-            _transparentWork.EnsureCapacity(_state.GetQueueCapacity());
             _transparentDescriptorsReady = _transparentPass.Upload(_state, _transparentWork,
                 _assets->GetModelGeometryStorage(), *scene);
             if (_transparentSelectionDepth != Renderer::DepthImageID::Invalid())
@@ -121,6 +169,8 @@ namespace ModelRendering
                 _transparentSelectionDescriptorsReady = _transparentSelectionPass.Upload(
                     _transparentWork, _assets->GetModelGeometryStorage(), *scene);
             }
+            if (_uploadWarmupFrames > 0)
+                --_uploadWarmupFrames;
         }
     }
 
@@ -188,7 +238,6 @@ namespace ModelRendering
 
         _work.ReadbackStats(frameIndex);
         _transparentWork.ReadbackStats(frameIndex);
-        _materialResources->ReadbackStats(frameIndex);
         ReportErrors();
 
         if (!_viewWorkDescriptorsReady || !_rasterDescriptorsReady)
@@ -198,13 +247,14 @@ namespace ModelRendering
         }
 
         const u32 temporalReset = _view.GetTemporalResetGeneration();
+        _temporalResetThisFrame = temporalReset != _handledTemporalReset;
         _viewWorkPass.AddHistoryClearPass(renderGraph, _view, _state, _work);
-        _viewWorkPass.AddPhase1Pass(renderGraph, resources, _view, _state, _work,
-                                    _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *scene,
-                                    frameIndex, temporalReset != _handledTemporalReset, _forcedLOD);
         _handledTemporalReset = temporalReset;
-        _visibilityPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
-                                _assets->GetMaterialStorage(), *scene, frameIndex, 1);
+        if (!_temporalResetThisFrame)
+        {
+            _visibilityPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
+                                     _assets->GetMaterialStorage(), *scene, frameIndex, 1);
+        }
         _phase1Ready = true;
     }
 
@@ -216,8 +266,9 @@ namespace ModelRendering
             if (!_phase1Ready)
                 return;
             RenderScenes::RenderScene& scene = *_view.GetScene();
-            _viewWorkPass.AddPhase2Pass(renderGraph, resources, _view, _state, _work,
-                                        _assets->GetModelGeometryStorage(), scene, resources.depthPyramid, frameIndex);
+            _viewWorkPass.AddPass(renderGraph, resources, _view, _state, _work,
+                                  _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
+                                  resources.depthPyramid, frameIndex, _temporalResetThisFrame, true, _forcedLOD);
             _work.MarkSubmitted(frameIndex);
             _visibilityPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
                                     _assets->GetMaterialStorage(), scene, frameIndex, 2);
@@ -235,8 +286,6 @@ namespace ModelRendering
             _work.ReadbackStats(frameIndex);
             _transparentWork.ReadbackStats(frameIndex);
             ReportErrors();
-            if (visibilityModels)
-                _materialResources->ReadbackStats(frameIndex);
             if (!_viewWorkDescriptorsReady || !_rasterDescriptorsReady)
             {
                 _view.RequestTemporalReset();
@@ -245,8 +294,8 @@ namespace ModelRendering
             const u32 temporalReset = _view.GetTemporalResetGeneration();
             _viewWorkPass.AddHistoryClearPass(renderGraph, _view, _state, _work);
             _viewWorkPass.AddPass(renderGraph, resources, _view, _state, _work, _assets->GetModelGeometryStorage(),
-                                  _assets->GetMaterialStorage(), *scene, frameIndex,
-                                  temporalReset != _handledTemporalReset, _forcedLOD);
+                                  _assets->GetMaterialStorage(), *scene, _view.GetDepthPyramidTarget(), frameIndex,
+                                  temporalReset != _handledTemporalReset, false, _forcedLOD);
             _work.MarkSubmitted(frameIndex);
             _handledTemporalReset = temporalReset;
             if (visibilityModels)
@@ -265,10 +314,6 @@ namespace ModelRendering
             _readyThisFrame = true;
             return;
         }
-        RenderScenes::RenderScene& scene = *_view.GetScene();
-        _materialResolvePass->AddClassificationPass(renderGraph, resources, _view, _work, *_materialResources,
-                                                   _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(),
-                                                   scene, frameIndex);
         _readyThisFrame = true;
     }
 
@@ -288,10 +333,18 @@ namespace ModelRendering
         if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
-        _materialResolvePass->AddResolvePass(renderGraph, resources, _view, _work, *_materialResources,
+        _materialResolvePass->AddResolvePass(renderGraph, resources, _view, _work,
                                             _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
                                             frameIndex);
         _visibilityResolvePass->AddOpaqueHighlightPass(renderGraph, _view, _work, scene, frameIndex);
+    }
+
+    void ModelRenderView::AddCommonMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                       MaterialRenderer& materialRenderer, u8 frameIndex)
+    {
+        if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
+            return;
+        materialRenderer.AddCommonResolvePass(renderGraph, resources, _view, frameIndex);
     }
 
     void ModelRenderView::AddRetainedOutputPass(Renderer::RenderGraph* renderGraph)
@@ -310,21 +363,22 @@ namespace ModelRendering
     void ModelRenderView::AddTransparentCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                   u8 frameIndex)
     {
-        if (!_readyThisFrame || !_transparentDescriptorsReady)
+        if (!_readyThisFrame || !_transparentDescriptorsReady || !HasTransparentWork())
             return;
-        if (_view.GetDepthPyramidTarget() != resources.depthPyramid)
+        const bool enableOcclusionCulling = !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::ForwardModels);
+        if (enableOcclusionCulling && _view.GetDepthPyramidTarget() != resources.depthPyramid)
             DepthPyramidUtils::AddBuildPass(renderGraph, "Opaque Depth Pyramid: " + _view.GetDebugName(),
                                             _view.GetDepthTarget(), _view.GetDepthPyramidTarget(), frameIndex);
         RenderScenes::RenderScene& scene = *_view.GetScene();
         _transparentPass.AddCullPass(renderGraph, resources, _view, _state, _transparentWork,
                                      _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
-                                     frameIndex);
+                                     frameIndex, enableOcclusionCulling);
     }
 
     void ModelRenderView::AddTransparentRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                     u8 frameIndex)
     {
-        if (!_readyThisFrame || !_transparentDescriptorsReady)
+        if (!_readyThisFrame || !_transparentDescriptorsReady || !HasTransparentWork())
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
         _transparentPass.AddRasterPass(renderGraph, resources, _view, _transparentWork,
@@ -342,7 +396,7 @@ namespace ModelRendering
     void ModelRenderView::AddTransparentSelectionOutlinePass(Renderer::RenderGraph* renderGraph,
                                                               RenderResources& resources, u8 frameIndex)
     {
-        if (!_readyThisFrame || _transparentSelectionDepth == Renderer::DepthImageID::Invalid() ||
+        if (!_readyThisFrame || !HasTransparentWork() || _transparentSelectionDepth == Renderer::DepthImageID::Invalid() ||
             !_transparentSelectionDescriptorsReady)
             return;
         _transparentSelectionPass.AddOutlinePass(renderGraph, _view, _view.GetTransparencyRevealageTarget(),

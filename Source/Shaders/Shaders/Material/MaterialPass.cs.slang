@@ -232,9 +232,9 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    uint2 pixelPos = dispatchThreadId.xy;
+    uint2 pixelPos = dispatchThreadID.xy;
 
     if (any(pixelPos >= uint2(_constants.renderInfo.xy)))
     {
@@ -244,10 +244,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint vBufferData = LoadVisibilityBuffer(pixelPos);
     // Model visibility is reconstructed by the typed diagnostic resolve until the production material path lands.
     if (IsModelVisibility(vBufferData))
-    {
-        _resolvedColor[pixelPos] = float4(0, 0, 0, 1);
         return;
-    }
     const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
 #if DEBUG_ID != 0

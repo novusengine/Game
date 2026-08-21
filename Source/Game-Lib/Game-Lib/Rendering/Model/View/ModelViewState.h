@@ -58,6 +58,7 @@ namespace ModelView
         void MarkWorkBuilt() { _workDirty = false; }
         std::span<const RenderScenes::ModelInstanceHandle> GetDiagnosticSelection() const { return _diagnosticSelection; }
         const Renderer::GPUVector<ViewInstanceInput>& GetInputs() const { return _inputs; }
+        const Renderer::GPUVector<u32>& GetTransparentEligibility() const { return _transparentEligibility; }
         u32 GetDispatchInputCount() const { return _activeInputCount != 0 ? _inputs.Count() : 0; }
         u32 GetActiveInputCount() const { return _activeInputCount; }
         const Renderer::GPUVector<u32>& GetLODHistory() const { return _lodHistory; }
@@ -91,6 +92,7 @@ namespace ModelView
         void ActivateInputSlot(const RenderScenes::RenderScene& scene, u32 slotIndex, RenderScenes::ModelInstanceHandle handle,
                                const ModelLoading::ModelGeometryStorage& geometry);
         void EnsureInputSlot(u32 slotIndex);
+        void SetTransparentEligible(u32 slotIndex, bool eligible);
         void RefreshTransparentStats(u32 slotIndex, const RenderScenes::RenderScene& scene, const ModelLoading::ModelGeometryStorage& geometry,
                                      const MaterialLoading::MaterialStorage& materials);
 
@@ -101,6 +103,7 @@ namespace ModelView
         std::vector<u32> _pendingInstanceClears;
         std::vector<ModelScene::MeshletHistoryRange> _pendingMeshletClears;
         Renderer::GPUVector<ViewInstanceInput> _inputs;
+        Renderer::GPUVector<u32> _transparentEligibility;
         Renderer::GPUVector<u32> _lodHistory;
         u32 _queueCapacity = 1;
         u32 _activeInputCount = 0;

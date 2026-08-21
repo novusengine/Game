@@ -37,6 +37,7 @@ namespace ModelPipeline
         struct FrameBindings
         {
             Renderer::BufferID rasterQueues[ModelView::MODEL_RASTER_CLASS_COUNT] = {};
+            Renderer::BufferID geometryQueues[ModelView::MODEL_RASTER_CLASS_COUNT] = {};
             Renderer::BufferID visibilityRecords = Renderer::BufferID::Invalid();
             Renderer::BufferID workStats = Renderer::BufferID::Invalid();
         };

@@ -40,8 +40,8 @@ namespace ModelRendering
         desc.dimensions = static_cast<uvec2>(renderer->GetRenderSize());
         desc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
         desc.visibilityTarget = resources.visibilityBuffer;
-        desc.normalTarget = resources.packedNormals;
-        desc.motionTarget = resources.motionVectors;
+        desc.normalTarget = Renderer::ImageID::Invalid();
+        desc.motionTarget = Renderer::ImageID::Invalid();
         desc.colorTarget = resources.sceneColor;
         desc.transparencyAccumulationTarget = resources.transparency;
         desc.transparencyRevealageTarget = resources.transparencyWeights;
@@ -61,7 +61,7 @@ namespace ModelRendering
         if (desc.viewID == 0 || desc.debugName.empty() || !desc.scene || desc.dimensions.x == 0 || desc.dimensions.y == 0 ||
             (!visibilityModels && !forwardModels) ||
             (visibilityModels && forwardModels) ||
-            (visibilityModels && (desc.visibilityTarget == Renderer::ImageID::Invalid() || desc.normalTarget == Renderer::ImageID::Invalid())) ||
+            (visibilityModels && desc.visibilityTarget == Renderer::ImageID::Invalid()) ||
             desc.colorTarget == Renderer::ImageID::Invalid() ||
             desc.transparencyAccumulationTarget == Renderer::ImageID::Invalid() ||
             desc.transparencyRevealageTarget == Renderer::ImageID::Invalid() ||
@@ -91,6 +91,12 @@ namespace ModelRendering
     {
         const auto it = _views.find(viewID);
         return it != _views.end() ? &it->second->GetView() : nullptr;
+    }
+
+    bool ModelRenderSystem::HasTransparentWork(u64 viewID) const
+    {
+        const auto it = _views.find(viewID);
+        return it != _views.end() && it->second->HasTransparentWork();
     }
 
     void ModelRenderSystem::Update()
@@ -129,6 +135,7 @@ namespace ModelRendering
 
     void ModelRenderSystem::Upload()
     {
+        ZoneScoped;
         for (RenderScenes::RenderScene* scene : _scenes)
             scene->SyncToGPU(_renderer);
         for (auto& [viewID, view] : _views)
@@ -212,6 +219,15 @@ namespace ModelRendering
             view->AddMaterialResolvePass(renderGraph, resources, frameIndex);
     }
 
+    void ModelRenderSystem::AddCommonMaterialResolvePass(Renderer::RenderGraph* renderGraph,
+                                                         RenderResources& resources,
+                                                         MaterialRenderer& materialRenderer, u8 frameIndex)
+    {
+        if (!UseMeshletModelRenderer())
+            return;
+        _mainView->AddCommonMaterialResolvePass(renderGraph, resources, materialRenderer, frameIndex);
+    }
+
     void ModelRenderSystem::AddTransparentCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                     u8 frameIndex)
     {
@@ -242,7 +258,7 @@ namespace ModelRendering
             return;
         for (auto& [viewID, view] : _views)
         {
-            if (view->IsReadyThisFrame() && view->GetView().HasPassFamily(passFamily))
+            if (view->IsReadyThisFrame() && view->HasTransparentWork() && view->GetView().HasPassFamily(passFamily))
                 materialRenderer.AddTransparencyCompositePass(renderGraph, resources, view->GetView(), frameIndex);
         }
     }

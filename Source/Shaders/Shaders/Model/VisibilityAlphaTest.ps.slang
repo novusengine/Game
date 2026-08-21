@@ -1,5 +1,6 @@
 #include "Include/TypedVisibility.inc.slang"
 #include "DescriptorSet/Global.inc.slang"
+#include "Model/ModelRasterQueue.inc.slang"
 #include "Material/MaterialAuthoring.inc.slang"
 #include "Generated/MaterialAlphaTestGroups.inc.slang"
 
@@ -8,12 +9,14 @@ struct Constants
     uint queueIndex;
     uint viewIndex;
     uint resourceIndex;
+    uint previousResource;
+    uint geometryQueue;
 };
 [[vk::push_constant]] Constants _constants;
 
 struct PSInput
 {
-    nointerpolation uint recordID : TEXCOORD0;
+    nointerpolation uint recordEntry : TEXCOORD0;
     nointerpolation uint materialInstanceIndex : TEXCOORD1;
     float2 uv0 : TEXCOORD2;
     uint triangleID : SV_PrimitiveID;
@@ -50,5 +53,8 @@ uint main(PSInput input, bool frontFacing : SV_IsFrontFace) : SV_Target0
     if (coverage < alphaCutoff)
         discard;
 
-    return PackTypedVisibility(TYPED_VISIBILITY_MODEL, input.recordID, input.triangleID);
+    uint recordID = ModelRasterQueueRecordID(input.recordEntry);
+    uint resolveClass = ModelRasterQueueResolveClass(input.recordEntry);
+    return PackTypedVisibility(ModelVisibilityGeometryType(resolveClass, _constants.previousResource != 0u),
+                               recordID, input.triangleID);
 }

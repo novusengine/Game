@@ -16,6 +16,7 @@ public:
         AutomationRun,
         ReloadScripts,
         RefreshDB,
+        PerformanceSnapshot,
         Exit
     };
 

@@ -11,6 +11,7 @@ struct Camera
 
 	float4x4 worldToView;
 	float4x4 worldToClip;
+	float4x4 cullingWorldToClip;
 
 	float4 eyePosition;
 	float4 eyeRotation;
@@ -19,6 +20,7 @@ struct Camera
 
 	float4 frustum[6];
 	float4 cullingEyePosition;
+	float4 cullingViewportSize;
 };
 
 #endif // CAMERA_INCLUDED

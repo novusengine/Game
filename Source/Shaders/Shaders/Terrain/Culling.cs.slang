@@ -113,10 +113,10 @@ void CullForCamera(DrawInput drawInput,
     }
     else if (drawInput.shouldOcclusionCull)
     {
-        bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, camera.worldToClip);
+        bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, camera.cullingWorldToClip);
 
-        uint2 viewportSize = uint2(_constants.viewportSizeX, _constants.viewportSizeY);
-        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip, viewportSize))
+        uint2 viewportSize = uint2(camera.cullingViewportSize.xy);
+        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.cullingEyePosition.xyz, _depthPyramid, _depthSampler, camera.cullingWorldToClip, viewportSize))
         {
             isVisible = false;
         }

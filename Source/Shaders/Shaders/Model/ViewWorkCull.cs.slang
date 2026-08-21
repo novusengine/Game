@@ -36,12 +36,18 @@ struct Constants
 [[vk::binding(17, PER_PASS)]] RWStructuredBuffer<ModelVisibilityRecord> _visibilityRecords1;
 [[vk::binding(18, PER_PASS)]] RWStructuredBuffer<uint> _meshletHistory0;
 [[vk::binding(19, PER_PASS)]] RWStructuredBuffer<uint> _meshletHistory1;
-[[vk::binding(20, PER_PASS)]] RWStructuredBuffer<ModelMeshletSurvivor> _survivors0;
-[[vk::binding(21, PER_PASS)]] RWStructuredBuffer<ModelMeshletSurvivor> _survivors1;
 [[vk::binding(22, PER_PASS)]] Texture2D<float> _depthPyramid;
 [[vk::binding(23, PER_PASS)]] SamplerState _depthSampler;
 [[vk::binding(24, PER_PASS)]] RWStructuredBuffer<uint> _cullReasons0;
 [[vk::binding(25, PER_PASS)]] RWStructuredBuffer<uint> _cullReasons1;
+[[vk::binding(26, PER_PASS)]] RWStructuredBuffer<uint> _geometryOneSidedQueue0;
+[[vk::binding(27, PER_PASS)]] RWStructuredBuffer<uint> _geometryTwoSidedQueue0;
+[[vk::binding(28, PER_PASS)]] RWStructuredBuffer<uint> _geometryAlphaTestOneSidedQueue0;
+[[vk::binding(29, PER_PASS)]] RWStructuredBuffer<uint> _geometryAlphaTestTwoSidedQueue0;
+[[vk::binding(30, PER_PASS)]] RWStructuredBuffer<uint> _geometryOneSidedQueue1;
+[[vk::binding(31, PER_PASS)]] RWStructuredBuffer<uint> _geometryTwoSidedQueue1;
+[[vk::binding(32, PER_PASS)]] RWStructuredBuffer<uint> _geometryAlphaTestOneSidedQueue1;
+[[vk::binding(33, PER_PASS)]] RWStructuredBuffer<uint> _geometryAlphaTestTwoSidedQueue1;
 
 void AddStat(uint index, uint value)
 {
@@ -78,6 +84,24 @@ void StoreWork(uint rasterClass, uint index, uint recordID)
     }
 }
 
+void StoreGeometryWork(uint rasterClass, uint index, uint recordID)
+{
+    if (_constants.resourceIndex == 0u)
+    {
+        if (rasterClass == MODEL_RASTER_SOLID_ONE_SIDED) _geometryOneSidedQueue0[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_SOLID_TWO_SIDED) _geometryTwoSidedQueue0[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_ALPHA_TEST_ONE_SIDED) _geometryAlphaTestOneSidedQueue0[index] = recordID;
+        else _geometryAlphaTestTwoSidedQueue0[index] = recordID;
+    }
+    else
+    {
+        if (rasterClass == MODEL_RASTER_SOLID_ONE_SIDED) _geometryOneSidedQueue1[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_SOLID_TWO_SIDED) _geometryTwoSidedQueue1[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_ALPHA_TEST_ONE_SIDED) _geometryAlphaTestOneSidedQueue1[index] = recordID;
+        else _geometryAlphaTestTwoSidedQueue1[index] = recordID;
+    }
+}
+
 void StoreVisibilityRecord(uint index, ModelVisibilityRecord record)
 {
     if (_constants.resourceIndex == 0u) _visibilityRecords0[index] = record;
@@ -90,12 +114,12 @@ void StoreCullReason(uint index, uint reason)
     else _cullReasons1[index] = reason;
 }
 
-bool CurrentHistoryVisible(uint bitIndex)
+bool PreviousHistoryVisible(uint bitIndex)
 {
     uint wordIndex = bitIndex >> 5u;
     uint bit = 1u << (bitIndex & 31u);
-    return _constants.resourceIndex == 0u ? (_meshletHistory0[wordIndex] & bit) != 0u :
-                                            (_meshletHistory1[wordIndex] & bit) != 0u;
+    return _constants.resourceIndex == 0u ? (_meshletHistory1[wordIndex] & bit) != 0u :
+                                            (_meshletHistory0[wordIndex] & bit) != 0u;
 }
 
 void MarkCurrentHistoryVisible(uint bitIndex)
@@ -106,140 +130,144 @@ void MarkCurrentHistoryVisible(uint bitIndex)
     else InterlockedOr(_meshletHistory1[wordIndex], bit);
 }
 
-void StoreCurrentSurvivor(uint index, ModelMeshletSurvivor survivor)
-{
-    if (_constants.resourceIndex == 0u) _survivors0[index] = survivor;
-    else _survivors1[index] = survivor;
-}
-
 [shader("compute")]
-[numthreads(MODEL_CHUNK_MESHLET_COUNT, 1, 1)]
+[numthreads(16, 1, 1)]
 void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
 {
     ModelMeshletChunk chunk = LoadChunk(GroupID.x);
+    uint instanceIndex = ModelVisibilityInstanceIndex(chunk.packedInstanceAndMesh);
+    uint meshIndex = ModelVisibilityMeshIndex(chunk.packedInstanceAndMesh);
     uint meshletCount = chunk.packedCountRasterAndLOD & MODEL_CHUNK_MESHLET_COUNT_MASK;
     if (GroupThreadID.x == 0u)
-    {
         AddStat(MODEL_WORK_STAT_TESTED_CHUNKS, 1u);
-        AddStat(MODEL_WORK_STAT_TESTED_MESHLETS, meshletCount);
-    }
 
-    uint meshletIndex = chunk.meshletBase + GroupThreadID.x;
-    ModelInstanceRecord instance = _modelInstances[chunk.instanceIndex];
-    Camera camera = _cameras[_constants.viewIndex];
+    ModelInstanceRecord instance = _modelInstances[instanceIndex];
     uint rasterClass =
         (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_RASTER_CLASS_SHIFT) & MODEL_CHUNK_RASTER_CLASS_MASK;
+    uint resolveClass = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_RESOLVE_CLASS_SHIFT) & 1u;
     uint outputRasterClass = _constants.showCullReasons != 0u ? MODEL_RASTER_SOLID_TWO_SIDED : rasterClass;
     ModelRecord model = _modelRecords[instance.modelIndex];
-    uint localMeshletIndex = meshletIndex - model.meshletBase;
-    uint historyBit = instance.meshletHistoryWordOffset * 32u + localMeshletIndex;
-    bool visible = GroupThreadID.x < meshletCount;
-    bool temporalSkip = false;
-    uint cullReason = MODEL_CULL_REASON_VISIBLE;
-    ModelMeshlet meshlet;
     uint boundMeshletCount;
     uint boundMeshletStride;
     _modelMeshlets.GetDimensions(boundMeshletCount, boundMeshletStride);
-    visible = visible && meshletIndex < boundMeshletCount;
-    if (visible)
+    for (uint meshletBase = 0u; meshletBase < meshletCount; meshletBase += 16u)
     {
-        meshlet = _modelMeshlets[meshletIndex];
-        AddStat(MODEL_WORK_STAT_TESTED_TRIANGLES, ModelMeshletTriangleCount(meshlet));
-        float4 sphere = TransformSphere(meshlet.boundsCenter, meshlet.boundsRadius, instance.currentWorld);
-        if (_constants.showCullReasons == 0u && _constants.enableTemporal != 0u && CurrentHistoryVisible(historyBit))
+        uint meshletIndex = chunk.meshletBase + meshletBase + GroupThreadID.x;
+        uint localMeshletIndex = meshletIndex - model.meshletBase;
+        uint historyBit = instance.meshletHistoryWordOffset * 32u + localMeshletIndex;
+        bool visible = meshletBase + GroupThreadID.x < meshletCount && meshletIndex < boundMeshletCount;
+        uint testedMeshletCount = WaveActiveCountBits(visible);
+        if (WaveIsFirstLane() && testedMeshletCount > 0u)
+            AddStat(MODEL_WORK_STAT_TESTED_MESHLETS, testedMeshletCount);
+
+        uint cullReason = MODEL_CULL_REASON_VISIBLE;
+        ModelMeshlet meshlet;
+        if (visible)
         {
-            temporalSkip = true;
-        }
-        else if (!ModelSphereInsideFrustum(camera, sphere))
-        {
-            AddStat(MODEL_WORK_STAT_REJECTED_FRUSTUM_MESHLETS, 1u);
-            cullReason = MODEL_CULL_REASON_FRUSTUM;
-        }
-        else if (_constants.enableConeCulling != 0u && (rasterClass & 1u) == 0u &&
-                 ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter, meshlet.boundsRadius,
-                                     instance.currentWorld, camera.cullingEyePosition.xyz))
-        {
-            AddStat(MODEL_WORK_STAT_REJECTED_CONE_MESHLETS, 1u);
-            cullReason = MODEL_CULL_REASON_CONE;
-        }
-        else if (_constants.enableOcclusionCulling != 0u)
-        {
-            float3 boundsMin = sphere.xyz - sphere.www;
-            float3 boundsMax = sphere.xyz + sphere.www;
-            bool intersectsNear = IsIntersectingNearZ(boundsMin, boundsMax, camera.worldToClip);
-            if (!intersectsNear && !IsVisible(boundsMin, boundsMax, camera.eyePosition.xyz, _depthPyramid,
-                                               _depthSampler, camera.worldToClip,
-                                               uint2(_constants.viewportWidth, _constants.viewportHeight)))
+            meshlet = _modelMeshlets[meshletIndex];
+            AddStat(MODEL_WORK_STAT_TESTED_TRIANGLES, ModelMeshletTriangleCount(meshlet));
+            float4 sphere = TransformSphere(meshlet.boundsCenter, meshlet.boundsRadius, instance.currentWorld);
+            Camera camera = _cameras[_constants.viewIndex];
+            if (!ModelSphereInsideFrustum(camera, sphere))
             {
-                AddStat(MODEL_WORK_STAT_REJECTED_OCCLUSION_MESHLETS, 1u);
-                cullReason = MODEL_CULL_REASON_OCCLUSION;
+                AddStat(MODEL_WORK_STAT_REJECTED_FRUSTUM_MESHLETS, 1u);
+                cullReason = MODEL_CULL_REASON_FRUSTUM;
+            }
+            else if (_constants.enableConeCulling != 0u && (rasterClass & 1u) == 0u &&
+                     ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter, meshlet.boundsRadius,
+                                         instance.currentWorld, camera.cullingEyePosition.xyz))
+            {
+                AddStat(MODEL_WORK_STAT_REJECTED_CONE_MESHLETS, 1u);
+                cullReason = MODEL_CULL_REASON_CONE;
+            }
+            else if (_constants.enableOcclusionCulling != 0u)
+            {
+                float3 boundsMin = sphere.xyz - sphere.www;
+                float3 boundsMax = sphere.xyz + sphere.www;
+                bool intersectsNear = IsIntersectingNearZ(boundsMin, boundsMax, camera.cullingWorldToClip);
+                if (!intersectsNear && !IsVisible(boundsMin, boundsMax, camera.cullingEyePosition.xyz, _depthPyramid,
+                                                   _depthSampler, camera.cullingWorldToClip,
+                                                   uint2(camera.cullingViewportSize.xy)))
+                {
+                    AddStat(MODEL_WORK_STAT_REJECTED_OCCLUSION_MESHLETS, 1u);
+                    cullReason = MODEL_CULL_REASON_OCCLUSION;
+                }
+            }
+            visible = _constants.showCullReasons != 0u ? cullReason != MODEL_CULL_REASON_VISIBLE :
+                                                         cullReason == MODEL_CULL_REASON_VISIBLE;
+        }
+
+        uint visibleCount = WaveActiveCountBits(visible);
+        uint waveOffset = 0u;
+        uint recordOffset = 0u;
+        uint committedCount = 0u;
+        uint countIndex = MODEL_WORK_STAT_RASTER_MESHLETS_BASE + outputRasterClass;
+        if (WaveIsFirstLane() && visibleCount > 0u)
+        {
+            AddStat(countIndex, visibleCount, waveOffset);
+            AddStat(MODEL_WORK_STAT_VISIBILITY_RECORDS, visibleCount, recordOffset);
+            if (_constants.enableTemporal != 0u)
+                AddStat(MODEL_WORK_STAT_SURVIVOR_COUNT, visibleCount);
+            uint queueCommitted = min(visibleCount, _constants.queueCapacity - min(waveOffset, _constants.queueCapacity));
+            uint recordCommitted = min(visibleCount, _constants.queueCapacity - min(recordOffset, _constants.queueCapacity));
+            committedCount = min(queueCommitted, recordCommitted);
+            if (queueCommitted < visibleCount)
+                AddStat(MODEL_WORK_STAT_QUEUE_OVERFLOWS, visibleCount - queueCommitted);
+            if (recordCommitted < visibleCount)
+                AddStat(MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS, visibleCount - recordCommitted);
+        }
+        waveOffset = WaveReadLaneFirst(waveOffset);
+        recordOffset = WaveReadLaneFirst(recordOffset);
+        committedCount = WaveReadLaneFirst(committedCount);
+        if (WaveIsFirstLane() && committedCount > 0u)
+            AddStat(MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + outputRasterClass, committedCount);
+
+        uint waveIndex = WavePrefixCountBits(visible);
+        bool committed = visible && waveIndex < committedCount;
+        bool geometryVisible = committed && (_constants.enableTemporal == 0u || !PreviousHistoryVisible(historyBit));
+        uint geometryCount = WaveActiveCountBits(geometryVisible);
+        uint geometryOffset = 0u;
+        uint geometryCommitted = 0u;
+        if (WaveIsFirstLane() && geometryCount > 0u)
+        {
+            AddStat(MODEL_WORK_STAT_GEOMETRY_MESHLETS_BASE + outputRasterClass, geometryCount, geometryOffset);
+            geometryCommitted = min(geometryCount,
+                _constants.queueCapacity - min(geometryOffset, _constants.queueCapacity));
+            if (geometryCommitted < geometryCount)
+                AddStat(MODEL_WORK_STAT_QUEUE_OVERFLOWS, geometryCount - geometryCommitted);
+        }
+        geometryOffset = WaveReadLaneFirst(geometryOffset);
+        geometryCommitted = WaveReadLaneFirst(geometryCommitted);
+        uint geometryIndex = WavePrefixCountBits(geometryVisible);
+
+        if (committed)
+        {
+            uint triangleCount = ModelMeshletTriangleCount(meshlet);
+            AddStat(MODEL_WORK_STAT_COMMITTED_TRIANGLES, triangleCount);
+
+            uint localLOD = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_LOD_SHIFT) & MODEL_CHUNK_LOD_MASK;
+            uint submeshIndex = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_SUBMESH_SHIFT) & MODEL_CHUNK_SUBMESH_MASK;
+            uint recordID = recordOffset + waveIndex;
+            ModelVisibilityRecord visibility = PackModelVisibilityRecord(instanceIndex, meshIndex, localLOD,
+                                                                         submeshIndex, localMeshletIndex);
+            visibility.instanceGeneration = instance.generation;
+            visibility.replayRevision = instance.replayRevision;
+            StoreVisibilityRecord(recordID, visibility);
+            if (_constants.showCullReasons != 0u)
+                StoreCullReason(recordID, cullReason);
+            StoreWork(outputRasterClass, waveOffset + waveIndex, PackModelRasterQueueEntry(recordID, resolveClass));
+            if (_constants.enableTemporal != 0u)
+            {
+                MarkCurrentHistoryVisible(historyBit);
             }
         }
-        visible = !temporalSkip && (_constants.showCullReasons != 0u ? cullReason != MODEL_CULL_REASON_VISIBLE : cullReason == MODEL_CULL_REASON_VISIBLE);
-    }
-
-    uint visibleCount = WaveActiveCountBits(visible);
-    uint waveOffset = 0u;
-    uint recordOffset = 0u;
-    uint committedCount = 0u;
-    uint survivorOffset = 0u;
-    uint countIndex = MODEL_WORK_STAT_RASTER_MESHLETS_BASE + outputRasterClass;
-    if (WaveIsFirstLane())
-    {
-        AddStat(countIndex, visibleCount, waveOffset);
-        AddStat(MODEL_WORK_STAT_VISIBILITY_RECORDS, visibleCount, recordOffset);
-        if (_constants.enableTemporal != 0u)
-            AddStat(MODEL_WORK_STAT_SURVIVOR_COUNT, visibleCount, survivorOffset);
-        uint queueCommitted = min(visibleCount, _constants.queueCapacity - min(waveOffset, _constants.queueCapacity));
-        uint recordCommitted = min(visibleCount, _constants.queueCapacity - min(recordOffset, _constants.queueCapacity));
-        uint survivorCommitted = _constants.enableTemporal != 0u ?
-            min(visibleCount, _constants.queueCapacity - min(survivorOffset, _constants.queueCapacity)) : visibleCount;
-        committedCount = min(queueCommitted, min(recordCommitted, survivorCommitted));
-        if (queueCommitted < visibleCount)
-            AddStat(MODEL_WORK_STAT_QUEUE_OVERFLOWS, visibleCount - queueCommitted);
-        if (recordCommitted < visibleCount)
-            AddStat(MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS, visibleCount - recordCommitted);
-        if (survivorCommitted < visibleCount)
-            AddStat(MODEL_WORK_STAT_SURVIVOR_QUEUE_OVERFLOWS, visibleCount - survivorCommitted);
-    }
-    waveOffset = WaveReadLaneFirst(waveOffset);
-    recordOffset = WaveReadLaneFirst(recordOffset);
-    committedCount = WaveReadLaneFirst(committedCount);
-    survivorOffset = WaveReadLaneFirst(survivorOffset);
-    if (WaveIsFirstLane() && committedCount > 0u)
-        AddStat(MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + outputRasterClass, committedCount);
-
-    if (!visible)
-        return;
-    uint waveIndex = WavePrefixCountBits(visible);
-    if (waveIndex >= committedCount)
-        return;
-
-    uint triangleCount = ModelMeshletTriangleCount(meshlet);
-    AddStat(MODEL_WORK_STAT_COMMITTED_TRIANGLES, triangleCount);
-    AddStat(MODEL_WORK_STAT_PHASE2_ADDED_TRIANGLES, triangleCount);
-
-    uint localLOD = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_LOD_SHIFT) & MODEL_CHUNK_LOD_MASK;
-    uint submeshIndex = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_SUBMESH_SHIFT) & MODEL_CHUNK_SUBMESH_MASK;
-    uint recordID = recordOffset + waveIndex;
-    StoreVisibilityRecord(recordID, PackModelVisibilityRecord(chunk.instanceIndex, chunk.meshIndex, localLOD,
-                                                               submeshIndex, localMeshletIndex));
-    if (_constants.showCullReasons != 0u)
-        StoreCullReason(recordID, cullReason);
-    StoreWork(outputRasterClass, waveOffset + waveIndex, recordID);
-    if (_constants.enableTemporal != 0u)
-    {
-        ModelMeshletSurvivor survivor;
-        survivor.instanceIndex = chunk.instanceIndex;
-        survivor.instanceGeneration = instance.generation;
-        survivor.lodHistoryIndex = chunk.lodHistoryIndex;
-        survivor.meshIndex = chunk.meshIndex;
-        survivor.lodIndex = localLOD;
-        survivor.submeshIndex = submeshIndex;
-        survivor.meshletIndex = localMeshletIndex;
-        survivor.rasterClass = outputRasterClass;
-        StoreCurrentSurvivor(survivorOffset + waveIndex, survivor);
-        MarkCurrentHistoryVisible(historyBit);
-        AddStat(MODEL_WORK_STAT_PHASE2_ADDED_MESHLETS, 1u);
+        if (geometryVisible && geometryIndex < geometryCommitted)
+        {
+            uint recordID = recordOffset + waveIndex;
+            StoreGeometryWork(outputRasterClass, geometryOffset + geometryIndex,
+                              PackModelRasterQueueEntry(recordID, resolveClass));
+            AddStat(MODEL_WORK_STAT_PHASE2_ADDED_MESHLETS, 1u);
+            AddStat(MODEL_WORK_STAT_PHASE2_ADDED_TRIANGLES, ModelMeshletTriangleCount(meshlet));
+        }
     }
 }

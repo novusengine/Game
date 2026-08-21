@@ -18,6 +18,12 @@ namespace
     }
 
     template <typename T>
+    bool CanAppendSpan(const std::vector<T>& destination, std::span<const T> source)
+    {
+        return source.size() <= std::numeric_limits<u32>::max() - destination.size();
+    }
+
+    template <typename T>
     u32 AppendSpan(Renderer::GPUVector<T>& destination, std::span<const T> source)
     {
         if (source.empty())
@@ -29,9 +35,23 @@ namespace
     }
 
     template <typename T>
+    u32 AppendSpan(std::vector<T>& destination, std::span<const T> source)
+    {
+        const u32 base = static_cast<u32>(destination.size());
+        destination.insert(destination.end(), source.begin(), source.end());
+        return base;
+    }
+
+    template <typename T>
     void ReserveSpan(Renderer::GPUVector<T>& destination, std::span<const T> source)
     {
         destination.Reserve(static_cast<u32>(source.size()));
+    }
+
+    template <typename T>
+    void ReserveSpan(std::vector<T>& destination, std::span<const T> source)
+    {
+        destination.reserve(destination.size() + source.size());
     }
 
     template <typename T>
@@ -49,6 +69,19 @@ namespace
     }
 
     template <typename T>
+    void ReserveHint(std::vector<T>& destination, u64 count, const char* name)
+    {
+        constexpr u64 MAX_COUNT = std::numeric_limits<u32>::max() / sizeof(T);
+        if (count > MAX_COUNT)
+        {
+            NC_LOG_WARNING("MODEL_ALLOCATION_HINT ignored resource={} count={} max={}", name, count, MAX_COUNT);
+            return;
+        }
+
+        destination.reserve(static_cast<size_t>(count));
+    }
+
+    template <typename T>
     void Configure(Renderer::GPUVector<T>& buffer, const char* name)
     {
         buffer.SetDebugName(name);
@@ -59,12 +92,11 @@ namespace
 namespace ModelLoading
 {
     ModelGeometryStorage::ModelGeometryStorage(bool validateTransfers)
-        : _records(validateTransfers), _meshes(validateTransfers), _meshLODs(validateTransfers), _submeshes(validateTransfers), _meshlets(validateTransfers),
+        : _gpuRecords(validateTransfers), _meshes(validateTransfers), _meshLODs(validateTransfers), _submeshes(validateTransfers), _meshlets(validateTransfers),
           _positions(validateTransfers), _vertexAttributes(validateTransfers), _skinningData(validateTransfers), _meshletVertexIndices(validateTransfers),
-          _meshletTriangles(validateTransfers), _jointPaletteRemaps(validateTransfers), _materialSlots(validateTransfers),
-          _embeddedInstanceSets(validateTransfers), _embeddedInstances(validateTransfers)
+          _meshletTriangles(validateTransfers), _jointPaletteRemaps(validateTransfers)
     {
-        Configure(_records, "Model Asset Records");
+        Configure(_gpuRecords, "Model Asset Records");
         Configure(_meshes, "Model Meshes");
         Configure(_meshLODs, "Model Mesh LODs");
         Configure(_submeshes, "Model Submeshes");
@@ -75,9 +107,6 @@ namespace ModelLoading
         Configure(_meshletVertexIndices, "Model Meshlet Vertex Indices");
         Configure(_meshletTriangles, "Model Meshlet Triangles");
         Configure(_jointPaletteRemaps, "Model Joint Palette Remaps");
-        Configure(_materialSlots, "Model Material Slots");
-        Configure(_embeddedInstanceSets, "Model Embedded Instance Sets");
-        Configure(_embeddedInstances, "Model Embedded Instances");
     }
 
     void ModelGeometryStorage::Reserve(const Map::ModelResourceAllocationHints& hints)
@@ -85,6 +114,7 @@ namespace ModelLoading
         ZoneScopedN("ModelGeometryStorage::Reserve");
 
         ReserveHint(_records, hints.models, "models");
+        ReserveHint(_gpuRecords, hints.models, "gpu_models");
         ReserveHint(_meshes, hints.meshes, "meshes");
         ReserveHint(_meshLODs, hints.meshLODs, "mesh_lods");
         ReserveHint(_submeshes, hints.submeshes, "submeshes");
@@ -104,7 +134,7 @@ namespace ModelLoading
     {
         ZoneScopedN("ModelGeometryStorage::Append");
 
-        if (_records.Count() == std::numeric_limits<u32>::max() || !CanAppendSpan(_meshes, view.meshes) || !CanAppendSpan(_meshLODs, view.meshLODs) ||
+        if (_records.size() == std::numeric_limits<u32>::max() || !CanAppendSpan(_meshes, view.meshes) || !CanAppendSpan(_meshLODs, view.meshLODs) ||
             !CanAppendSpan(_submeshes, view.submeshes) || !CanAppendSpan(_meshlets, view.meshlets) || !CanAppendSpan(_positions, view.positions) ||
             !CanAppendSpan(_vertexAttributes, view.vertexAttributes) || !CanAppendSpan(_skinningData, view.skinningData) ||
             !CanAppendSpan(_meshletVertexIndices, view.meshletVertexIndices) || !CanAppendSpan(_meshletTriangles, view.meshletTriangles) ||
@@ -112,7 +142,8 @@ namespace ModelLoading
             !CanAppendSpan(_embeddedInstanceSets, view.embeddedInstanceSets) || !CanAppendSpan(_embeddedInstances, view.embeddedInstances))
             return false;
 
-        _records.Reserve(1);
+        _records.reserve(_records.size() + 1);
+        _gpuRecords.Reserve(1);
         ReserveSpan(_meshes, view.meshes);
         ReserveSpan(_meshLODs, view.meshLODs);
         ReserveSpan(_submeshes, view.submeshes);
@@ -174,7 +205,21 @@ namespace ModelLoading
         record.flags = view.root.flags;
         record.geometryGroupCount = view.root.geometryGroupCount;
 
-        outHandle = RenderAssets::ModelHandle(_records.Add(record));
+        ModelShaderRecord gpuRecord;
+        gpuRecord.bounds = record.bounds;
+        gpuRecord.meshBase = record.meshBase;
+        gpuRecord.numMeshes = record.numMeshes;
+        gpuRecord.meshLODBase = record.meshLODBase;
+        gpuRecord.submeshBase = record.submeshBase;
+        gpuRecord.meshletBase = record.meshletBase;
+        gpuRecord.numMeshlets = record.numMeshlets;
+        gpuRecord.positionBase = record.positionBase;
+        gpuRecord.vertexAttributeBase = record.vertexAttributeBase;
+        gpuRecord.meshletVertexIndexBase = record.meshletVertexIndexBase;
+        gpuRecord.meshletTriangleBase = record.meshletTriangleBase;
+        outHandle = RenderAssets::ModelHandle(static_cast<u32>(_records.size()));
+        _records.push_back(record);
+        _gpuRecords.Add(gpuRecord);
         const ParameterRange range{
             .parameterOffset = static_cast<u32>(_parameters.size()),
             .parameterCount = static_cast<u32>(view.parameters.size()),
@@ -190,7 +235,7 @@ namespace ModelLoading
     void ModelGeometryStorage::SyncToGPU(Renderer::Renderer* renderer)
     {
 #define SYNC_BUFFER(member) _bufferGrowths += member.SyncToGPU(renderer) ? 1u : 0u
-        SYNC_BUFFER(_records);
+        SYNC_BUFFER(_gpuRecords);
         SYNC_BUFFER(_meshes);
         SYNC_BUFFER(_meshLODs);
         SYNC_BUFFER(_submeshes);
@@ -201,9 +246,6 @@ namespace ModelLoading
         SYNC_BUFFER(_meshletVertexIndices);
         SYNC_BUFFER(_meshletTriangles);
         SYNC_BUFFER(_jointPaletteRemaps);
-        SYNC_BUFFER(_materialSlots);
-        SYNC_BUFFER(_embeddedInstanceSets);
-        SYNC_BUFFER(_embeddedInstances);
 #undef SYNC_BUFFER
     }
 
@@ -247,7 +289,7 @@ namespace ModelLoading
     ModelGeometryStorageStats ModelGeometryStorage::GetStats() const
     {
         ModelGeometryStorageStats stats;
-        stats.numModels = _records.Count();
+        stats.numModels = static_cast<u32>(_records.size());
         stats.numMeshes = _meshes.Count();
         stats.numMeshLODs = _meshLODs.Count();
         stats.numSubmeshes = _submeshes.Count();
@@ -256,7 +298,7 @@ namespace ModelLoading
 #define ADD_BYTES(member)                                                                                                                                        \
     stats.usedBytes += member.UsedBytes();                                                                                                                       \
     stats.reservedBytes += member.TotalBytes()
-        ADD_BYTES(_records);
+        ADD_BYTES(_gpuRecords);
         ADD_BYTES(_meshes);
         ADD_BYTES(_meshLODs);
         ADD_BYTES(_submeshes);
@@ -267,9 +309,6 @@ namespace ModelLoading
         ADD_BYTES(_meshletVertexIndices);
         ADD_BYTES(_meshletTriangles);
         ADD_BYTES(_jointPaletteRemaps);
-        ADD_BYTES(_materialSlots);
-        ADD_BYTES(_embeddedInstanceSets);
-        ADD_BYTES(_embeddedInstances);
 #undef ADD_BYTES
         stats.bufferGrowths = _bufferGrowths;
         return stats;

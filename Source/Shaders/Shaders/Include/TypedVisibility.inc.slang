@@ -11,6 +11,9 @@
 #define TYPED_VISIBILITY_TERRAIN 2u
 #define TYPED_VISIBILITY_LEGACY_MODEL 3u
 #define TYPED_VISIBILITY_JOLT_DEBUG 4u
+#define TYPED_VISIBILITY_MODEL_LAYERED 5u
+#define TYPED_VISIBILITY_MODEL_PREVIOUS 6u
+#define TYPED_VISIBILITY_MODEL_LAYERED_PREVIOUS 7u
 
 struct TypedVisibilityPayload
 {
@@ -36,8 +39,31 @@ TypedVisibilityPayload UnpackTypedVisibility(uint payload)
 
 bool IsModelVisibility(uint targetValue)
 {
-    return targetValue != TYPED_VISIBILITY_INVALID &&
-           UnpackTypedVisibility(targetValue).geometryTypeID == TYPED_VISIBILITY_MODEL;
+    if (targetValue == TYPED_VISIBILITY_INVALID)
+        return false;
+    uint geometryTypeID = UnpackTypedVisibility(targetValue).geometryTypeID;
+    return geometryTypeID == TYPED_VISIBILITY_MODEL || geometryTypeID == TYPED_VISIBILITY_MODEL_LAYERED ||
+           geometryTypeID == TYPED_VISIBILITY_MODEL_PREVIOUS ||
+           geometryTypeID == TYPED_VISIBILITY_MODEL_LAYERED_PREVIOUS;
+}
+
+uint ModelVisibilityGeometryType(uint resolveClass, bool previousResource)
+{
+    if (previousResource)
+        return resolveClass == 0u ? TYPED_VISIBILITY_MODEL_PREVIOUS : TYPED_VISIBILITY_MODEL_LAYERED_PREVIOUS;
+    return resolveClass == 0u ? TYPED_VISIBILITY_MODEL : TYPED_VISIBILITY_MODEL_LAYERED;
+}
+
+uint ModelVisibilityResolveClass(uint geometryTypeID)
+{
+    return geometryTypeID == TYPED_VISIBILITY_MODEL_LAYERED ||
+           geometryTypeID == TYPED_VISIBILITY_MODEL_LAYERED_PREVIOUS ? 1u : 0u;
+}
+
+bool ModelVisibilityUsesPreviousResource(uint geometryTypeID)
+{
+    return geometryTypeID == TYPED_VISIBILITY_MODEL_PREVIOUS ||
+           geometryTypeID == TYPED_VISIBILITY_MODEL_LAYERED_PREVIOUS;
 }
 
 #endif

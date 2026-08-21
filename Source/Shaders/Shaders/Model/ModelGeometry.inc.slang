@@ -18,7 +18,7 @@ struct ModelInstanceRecord
     uint packedHighlightColor;
     float highlightIntensity;
     float opacity;
-    uint reserved0;
+    uint replayRevision;
     uint reserved1;
     uint reserved2;
 };

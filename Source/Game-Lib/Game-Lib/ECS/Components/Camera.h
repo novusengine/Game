@@ -13,6 +13,7 @@ namespace ECS::Components
     public:
         bool dirtyView = true; // Do we need to recalculate the matrices?
         bool cullingFrustumInitialized = false;
+        bool cullingLocked = false;
         f32 pitch = 0.0f;
         f32 yaw = 0.0f;
         f32 roll = 0.0f;

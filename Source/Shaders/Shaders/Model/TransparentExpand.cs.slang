@@ -27,6 +27,7 @@ struct Constants
 [[vk::binding(10, PER_PASS)]] RWStructuredBuffer<ModelTransparentChunk> _transparentChunks1;
 [[vk::binding(11, PER_PASS)]] RWStructuredBuffer<uint> _transparentStats0;
 [[vk::binding(12, PER_PASS)]] RWStructuredBuffer<uint> _transparentStats1;
+[[vk::binding(13, PER_PASS)]] StructuredBuffer<uint> _transparentEligibility;
 
 void AddStat(uint index, uint value)
 {
@@ -59,14 +60,25 @@ bool GeometryGroupEnabled(ModelInstanceRecord instance, uint groupID)
 }
 
 [shader("compute")]
-[numthreads(1, 1, 1)]
+[numthreads(64, 1, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    if (dispatchThreadID.x >= _constants.inputCount)
+    bool inputActive = dispatchThreadID.x < _constants.inputCount;
+    uint testedInstanceCount = WaveActiveCountBits(inputActive);
+    if (WaveIsFirstLane())
+        AddStat(MODEL_TRANSPARENT_STAT_TESTED_INSTANCES, testedInstanceCount);
+    if (!inputActive)
         return;
 
     ViewInstanceInput input = _transparentViewInputs[dispatchThreadID.x];
     if (input.instanceIndex == 0xFFFFFFFFu)
+        return;
+    uint eligibilityWordCount;
+    uint eligibilityWordStride;
+    _transparentEligibility.GetDimensions(eligibilityWordCount, eligibilityWordStride);
+    uint eligibilityWord = input.instanceIndex >> 5u;
+    if (eligibilityWord >= eligibilityWordCount ||
+        (_transparentEligibility[eligibilityWord] & (1u << (input.instanceIndex & 31u))) == 0u)
         return;
     uint boundInstanceCount;
     uint boundInstanceStride;
@@ -74,7 +86,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (input.instanceIndex >= boundInstanceCount)
         return;
     ModelInstanceRecord instance = _transparentInstances[input.instanceIndex];
-    AddStat(MODEL_TRANSPARENT_STAT_TESTED_INSTANCES, 1u);
     if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u || instance.opacity <= 0.0f)
     {
         AddStat(MODEL_TRANSPARENT_STAT_REJECTED_INSTANCES, 1u);

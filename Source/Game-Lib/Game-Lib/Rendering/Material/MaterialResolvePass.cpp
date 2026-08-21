@@ -2,9 +2,7 @@
 
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
-#include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
-#include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
 #include "Game-Lib/Rendering/Material/MaterialRenderer.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/Model/ModelRendererMode.h"
@@ -25,50 +23,16 @@ AutoCVar_Int CVAR_MaterialDebugMode(
 namespace MaterialRendering
 {
     MaterialResolvePass::MaterialResolvePass(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
-        : _renderer(renderer), _gameRenderer(gameRenderer),
-          _classificationSet(Renderer::DescriptorSetSlot::PER_PASS),
-          _finalizeSet(Renderer::DescriptorSetSlot::PER_PASS),
-          _resolveSet(Renderer::DescriptorSetSlot::PER_PASS)
+        : _gameRenderer(gameRenderer), _resolveSet(Renderer::DescriptorSetSlot::PER_PASS)
     {
         Renderer::ComputePipelineDesc desc;
         Renderer::ComputeShaderDesc shader;
-        shader.shaderEntry = gameRenderer->GetShaderEntry("Material/MaterialClassify.cs"_h,
-                                                           "Material/MaterialClassify.cs");
-        desc.debugName = "Material Classification";
+        shader.shaderEntry = gameRenderer->GetShaderEntry("Material/MaterialResolveUnified.cs"_h,
+                                                          "Material/MaterialResolveUnified.cs");
+        desc.debugName = "Material Resolve Unified";
         desc.computeShader = renderer->LoadShader(shader);
-        _classificationPipeline = renderer->CreatePipeline(desc);
-
-        shader.shaderEntry = gameRenderer->GetShaderEntry("Material/MaterialClassifyFinalize.cs"_h,
-                                                           "Material/MaterialClassifyFinalize.cs");
-        desc.debugName = "Material Classification Finalize";
-        desc.computeShader = renderer->LoadShader(shader);
-        _finalizePipeline = renderer->CreatePipeline(desc);
-
-        for (u32 group = 0; group < FileFormat::Material::ABI::EXECUTION_GROUP_COUNT; ++group)
-        {
-            const FileFormat::Material::MaterialExecutionGroup* cookedGroup =
-                gameRenderer->GetRenderAssetResources()->GetMaterialProgramLibrary().GetExecutionGroup(
-                    static_cast<u16>(group));
-            if (cookedGroup == nullptr)
-                continue;
-            shader.shaderEntry = gameRenderer->GetShaderEntry(
-                cookedGroup->resolveShaderPermutationHash, "Generated/MaterialResolve.cs");
-            desc.debugName = "Material Resolve Group " + std::to_string(group);
-            desc.computeShader = renderer->LoadShader(shader);
-            _resolvePipelines[group] = renderer->CreatePipeline(desc);
-            _activeResolveGroups[group] = true;
-        }
-
-        _classificationSet.RegisterPipeline(renderer, _classificationPipeline);
-        _classificationSet.Init(renderer);
-        _finalizeSet.RegisterPipeline(renderer, _finalizePipeline);
-        _finalizeSet.Init(renderer);
-
-        for (u32 group = 0; group < FileFormat::Material::ABI::EXECUTION_GROUP_COUNT; ++group)
-        {
-            if (_activeResolveGroups[group])
-                _resolveSet.RegisterPipeline(renderer, _resolvePipelines[group]);
-        }
+        _resolvePipeline = renderer->CreatePipeline(desc);
+        _resolveSet.RegisterPipeline(renderer, _resolvePipeline);
         _resolveSet.Init(renderer);
     }
 
@@ -103,54 +67,13 @@ namespace MaterialRendering
              bindings.materialTable);
     }
 
-    bool MaterialResolvePass::Upload(const RenderScenes::RenderView& view,
-                                     const ModelView::ModelViewWorkResources& work,
-                                     MaterialResolveResources& resources,
+    bool MaterialResolvePass::Upload(const ModelView::ModelViewWorkResources& work,
                                      const ModelLoading::ModelGeometryStorage& geometry,
                                      const RenderScenes::RenderScene& scene)
     {
-        const uvec2 renderSize = view.GetDimensions();
-        const u32 tilesX = (renderSize.x + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
-        const u32 tilesY = (renderSize.y + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
-        resources.EnsureTileCapacity(tilesX * tilesY);
-
         bool changed = false;
-        BindModelResources(_classificationSet, _classificationBindings.model, work, geometry, scene,
-                           changed);
         BindModelResources(_resolveSet, _resolveBindings.model, work, geometry, scene, changed);
-
-        auto Bind = [&changed](Renderer::DescriptorSet& set, StringUtils::StringHash name, Renderer::BufferID buffer,
-                               Renderer::BufferID& current) {
-            if (buffer == current)
-                return;
-            set.Bind(name, buffer);
-            current = buffer;
-            changed = true;
-        };
-        static constexpr StringUtils::StringHash TILE_QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT] = {
-            "_materialTileQueue0"_h, "_materialTileQueue1"_h};
-        static constexpr StringUtils::StringHash COUNTER_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT] = {
-            "_materialCounters0"_h, "_materialCounters1"_h};
-        static constexpr StringUtils::StringHash ARGUMENT_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT] = {
-            "_materialArguments0"_h, "_materialArguments1"_h};
-        for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
-        {
-            Bind(_classificationSet, TILE_QUEUE_NAMES[frame], resources.GetTileQueue(frame),
-                 _classificationBindings.tileQueues[frame]);
-            Bind(_classificationSet, COUNTER_NAMES[frame], resources.GetCounters(frame),
-                 _classificationBindings.counters[frame]);
-            Bind(_finalizeSet, COUNTER_NAMES[frame], resources.GetCounters(frame),
-                 _finalizeBindings.counters[frame]);
-            Bind(_finalizeSet, ARGUMENT_NAMES[frame], resources.GetArguments(frame),
-                 _finalizeBindings.arguments[frame]);
-            Bind(_resolveSet, TILE_QUEUE_NAMES[frame], resources.GetTileQueue(frame),
-                 _resolveBindings.tileQueues[frame]);
-            Bind(_resolveSet, COUNTER_NAMES[frame], resources.GetCounters(frame), _resolveBindings.counters[frame]);
-        }
-
-        return !_classificationSet.HasPendingBufferWrites() &&
-               !_finalizeSet.HasPendingBufferWrites() &&
-               !_resolveSet.HasPendingBufferWrites();
+        return !_resolveSet.HasPendingBufferWrites();
     }
 
     void MaterialResolvePass::RegisterModelUsage(Renderer::RenderGraphBuilder& builder,
@@ -181,112 +104,9 @@ namespace MaterialRendering
         builder.Read(materials.GetSamplerIDs().GetBuffer(), Usage::COMPUTE);
     }
 
-    void MaterialResolvePass::AddClassificationPass(
-        Renderer::RenderGraph* renderGraph, RenderResources& renderResources, const RenderScenes::RenderView& view,
-        const ModelView::ModelViewWorkResources& work, MaterialResolveResources& resources,
-        const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
-        const RenderScenes::RenderScene& scene, u8 frameIndex)
-    {
-        if (!ModelRendering::UseMeshletModelRenderer())
-            return;
-        struct Data
-        {
-            Renderer::ImageResource visibility;
-            Renderer::ImageMutableResource materialIDs;
-            Renderer::BufferMutableResource queue;
-            Renderer::BufferMutableResource counters;
-            Renderer::BufferMutableResource arguments;
-            Renderer::BufferMutableResource readback;
-            Renderer::DescriptorSetResource classificationSet;
-            Renderer::DescriptorSetResource materialSet;
-            Renderer::DescriptorSetResource finalizeSet;
-        };
-        renderGraph->AddPass<Data>("Material Classify: " + view.GetDebugName(),
-            [this, &renderResources, &view, &work, &resources, &geometry, &materials, &scene, frameIndex](
-                Data& data, Renderer::RenderGraphBuilder& builder) {
-                using Usage = Renderer::BufferPassUsage;
-                data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
-                data.materialIDs = builder.Write(resources.GetMaterialIDs(), Renderer::PipelineType::COMPUTE,
-                                                 Renderer::LoadMode::CLEAR);
-                RegisterModelUsage(builder, work, geometry, materials, scene);
-                builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
-                for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
-                {
-                    if (frame == frameIndex)
-                    {
-                        data.queue = builder.Write(resources.GetTileQueue(frame), Usage::COMPUTE);
-                        data.counters = builder.Write(resources.GetCounters(frame), Usage::COMPUTE | Usage::TRANSFER);
-                        data.arguments = builder.Write(resources.GetArguments(frame), Usage::COMPUTE | Usage::TRANSFER);
-                    }
-                    else
-                    {
-                        builder.Write(resources.GetTileQueue(frame), Usage::COMPUTE);
-                        builder.Write(resources.GetCounters(frame), Usage::COMPUTE);
-                        builder.Write(resources.GetArguments(frame), Usage::COMPUTE);
-                    }
-                }
-                data.readback = builder.Write(resources.GetReadback(frameIndex), Usage::TRANSFER);
-                data.classificationSet = builder.Use(_classificationSet);
-                data.materialSet = builder.Use(renderResources.materialDescriptorSet);
-                data.finalizeSet = builder.Use(_finalizeSet);
-                return true;
-            },
-            [this, &view, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
-                                           Renderer::CommandList& commandList) {
-                GPU_SCOPED_PROFILER_ZONE(commandList, MaterialClassification);
-                commandList.FillBuffer(data.counters, 0, sizeof(MaterialClassificationStats), 0);
-                commandList.FillBuffer(data.arguments, 0,
-                    sizeof(u32) * FileFormat::Material::ABI::EXECUTION_GROUP_COUNT *
-                        MATERIAL_DISPATCH_ARGUMENT_COUNT, 0);
-                commandList.BufferBarrier(data.counters, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.arguments, Renderer::BufferPassUsage::COMPUTE);
-
-                const uvec2 renderSize = view.GetDimensions();
-                const u32 tilesX = (renderSize.x + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
-                const u32 tilesY = (renderSize.y + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
-                struct Constants
-                {
-                    vec4 renderInfo;
-                    u32 resourceIndex;
-                    u32 tileCapacity;
-                    u32 tilesX;
-                };
-                Constants* constants = graphResources.FrameNew<Constants>();
-                constants->renderInfo = vec4(renderSize, 1.0f / vec2(renderSize));
-                constants->resourceIndex = frameIndex;
-                constants->tileCapacity = resources.GetTileCapacity();
-                constants->tilesX = tilesX;
-
-                commandList.BeginPipeline(_classificationPipeline);
-                data.classificationSet.Bind("_visibilityBuffer"_h, data.visibility);
-                data.classificationSet.Bind("_materialIDs"_h, data.materialIDs);
-                commandList.PushConstant(constants, 0, sizeof(Constants));
-                commandList.BindDescriptorSet(data.materialSet, frameIndex);
-                commandList.BindDescriptorSet(data.classificationSet, frameIndex);
-                commandList.Dispatch(tilesX, tilesY, 1);
-                commandList.EndPipeline(_classificationPipeline);
-
-                commandList.BufferBarrier(data.counters, Renderer::BufferPassUsage::COMPUTE);
-                struct FinalizeConstants { u32 resourceIndex; u32 tileCapacity; };
-                FinalizeConstants* finalize = graphResources.FrameNew<FinalizeConstants>();
-                finalize->resourceIndex = frameIndex;
-                finalize->tileCapacity = resources.GetTileCapacity();
-                commandList.BeginPipeline(_finalizePipeline);
-                commandList.PushConstant(finalize, 0, sizeof(FinalizeConstants));
-                commandList.BindDescriptorSet(data.finalizeSet, frameIndex);
-                commandList.Dispatch(1, 1, 1);
-                commandList.EndPipeline(_finalizePipeline);
-                commandList.BufferBarrier(data.arguments, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.counters, Renderer::BufferPassUsage::TRANSFER);
-                commandList.CopyBuffer(data.readback, 0, data.counters, 0,
-                                       sizeof(MaterialClassificationStats));
-            });
-        resources.MarkSubmitted(frameIndex);
-    }
-
     void MaterialResolvePass::AddResolvePass(
         Renderer::RenderGraph* renderGraph, RenderResources& renderResources, const RenderScenes::RenderView& view,
-        const ModelView::ModelViewWorkResources& work, MaterialResolveResources& resources,
+        const ModelView::ModelViewWorkResources& work,
         const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
@@ -295,24 +115,20 @@ namespace MaterialRendering
         struct Data
         {
             Renderer::ImageResource visibility;
-            Renderer::ImageResource materialIDs;
             Renderer::ImageResource ambientVisibility;
             Renderer::ImageResource svsmPagePool;
             Renderer::ImageResource svsmDynamicPagePool;
             Renderer::ImageMutableResource color;
-            Renderer::BufferResource arguments;
-            Renderer::BufferResource counters;
             Renderer::DescriptorSetResource globalSet;
             Renderer::DescriptorSetResource lightSet;
             Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource resolveSet;
         };
         renderGraph->AddPass<Data>("Material Resolve: " + view.GetDebugName(),
-            [this, &renderResources, &view, &work, &resources, &geometry, &materials, &scene, frameIndex](
+            [this, &renderResources, &view, &work, &geometry, &materials, &scene](
                 Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
                 data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
-                data.materialIDs = builder.Read(resources.GetMaterialIDs(), Renderer::PipelineType::COMPUTE);
                 data.ambientVisibility = builder.Read(renderResources.ssaoTarget, Renderer::PipelineType::COMPUTE);
                 const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
                 data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE, loadMode);
@@ -328,25 +144,16 @@ namespace MaterialRendering
                 _gameRenderer->GetLightRenderer()->RegisterMaterialPassBufferUsage(builder);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::COMPUTE);
-                for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
-                {
-                    builder.Read(resources.GetTileQueue(frame), Usage::COMPUTE);
-                    const Renderer::BufferResource counters = builder.Read(resources.GetCounters(frame), Usage::COMPUTE);
-                    if (frame == frameIndex)
-                        data.counters = counters;
-                }
-                data.arguments = builder.Read(resources.GetArguments(frameIndex), Usage::COMPUTE);
                 data.globalSet = builder.Use(renderResources.globalDescriptorSet);
                 data.lightSet = builder.Use(renderResources.lightDescriptorSet);
                 data.materialSet = builder.Use(renderResources.materialDescriptorSet);
                 data.resolveSet = builder.Use(_resolveSet);
                 return true;
             },
-            [this, &view, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
-                                           Renderer::CommandList& commandList) {
+            [this, &view, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+                                     Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, MaterialResolve);
                 const uvec2 renderSize = view.GetDimensions();
-                const u32 tilesX = (renderSize.x + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
                 struct Constants
                 {
                     vec4 renderInfo;
@@ -355,15 +162,12 @@ namespace MaterialRendering
                     vec4 fogSettings;
                     u32 resourceIndex;
                     u32 viewIndex;
-                    u32 tileCapacity;
-                    u32 tilesX;
                     u32 debugMode;
                     u32 numDirectionalLights;
                     u32 shadowsReady;
                     u32 sampleAmbientVisibility;
                 };
                 data.resolveSet.Bind("_visibilityBuffer"_h, data.visibility);
-                data.resolveSet.Bind("_materialIDs"_h, data.materialIDs);
                 data.resolveSet.Bind("_materialColor"_h, data.color);
                 data.resolveSet.Bind("_ambientVisibility"_h, data.ambientVisibility);
                 CVarSystem* cvarSystem = CVarSystem::Get();
@@ -372,33 +176,25 @@ namespace MaterialRendering
                 const bool shadowsReady = view.UsesWorldShadows() && static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled")) != 0u && shadowStrength > 0.0f && shadowRenderer->GetSVSMPagePool() != Renderer::ImageID::Invalid();
                 const f32 shadowNormalOffsetBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias"));
                 const f32 svsmConstantBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias"));
-                for (u32 group = 0; group < FileFormat::Material::ABI::EXECUTION_GROUP_COUNT; ++group)
-                {
-                    if (!_activeResolveGroups[group])
-                        continue;
-                    commandList.BeginPipeline(_resolvePipelines[group]);
-                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(data.lightSet, frameIndex);
-                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
-                    commandList.BindDescriptorSet(data.resolveSet, frameIndex);
-                    Constants* constants = graphResources.FrameNew<Constants>();
-                    constants->renderInfo = vec4(renderSize, 1.0f / vec2(renderSize));
-                    constants->shadowSettings = vec4(shadowStrength, shadowNormalOffsetBias, svsmConstantBias, 0.0f);
-                    constants->fogColor = _gameRenderer->GetMaterialRenderer()->GetFogColor();
-                    constants->fogSettings = _gameRenderer->GetMaterialRenderer()->GetFogSettings();
-                    constants->resourceIndex = frameIndex;
-                    constants->viewIndex = view.GetCameraIndex();
-                    constants->tileCapacity = resources.GetTileCapacity();
-                    constants->tilesX = tilesX;
-                    constants->debugMode = static_cast<u32>(glm::clamp(CVAR_MaterialDebugMode.Get(), 0, 5));
-                    constants->numDirectionalLights = _gameRenderer->GetMaterialRenderer()->GetNumDirectionalLights();
-                    constants->shadowsReady = shadowsReady ? 1u : 0u;
-                    constants->sampleAmbientVisibility = 0u;
-                    commandList.PushConstant(constants, 0, sizeof(Constants));
-                    commandList.DispatchIndirect(
-                        data.arguments, group * sizeof(u32) * MATERIAL_DISPATCH_ARGUMENT_COUNT);
-                    commandList.EndPipeline(_resolvePipelines[group]);
-                }
+                commandList.BeginPipeline(_resolvePipeline);
+                commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                commandList.BindDescriptorSet(data.lightSet, frameIndex);
+                commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                commandList.BindDescriptorSet(data.resolveSet, frameIndex);
+                Constants* constants = graphResources.FrameNew<Constants>();
+                constants->renderInfo = vec4(renderSize, 1.0f / vec2(renderSize));
+                constants->shadowSettings = vec4(shadowStrength, shadowNormalOffsetBias, svsmConstantBias, 0.0f);
+                constants->fogColor = _gameRenderer->GetMaterialRenderer()->GetFogColor();
+                constants->fogSettings = _gameRenderer->GetMaterialRenderer()->GetFogSettings();
+                constants->resourceIndex = frameIndex;
+                constants->viewIndex = view.GetCameraIndex();
+                constants->debugMode = static_cast<u32>(glm::clamp(CVAR_MaterialDebugMode.Get(), 0, 5));
+                constants->numDirectionalLights = _gameRenderer->GetMaterialRenderer()->GetNumDirectionalLights();
+                constants->shadowsReady = shadowsReady ? 1u : 0u;
+                constants->sampleAmbientVisibility = 0u;
+                commandList.PushConstant(constants, 0, sizeof(Constants));
+                commandList.Dispatch((renderSize.x + 7u) / 8u, (renderSize.y + 7u) / 8u, 1u);
+                commandList.EndPipeline(_resolvePipeline);
             });
 
     }

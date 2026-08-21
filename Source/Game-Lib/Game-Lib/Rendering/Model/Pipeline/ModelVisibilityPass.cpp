@@ -24,8 +24,14 @@ namespace ModelPipeline
         NC_ASSERT(properties.maxOutputPrimitives >= FileFormat::Model::MAX_MESHLET_TRIANGLES,
                   "Model meshlet triangle count exceeds the selected GPU limit");
 
-        Renderer::MeshShaderDesc meshShader;
-        meshShader.shaderEntry = gameRenderer->GetShaderEntry("Model/Visibility.ms"_h, "Model/Visibility.ms");
+        const std::vector<Renderer::PermutationField> solidPermutation = {{"ALPHA_TEST", "0"}};
+        const std::vector<Renderer::PermutationField> alphaTestPermutation = {{"ALPHA_TEST", "1"}};
+        Renderer::MeshShaderDesc solidMeshShader;
+        solidMeshShader.shaderEntry = gameRenderer->GetShaderEntry(
+            Renderer::GetShaderEntryNameHash("Model/Visibility.ms", solidPermutation), "Model/Visibility.ms");
+        Renderer::MeshShaderDesc alphaTestMeshShader;
+        alphaTestMeshShader.shaderEntry = gameRenderer->GetShaderEntry(
+            Renderer::GetShaderEntryNameHash("Model/Visibility.ms", alphaTestPermutation), "Model/Visibility.ms");
         Renderer::PixelShaderDesc solidPixelShader;
         solidPixelShader.shaderEntry = gameRenderer->GetShaderEntry("Model/Visibility.ps"_h, "Model/Visibility.ps");
         Renderer::PixelShaderDesc pixelShader;
@@ -34,7 +40,7 @@ namespace ModelPipeline
 
         Renderer::GraphicsPipelineDesc desc;
         desc.debugName = "Model Visibility One Sided";
-        desc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(meshShader)};
+        desc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(solidMeshShader)};
         desc.states.pixelShader = renderer->LoadShader(solidPixelShader);
         desc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32_UINT;
         desc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
@@ -50,6 +56,7 @@ namespace ModelPipeline
         _twoSidedPipeline = renderer->CreatePipeline(desc);
 
         desc.debugName = "Model Visibility Alpha Test One Sided";
+        desc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(alphaTestMeshShader)};
         desc.states.pixelShader = renderer->LoadShader(pixelShader);
         desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
         _alphaTestOneSidedPipeline = renderer->CreatePipeline(desc);
@@ -58,6 +65,7 @@ namespace ModelPipeline
         _alphaTestTwoSidedPipeline = renderer->CreatePipeline(desc);
 
         desc.debugName = "Model Cull Reason Debug";
+        desc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(solidMeshShader)};
         desc.states.pixelShader = renderer->LoadShader(solidPixelShader);
         desc.states.depthStencilState.depthEnable = false;
         desc.states.depthStencilState.depthWriteEnable = false;
@@ -91,6 +99,8 @@ namespace ModelPipeline
             {
                 for (Renderer::BufferID& queue : frame.rasterQueues)
                     queue = Renderer::BufferID::Invalid();
+                for (Renderer::BufferID& queue : frame.geometryQueues)
+                    queue = Renderer::BufferID::Invalid();
                 frame.visibilityRecords = Renderer::BufferID::Invalid();
                 frame.workStats = Renderer::BufferID::Invalid();
             }
@@ -104,8 +114,18 @@ namespace ModelPipeline
                  "_modelRasterQueueAlphaTestOneSided1"_h, "_modelRasterQueueAlphaTestTwoSided1"_h}};
         for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
             for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
+            {
                 BindIfChanged(QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
                               _bindings.frames[frame].rasterQueues[rasterClass]);
+                static constexpr StringUtils::StringHash
+                    GEOMETRY_QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT][ModelView::MODEL_RASTER_CLASS_COUNT] = {
+                        {"_modelGeometryQueueSolidOneSided0"_h, "_modelGeometryQueueSolidTwoSided0"_h,
+                         "_modelGeometryQueueAlphaTestOneSided0"_h, "_modelGeometryQueueAlphaTestTwoSided0"_h},
+                        {"_modelGeometryQueueSolidOneSided1"_h, "_modelGeometryQueueSolidTwoSided1"_h,
+                         "_modelGeometryQueueAlphaTestOneSided1"_h, "_modelGeometryQueueAlphaTestTwoSided1"_h}};
+                BindIfChanged(GEOMETRY_QUEUE_NAMES[frame][rasterClass], work.GetGeometryQueue(rasterClass, frame),
+                              _bindings.frames[frame].geometryQueues[rasterClass]);
+            }
         BindIfChanged("_modelVisibilityRecords0"_h, work.GetVisibilityRecords(0),
                       _bindings.frames[0].visibilityRecords);
         BindIfChanged("_modelVisibilityStats0"_h, work.GetStatsBuffer(0), _bindings.frames[0].workStats);
@@ -126,6 +146,9 @@ namespace ModelPipeline
         if (!ModelRendering::UseMeshletModelRenderer())
             return;
 
+        const u8 resourceIndex = phase == 1 ? (frameIndex + 1u) % ModelView::MODEL_VIEW_FRAME_COUNT : frameIndex;
+        const bool geometryQueue = phase == 2;
+
         struct Data
         {
             Renderer::ImageMutableResource visibility;
@@ -136,11 +159,15 @@ namespace ModelPipeline
             Renderer::DescriptorSetResource visibilitySet;
         };
 
+        std::string passName = "Model Visibility: ";
+        if (phase == 1)
+            passName = "Model Occluders: ";
+        else if (phase == 2)
+            passName = "Model Geometry: ";
         renderGraph->AddPass<Data>(
-            "Model Visibility" + (phase == 0 ? std::string() : " Phase " + std::to_string(phase)) + ": " +
-                view.GetDebugName(),
+            passName + view.GetDebugName(),
             [this, &resources, &view, &work, &geometry, &materials, &scene,
-             frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) {
+             resourceIndex, geometryQueue](Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
                 const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
                 data.visibility = builder.Write(view.GetVisibilityTarget(), Renderer::PipelineType::GRAPHICS,
@@ -151,11 +178,15 @@ namespace ModelPipeline
                 for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
                 {
                     for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
+                    {
                         builder.Read(work.GetQueue(rasterClass, frame), Usage::GRAPHICS);
+                        builder.Read(work.GetGeometryQueue(rasterClass, frame), Usage::GRAPHICS);
+                    }
                     builder.Read(work.GetVisibilityRecords(frame), Usage::GRAPHICS);
                     builder.Read(work.GetStatsBuffer(frame), Usage::GRAPHICS);
                 }
-                data.arguments = builder.Read(work.GetArguments(frameIndex), Usage::GRAPHICS);
+                data.arguments = builder.Read(geometryQueue ? work.GetGeometryArguments(resourceIndex) :
+                                                             work.GetArguments(resourceIndex), Usage::GRAPHICS);
                 ModelGeometryBindings::RegisterUsage(builder, geometry, scene, Usage::GRAPHICS);
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::GRAPHICS);
@@ -167,7 +198,7 @@ namespace ModelPipeline
                 data.visibilitySet = builder.Use(_descriptorSet);
                 return true;
             },
-            [this, &view, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+            [this, &view, frameIndex, resourceIndex, phase, geometryQueue](Data& data, Renderer::RenderGraphResources& graphResources,
                                       Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelVisibility);
                 Renderer::RenderPassDesc pass;
@@ -184,12 +215,16 @@ namespace ModelPipeline
                     u32 queueIndex;
                     u32 viewIndex;
                     u32 resourceIndex;
+                    u32 previousResource;
+                    u32 geometryQueue;
                 };
                 auto Draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex, bool usesMaterials) {
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->queueIndex = queueIndex;
                     constants->viewIndex = view.GetCameraIndex();
-                    constants->resourceIndex = frameIndex;
+                    constants->resourceIndex = resourceIndex;
+                    constants->previousResource = phase == 1 ? 1u : 0u;
+                    constants->geometryQueue = geometryQueue ? 1u : 0u;
                     commandList.BeginPipeline(pipeline);
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);

@@ -8,7 +8,11 @@
 #include "Material/Fog.inc.slang"
 
 #include "Material/MaterialEvaluation.inc.slang"
-#include "Generated/MaterialActiveGroup.inc.slang"
+#include "Generated/MaterialResolveGroups.inc.slang"
+
+#ifndef MATERIAL_RESOLVE_UNIFIED
+#define MATERIAL_RESOLVE_UNIFIED 0
+#endif
 
 struct Constants
 {
@@ -18,8 +22,6 @@ struct Constants
     float4 fogSettings;
     uint resourceIndex;
     uint viewIndex;
-    uint tileCapacity;
-    uint tilesX;
     uint debugMode;
     uint numDirectionalLights;
     uint shadowsReady;
@@ -28,14 +30,6 @@ struct Constants
 [[vk::push_constant]] Constants _constants;
 
 [[vk::binding(3, PER_PASS)]] RWTexture2D<float4> _materialColor;
-[[vk::binding(22, PER_PASS)]] Texture2D<uint> _materialIDs;
-[[vk::binding(23, PER_PASS)]] StructuredBuffer<uint> _materialTileQueue0;
-[[vk::binding(24, PER_PASS)]] StructuredBuffer<uint> _materialTileQueue1;
-[[vk::binding(26, PER_PASS)]] StructuredBuffer<uint> _materialCounters0;
-[[vk::binding(27, PER_PASS)]] StructuredBuffer<uint> _materialCounters1;
-
-#define MATERIAL_RESOLVE_MAX_GROUPS_X 1024u
-
 uint MixMaterialID(uint value)
 {
     value ^= value >> 16u;
@@ -54,37 +48,31 @@ float3 MaterialIDColor(uint value)
 [numthreads(8, 8, 1)]
 void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    uint localQueueOffset = groupID.x + groupID.y * MATERIAL_RESOLVE_MAX_GROUPS_X;
-    uint count = _constants.resourceIndex == 0u ? _materialCounters0[MATERIAL_COOK_GROUP]
-                                                : _materialCounters1[MATERIAL_COOK_GROUP];
-    if (localQueueOffset >= min(count, _constants.tileCapacity))
-        return;
-    uint queueOffset = MATERIAL_COOK_GROUP * _constants.tileCapacity + localQueueOffset;
-    uint tile = _constants.resourceIndex == 0u ? _materialTileQueue0[queueOffset]
-                                               : _materialTileQueue1[queueOffset];
-    uint2 tilePosition = uint2(tile % _constants.tilesX, tile / _constants.tilesX);
-    uint2 pixelPos = tilePosition * 8u + groupThreadID.xy;
+    uint2 pixelPos = groupID.xy * 8u + groupThreadID.xy;
     if (any(pixelPos >= uint2(_constants.renderInfo.xy)))
         return;
 
-    uint materialHandle = _materialIDs[pixelPos];
-    if (materialHandle == MATERIAL_INVALID_HANDLE)
-        return;
     uint visibility = LoadVisibilityBuffer(pixelPos);
     if (!IsModelVisibility(visibility))
         return;
+    TypedVisibilityPayload payload = UnpackTypedVisibility(visibility);
+#if !MATERIAL_RESOLVE_UNIFIED
+    uint resolveGroup = MaterialResolveGroup(MATERIAL_COOK_GROUP);
+    if (ModelVisibilityResolveClass(payload.geometryTypeID) != (resolveGroup & 1u))
+        return;
+#endif
 
     ReconstructedModelPixel pixel;
-    if (!ReconstructModelPixel(UnpackTypedVisibility(visibility), float2(pixelPos) + 0.5f,
-                               _constants.renderInfo.xy, _constants.viewIndex, _constants.resourceIndex, pixel))
+    if (!ReconstructModelPixel(payload, float2(pixelPos) + 0.5f, _constants.renderInfo.xy,
+                               _constants.viewIndex, _constants.resourceIndex, pixel))
         return;
     MaterialInstanceRecord instance = _materialInstances[pixel.materialInstanceIndex];
     MaterialRecord material = _materials[instance.materialIndex];
-    if (MaterialExecutionGroup(instance) != MATERIAL_COOK_GROUP ||
-        MaterialHandle(instance) != materialHandle)
+    uint executionGroup = MaterialExecutionGroup(instance);
+#if !MATERIAL_RESOLVE_UNIFIED
+    if (MaterialResolveGroup(executionGroup) != resolveGroup)
         return;
-    if (materialHandle != instance.materialIndex)
-        return;
+#endif
 
     float3 normal = pixel.worldNormal;
     if ((instance.flags & MATERIAL_TWO_SIDED) != 0u && !pixel.frontFacing)
@@ -115,7 +103,7 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
         context.parameterBlockIndex = 0u;
         uint localProgramID =
             MaterialGroupLocalProgramID(material, MaterialRasterClass(instance));
-        surface = EvaluateCookedMaterial(localProgramID, context);
+        surface = EvaluateResolveCookedMaterial(executionGroup, localProgramID, context);
         lightingModel = MaterialLightingModel(instance);
     }
 
@@ -133,7 +121,7 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 
     if (_constants.debugMode == 1u) color = MaterialIDColor(instance.materialIndex);
     else if (_constants.debugMode == 2u) color = MaterialIDColor(material.programID);
-    else if (_constants.debugMode == 3u) color = MaterialIDColor(MATERIAL_COOK_GROUP);
+    else if (_constants.debugMode == 3u) color = MaterialIDColor(executionGroup);
     else if (_constants.debugMode == 4u) color = MaterialIDColor(lightingModel);
     else if (_constants.debugMode == 5u) color = MaterialIDColor(
         _materialTextureIndices[instance.textureOffset]);

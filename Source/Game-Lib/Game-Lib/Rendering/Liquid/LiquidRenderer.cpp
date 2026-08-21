@@ -727,7 +727,7 @@ void LiquidRenderer::Upload()
         _cullingResources.GetCullingDescriptorSet().Bind("_instanceMatrices", _instanceMatrices.GetBuffer());
     }
 
-    _cullingResources.SyncToGPU(_instancesIsDirty);
+    _cullingResources.SyncToGPU(_instancesIsDirty.exchange(false));
     BindCullingResource(_cullingResources);
 }
 

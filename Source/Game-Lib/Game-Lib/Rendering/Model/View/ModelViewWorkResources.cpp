@@ -14,17 +14,20 @@ namespace ModelView
         for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
         {
             _arguments[frame] = Renderer::BufferID::Invalid();
+            _geometryArguments[frame] = Renderer::BufferID::Invalid();
             _chunkQueues[frame] = Renderer::BufferID::Invalid();
             _chunkArguments[frame] = Renderer::BufferID::Invalid();
+            _selectionQueues[frame] = Renderer::BufferID::Invalid();
+            _selectionArguments[frame] = Renderer::BufferID::Invalid();
             _statsBuffers[frame] = Renderer::BufferID::Invalid();
             _statsReadbacks[frame] = Renderer::BufferID::Invalid();
             _visibilityRecords[frame] = Renderer::BufferID::Invalid();
             _cullReasons[frame] = Renderer::BufferID::Invalid();
             _instanceVisibility[frame] = Renderer::BufferID::Invalid();
             _meshletHistory[frame] = Renderer::BufferID::Invalid();
-            _survivorQueues[frame] = Renderer::BufferID::Invalid();
-            _survivorArguments[frame] = Renderer::BufferID::Invalid();
             for (Renderer::BufferID& queue : _queues[frame])
+                queue = Renderer::BufferID::Invalid();
+            for (Renderer::BufferID& queue : _geometryQueues[frame])
                 queue = Renderer::BufferID::Invalid();
         }
         Renderer::BufferDesc desc;
@@ -39,18 +42,21 @@ namespace ModelView
                 std::memset(memory, 0, size);
             });
 
+            desc.name = "Model View Geometry Indirect Arguments " + std::to_string(frame);
+            _geometryArguments[frame] = _renderer->CreateAndFillBuffer(_geometryArguments[frame], desc, [](void* memory, size_t size) {
+                std::memset(memory, 0, size);
+            });
+
             desc.name = "Model View Chunk Indirect Arguments " + std::to_string(frame);
             desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT;
             _chunkArguments[frame] =
                 _renderer->CreateAndFillBuffer(_chunkArguments[frame], desc, [](void* memory, size_t size) {
                     std::memset(memory, 0, size);
                 });
-            desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT * MODEL_RASTER_CLASS_COUNT;
-
-            desc.name = "Model View Survivor Indirect Arguments " + std::to_string(frame);
+            desc.name = "Model View Selection Indirect Arguments " + std::to_string(frame);
             desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT;
-            _survivorArguments[frame] =
-                _renderer->CreateAndFillBuffer(_survivorArguments[frame], desc, [](void* memory, size_t size) {
+            _selectionArguments[frame] =
+                _renderer->CreateAndFillBuffer(_selectionArguments[frame], desc, [](void* memory, size_t size) {
                     std::memset(memory, 0, size);
                 });
             desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT * MODEL_RASTER_CLASS_COUNT;
@@ -78,6 +84,7 @@ namespace ModelView
             _statsReadbacks[frame] = _renderer->CreateBuffer(_statsReadbacks[frame], desc);
         }
         EnsureQueueCapacity(1);
+        EnsureSelectionCapacity(1);
         EnsureCullReasonCapacity(1);
     }
 
@@ -86,6 +93,9 @@ namespace ModelView
         for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
         {
             for (Renderer::BufferID queue : _queues[frame])
+                if (queue != Renderer::BufferID::Invalid())
+                    _renderer->QueueDestroyBuffer(queue);
+            for (Renderer::BufferID queue : _geometryQueues[frame])
                 if (queue != Renderer::BufferID::Invalid())
                     _renderer->QueueDestroyBuffer(queue);
             if (_visibilityRecords[frame] != Renderer::BufferID::Invalid())
@@ -98,14 +108,33 @@ namespace ModelView
                 _renderer->QueueDestroyBuffer(_instanceVisibility[frame]);
             if (_meshletHistory[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_meshletHistory[frame]);
-            if (_survivorQueues[frame] != Renderer::BufferID::Invalid())
-                _renderer->QueueDestroyBuffer(_survivorQueues[frame]);
+            if (_selectionQueues[frame] != Renderer::BufferID::Invalid())
+                _renderer->QueueDestroyBuffer(_selectionQueues[frame]);
             _renderer->QueueDestroyBuffer(_chunkArguments[frame]);
-            _renderer->QueueDestroyBuffer(_survivorArguments[frame]);
+            _renderer->QueueDestroyBuffer(_selectionArguments[frame]);
             _renderer->QueueDestroyBuffer(_arguments[frame]);
+            _renderer->QueueDestroyBuffer(_geometryArguments[frame]);
             _renderer->QueueDestroyBuffer(_statsBuffers[frame]);
             _renderer->QueueDestroyBuffer(_statsReadbacks[frame]);
         }
+    }
+
+    bool ModelViewWorkResources::EnsureSelectionCapacity(u32 instanceCount)
+    {
+        if (instanceCount <= _selectionCapacity)
+            return false;
+
+        _selectionCapacity = std::bit_ceil(instanceCount);
+        Renderer::BufferDesc desc;
+        desc.size = sizeof(ViewInstanceInput) * _selectionCapacity;
+        desc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
+        for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
+        {
+            desc.name = "Model View Selected Instances " + std::to_string(frame);
+            _selectionQueues[frame] = _renderer->CreateBuffer(_selectionQueues[frame], desc);
+        }
+        ++_selectionGeneration;
+        return true;
     }
 
     bool ModelViewWorkResources::EnsureQueueCapacity(u32 meshletCount)
@@ -127,10 +156,6 @@ namespace ModelView
             desc.size = sizeof(VisibilityRecord) * _queueCapacity;
             _visibilityRecords[frame] = _renderer->CreateBuffer(_visibilityRecords[frame], desc);
 
-            desc.name = "Model View Survivor Queue " + std::to_string(frame);
-            desc.size = sizeof(MeshletSurvivor) * _queueCapacity;
-            _survivorQueues[frame] = _renderer->CreateBuffer(_survivorQueues[frame], desc);
-
             desc.size = sizeof(u32) * _queueCapacity;
             for (u32 rasterClass = 0; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
             {
@@ -139,6 +164,8 @@ namespace ModelView
                     "Model View Alpha Test One Sided Queue ", "Model View Alpha Test Two Sided Queue " };
                 desc.name = NAMES[rasterClass] + std::to_string(frame);
                 _queues[frame][rasterClass] = _renderer->CreateBuffer(_queues[frame][rasterClass], desc);
+                desc.name = std::string("Model View Geometry ") + NAMES[rasterClass] + std::to_string(frame);
+                _geometryQueues[frame][rasterClass] = _renderer->CreateBuffer(_geometryQueues[frame][rasterClass], desc);
             }
         }
         ++_queueGeneration;

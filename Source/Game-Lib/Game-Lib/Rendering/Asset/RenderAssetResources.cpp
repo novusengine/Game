@@ -118,9 +118,6 @@ namespace RenderAssets
                 Track(_geometryStorage.GetMeshletVertexIndices());
                 Track(_geometryStorage.GetMeshletTriangles());
                 Track(_geometryStorage.GetJointPaletteRemaps());
-                Track(_geometryStorage.GetMaterialSlots());
-                Track(_geometryStorage.GetEmbeddedInstanceSets());
-                Track(_geometryStorage.GetEmbeddedInstances());
                 data.scratch = builder.Write(_captureScratch.GetBuffer(), BufferUsage::TRANSFER);
                 return true;
             },

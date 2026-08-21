@@ -21,25 +21,30 @@ namespace ModelView
         ~ModelViewWorkResources();
 
         bool EnsureQueueCapacity(u32 meshletCount);
+        bool EnsureSelectionCapacity(u32 instanceCount);
         bool EnsureCullReasonCapacity(u32 meshletCount);
         bool EnsureHistoryCapacity(u32 instanceCount, u32 meshletHistoryWords);
         void ReadbackStats(u8 frameIndex);
         void MarkSubmitted(u8 frameIndex) { _hasReadback[frameIndex] = true; }
 
         Renderer::BufferID GetQueue(u32 rasterClass, u8 frameIndex) const { return _queues[frameIndex][rasterClass]; }
+        Renderer::BufferID GetGeometryQueue(u32 rasterClass, u8 frameIndex) const { return _geometryQueues[frameIndex][rasterClass]; }
         Renderer::BufferID GetVisibilityRecords(u8 frameIndex) const { return _visibilityRecords[frameIndex]; }
         Renderer::BufferID GetCullReasons(u8 frameIndex) const { return _cullReasons[frameIndex]; }
         Renderer::BufferID GetChunkQueue(u8 frameIndex) const { return _chunkQueues[frameIndex]; }
         Renderer::BufferID GetChunkArguments(u8 frameIndex) const { return _chunkArguments[frameIndex]; }
+        Renderer::BufferID GetSelectionQueue(u8 frameIndex) const { return _selectionQueues[frameIndex]; }
+        Renderer::BufferID GetSelectionArguments(u8 frameIndex) const { return _selectionArguments[frameIndex]; }
         Renderer::BufferID GetArguments(u8 frameIndex) const { return _arguments[frameIndex]; }
+        Renderer::BufferID GetGeometryArguments(u8 frameIndex) const { return _geometryArguments[frameIndex]; }
         Renderer::BufferID GetStatsBuffer(u8 frameIndex) const { return _statsBuffers[frameIndex]; }
         Renderer::BufferID GetStatsReadback(u8 frameIndex) const { return _statsReadbacks[frameIndex]; }
         Renderer::BufferID GetInstanceVisibility(u8 frameIndex) const { return _instanceVisibility[frameIndex]; }
         Renderer::BufferID GetMeshletHistory(u8 frameIndex) const { return _meshletHistory[frameIndex]; }
-        Renderer::BufferID GetSurvivorQueue(u8 frameIndex) const { return _survivorQueues[frameIndex]; }
-        Renderer::BufferID GetSurvivorArguments(u8 frameIndex) const { return _survivorArguments[frameIndex]; }
         u32 GetQueueCapacity() const { return _queueCapacity; }
         u32 GetQueueGeneration() const { return _queueGeneration; }
+        u32 GetSelectionGeneration() const { return _selectionGeneration; }
+        u32 GetSelectionCapacity() const { return _selectionCapacity; }
         u32 GetHistoryGeneration() const { return _historyGeneration; }
         u32 GetInstanceVisibilityWords() const { return _instanceVisibilityWords; }
         u32 GetMeshletHistoryWords() const { return _meshletHistoryWords; }
@@ -49,22 +54,26 @@ namespace ModelView
       private:
         Renderer::Renderer* _renderer = nullptr;
         Renderer::BufferID _queues[FRAME_COUNT][MODEL_RASTER_CLASS_COUNT] = {};
+        Renderer::BufferID _geometryQueues[FRAME_COUNT][MODEL_RASTER_CLASS_COUNT] = {};
         Renderer::BufferID _visibilityRecords[FRAME_COUNT] = {};
         Renderer::BufferID _cullReasons[FRAME_COUNT] = {};
         Renderer::BufferID _chunkQueues[FRAME_COUNT] = {};
         Renderer::BufferID _chunkArguments[FRAME_COUNT] = {};
+        Renderer::BufferID _selectionQueues[FRAME_COUNT] = {};
+        Renderer::BufferID _selectionArguments[FRAME_COUNT] = {};
         Renderer::BufferID _arguments[FRAME_COUNT] = {};
+        Renderer::BufferID _geometryArguments[FRAME_COUNT] = {};
         Renderer::BufferID _statsBuffers[FRAME_COUNT] = {};
         Renderer::BufferID _statsReadbacks[FRAME_COUNT] = {};
         Renderer::BufferID _instanceVisibility[FRAME_COUNT] = {};
         Renderer::BufferID _meshletHistory[FRAME_COUNT] = {};
-        Renderer::BufferID _survivorQueues[FRAME_COUNT] = {};
-        Renderer::BufferID _survivorArguments[FRAME_COUNT] = {};
         WorkStats _stats;
         u32 _argumentSnapshot[MODEL_RASTER_CLASS_COUNT * MODEL_DISPATCH_ARGUMENT_COUNT] = {};
         u32 _queueCapacity = 0;
         u32 _cullReasonCapacity = 0;
         u32 _queueGeneration = 0;
+        u32 _selectionGeneration = 0;
+        u32 _selectionCapacity = 0;
         u32 _historyGeneration = 0;
         u32 _instanceVisibilityWords = 0;
         u32 _meshletHistoryWords = 0;

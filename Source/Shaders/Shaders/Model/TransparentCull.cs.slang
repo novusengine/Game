@@ -74,10 +74,10 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
         {
             float3 boundsMin = sphere.xyz - sphere.www;
             float3 boundsMax = sphere.xyz + sphere.www;
-            if (!IsIntersectingNearZ(boundsMin, boundsMax, camera.worldToClip) &&
-                !IsVisible(boundsMin, boundsMax, camera.eyePosition.xyz, _transparentDepthPyramid,
-                           _transparentDepthSampler, camera.worldToClip,
-                           uint2(_constants.viewportWidth, _constants.viewportHeight)))
+            if (!IsIntersectingNearZ(boundsMin, boundsMax, camera.cullingWorldToClip) &&
+                !IsVisible(boundsMin, boundsMax, camera.cullingEyePosition.xyz, _transparentDepthPyramid,
+                           _transparentDepthSampler, camera.cullingWorldToClip,
+                           uint2(camera.cullingViewportSize.xy)))
             {
                 AddStat(MODEL_TRANSPARENT_STAT_REJECTED_OCCLUSION_MESHLETS, 1u);
                 visible = false;

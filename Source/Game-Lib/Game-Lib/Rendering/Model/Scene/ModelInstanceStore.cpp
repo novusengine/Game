@@ -8,10 +8,12 @@
 
 namespace ModelScene
 {
-    ModelInstanceStore::ModelInstanceStore(bool validateTransfers) : _records(validateTransfers)
+    ModelInstanceStore::ModelInstanceStore(bool validateTransfers) : _records(validateTransfers), _shadowCasters(validateTransfers)
     {
         _records.SetDebugName("Scene Model Instances");
         _records.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+        _shadowCasters.SetDebugName("Scene Model Shadow Casters");
+        _shadowCasters.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
 
     void ModelInstanceStore::Reserve(u32 instanceCount)
@@ -19,6 +21,7 @@ namespace ModelScene
         const u32 reusableSlots = static_cast<u32>(_freeSlots.size());
         const u32 additionalSlots = instanceCount > reusableSlots ? instanceCount - reusableSlots : 0;
         _records.Reserve(additionalSlots);
+        _shadowCasters.Reserve(additionalSlots);
         _slots.reserve(_slots.size() + additionalSlots);
         _pendingSlotClears.reserve(_pendingSlotClears.size() + instanceCount);
         _membershipChanges.reserve(_membershipChanges.size() + instanceCount);
@@ -72,6 +75,7 @@ namespace ModelScene
         record.packedHighlightColor = 0xFFFFFFFFu;
         record.highlightIntensity = 1.0f;
         record.opacity = 1.0f;
+        record.replayRevision = 1;
         if (info.privateMaterials)
             record.flags |= ModelInstanceFlagPrivateMaterials;
         if (reusedSlot)
@@ -96,6 +100,7 @@ namespace ModelScene
 
         const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
         outResources = slot->resources;
+        RemoveShadowCaster(slotIndex);
         if (_records[slotIndex].highlightIntensity != 1.0f)
         {
             --_highlightedInstances;
@@ -189,6 +194,7 @@ namespace ModelScene
             QueueSlotClear(RenderScenes::GetModelInstanceSlot(handle));
         }
         _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        RefreshShadowCaster(RenderScenes::GetModelInstanceSlot(handle));
         return true;
     }
 
@@ -237,6 +243,7 @@ namespace ModelScene
         else
             record.flags &= ~ModelInstanceFlagForceTransparent;
         _records.SetDirtyElement(slotIndex);
+        RefreshShadowCaster(slotIndex);
         return true;
     }
 
@@ -274,6 +281,7 @@ namespace ModelScene
         else
             record.flags &= ~ModelInstanceFlagCastsShadows;
         _records.SetDirtyElement(slotIndex);
+        RefreshShadowCaster(slotIndex);
         return true;
     }
 
@@ -297,6 +305,24 @@ namespace ModelScene
         else
             record.flags &= ~ModelInstanceFlagPrivateMaterials;
         _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        return true;
+    }
+
+    bool ModelInstanceStore::InvalidateReplay(RenderScenes::ModelInstanceHandle handle)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        ModelInstanceGPURecord& record = _records[slotIndex];
+        ++record.replayRevision;
+        if (record.replayRevision == 0)
+            record.replayRevision = 1;
+        _records.SetDirtyElement(slotIndex);
         return true;
     }
 
@@ -375,6 +401,7 @@ namespace ModelScene
             dirtyRangeCount++;
             _pendingInstances--;
             _liveInstances++;
+            RefreshShadowCaster(entry.slotIndex);
         }
         if (dirtyRangeCount != 0)
             _records.SetDirtyElements(dirtyRangeStart, dirtyRangeCount);
@@ -384,6 +411,7 @@ namespace ModelScene
     void ModelInstanceStore::SyncToGPU(Renderer::Renderer* renderer)
     {
         _records.SyncToGPU(renderer);
+        _shadowCasters.SyncToGPU(renderer);
     }
 
     bool ModelInstanceStore::IsAlive(RenderScenes::ModelInstanceHandle handle) const
@@ -539,5 +567,44 @@ namespace ModelScene
             return;
         slot.membershipChangeQueued = true;
         _membershipChanges.push_back(slotIndex);
+    }
+
+    void ModelInstanceStore::RefreshShadowCaster(u32 slotIndex)
+    {
+        Slot& slot = _slots[slotIndex];
+        const ModelInstanceGPURecord& record = _records[slotIndex];
+        const bool eligible = slot.state == SlotState::Live &&
+                              (record.flags & (ModelInstanceFlagVisible | ModelInstanceFlagCastsShadows)) ==
+                                  (ModelInstanceFlagVisible | ModelInstanceFlagCastsShadows) &&
+                              record.opacity > 0.0f;
+        if (!eligible)
+        {
+            RemoveShadowCaster(slotIndex);
+            return;
+        }
+        if (slot.shadowCasterIndex != RenderScenes::INVALID_SCENE_INDEX)
+            return;
+
+        slot.shadowCasterIndex = _shadowCasters.Add(slotIndex);
+    }
+
+    void ModelInstanceStore::RemoveShadowCaster(u32 slotIndex)
+    {
+        Slot& slot = _slots[slotIndex];
+        const u32 casterIndex = slot.shadowCasterIndex;
+        if (casterIndex == RenderScenes::INVALID_SCENE_INDEX)
+            return;
+
+        const u32 lastIndex = _shadowCasters.Count() - 1u;
+        if (casterIndex != lastIndex)
+        {
+            const u32 movedSlotIndex = _shadowCasters[lastIndex];
+            _shadowCasters[casterIndex] = movedSlotIndex;
+            _shadowCasters.SetDirtyElement(casterIndex);
+            _slots[movedSlotIndex].shadowCasterIndex = casterIndex;
+        }
+        _shadowCasters.Remove(lastIndex);
+        _shadowCasters.Compress();
+        slot.shadowCasterIndex = RenderScenes::INVALID_SCENE_INDEX;
     }
 } // namespace ModelScene

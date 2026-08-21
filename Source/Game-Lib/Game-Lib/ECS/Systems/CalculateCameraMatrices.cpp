@@ -16,7 +16,7 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_CameraLockCullingFrustum(CVarCategory::Client | CVarCategory::Rendering, "cameraLockCullingFrustum", "Lock the frustum used for culling", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_CameraLockCulling(CVarCategory::Client | CVarCategory::Rendering, "cameraLockCulling", "Lock the camera state used for culling", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
 
 AutoCVar_Float CVAR_CameraFarClip(CVarCategory::Client | CVarCategory::Rendering, "cameraFarClip", "The far clip distance of the camera", 2500.0f);
 
@@ -88,7 +88,11 @@ namespace ECS::Systems
 
                 gpuCamera.nearFar = vec4(camera.nearClip, camera.farClip, 0.0f, 0.0f);
 
-                if (CVAR_CameraLockCullingFrustum.Get() == 0 || !camera.cullingFrustumInitialized)
+                const bool cullingLocked = CVAR_CameraLockCulling.Get() != 0;
+                const bool cullingViewportChanged = gpuCamera.cullingViewportSize.x != renderSize.x ||
+                                                    gpuCamera.cullingViewportSize.y != renderSize.y;
+                if (!cullingLocked || !camera.cullingFrustumInitialized || !camera.cullingLocked ||
+                    cullingViewportChanged)
                 {
                     glm::vec3 Front = glm::vec3(0, 0, 1);
                     glm::vec3 Right = glm::vec3(1, 0, 0);
@@ -112,9 +116,12 @@ namespace ECS::Systems
                     gpuCamera.frustum[(size_t)FrustumPlane::Left] = EncodePlane(position,glm::cross(frontMultFar + Right * halfHSide, Up));
                     gpuCamera.frustum[(size_t)FrustumPlane::Top] = EncodePlane(position,glm::cross(frontMultFar - Up * halfVSide, Right));
                     gpuCamera.frustum[(size_t)FrustumPlane::Bottom] = EncodePlane(position,glm::cross(Right, frontMultFar + Up * halfVSide));
+                    gpuCamera.cullingWorldToClip = gpuCamera.worldToClip;
                     gpuCamera.cullingEyePosition = gpuCamera.eyePosition;
+                    gpuCamera.cullingViewportSize = vec4(renderSize, 0.0f, 0.0f);
                     camera.cullingFrustumInitialized = true;
                 }
+                camera.cullingLocked = cullingLocked;
 
                 renderResources.cameras.SetDirtyElement(camera.cameraBindSlot);
             }

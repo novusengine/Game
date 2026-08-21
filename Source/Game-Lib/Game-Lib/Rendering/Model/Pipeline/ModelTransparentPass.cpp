@@ -161,6 +161,7 @@ namespace ModelPipeline
             Bind(_rasterSet, STATS[frame], work.GetStatsBuffer(frame));
         }
         Bind(_expandSet, "_transparentViewInputs"_h, viewState.GetInputs().GetBuffer());
+        Bind(_expandSet, "_transparentEligibility"_h, viewState.GetTransparentEligibility().GetBuffer());
         Bind(_expandSet, "_transparentLODHistory"_h, viewState.GetLODHistory().GetBuffer());
         Bind(_expandSet, "_transparentInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer());
         Bind(_expandSet, "_transparentModels"_h, geometry.GetRecords().GetBuffer());
@@ -197,7 +198,8 @@ namespace ModelPipeline
                                            ModelView::ModelTransparentWorkResources& work,
                                            const ModelLoading::ModelGeometryStorage& geometry,
                                            const MaterialLoading::MaterialStorage& materials,
-                                           const RenderScenes::RenderScene& scene, u8 frameIndex)
+                                           const RenderScenes::RenderScene& scene, u8 frameIndex,
+                                           bool enableOcclusionCulling)
     {
         const u32 inputCount = viewState.GetDispatchInputCount();
         struct Data
@@ -217,13 +219,14 @@ namespace ModelPipeline
             Renderer::DescriptorSetResource cullSet;
             Renderer::DescriptorSetResource finalizeSet;
         };
-        renderGraph->AddPass<Data>("Model Transparent Work: " + view.GetDebugName(),
+        renderGraph->AddPass<Data>("Model (T) Culling: " + view.GetDebugName(),
             [this, &resources, &view, &viewState, &work, &geometry, &materials, &scene, frameIndex, inputCount](Data& data,
                 Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
                 data.depthPyramid = builder.Read(view.GetDepthPyramidTarget(), Renderer::PipelineType::COMPUTE);
                 builder.Read(resources.cameras.GetBuffer(), Usage::COMPUTE);
                 builder.Read(viewState.GetInputs().GetBuffer(), Usage::COMPUTE);
+                builder.Read(viewState.GetTransparentEligibility().GetBuffer(), Usage::COMPUTE);
                 builder.Read(viewState.GetLODHistory().GetBuffer(), Usage::COMPUTE);
                 builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::COMPUTE);
                 builder.Read(geometry.GetRecords().GetBuffer(), Usage::COMPUTE);
@@ -256,7 +259,7 @@ namespace ModelPipeline
                 data.finalizeSet = builder.Use(_finalizeSet);
                 return true;
             },
-            [this, &view, &work, inputCount, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+            [this, &view, &work, inputCount, frameIndex, enableOcclusionCulling](Data& data, Renderer::RenderGraphResources& graphResources,
                 Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelTransparentWork);
                 struct BeginConstants { u32 resourceIndex; };
@@ -279,7 +282,7 @@ namespace ModelPipeline
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
                     commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     commandList.BindDescriptorSet(data.expandSet, frameIndex);
-                    commandList.Dispatch(inputCount, 1, 1);
+                    commandList.Dispatch((inputCount + 63u) / 64u, 1, 1);
                     commandList.EndPipeline(_expandPipeline);
                     commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::COMPUTE);
                     commandList.BufferBarrier(data.chunks, Renderer::BufferPassUsage::COMPUTE);
@@ -309,8 +312,9 @@ namespace ModelPipeline
                     *cull = {view.GetCameraIndex(), frameIndex, work.GetBinCapacity(),
                              *cvars->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering,
                                                "modelMeshletConeCulling") != 0 ? 1u : 0u,
-                             *cvars->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering,
-                                               "modelMeshletOcclusionCulling") != 0 ? 1u : 0u,
+                             enableOcclusionCulling && *cvars->GetIntCVar(
+                                 CVarCategory::Client | CVarCategory::Rendering,
+                                 "modelMeshletOcclusionCulling") != 0 ? 1u : 0u,
                              view.GetDimensions().x, view.GetDimensions().y};
                     data.cullSet.Bind("_transparentDepthPyramid"_h, data.depthPyramid);
                     commandList.BeginPipeline(_cullPipeline);
@@ -357,7 +361,7 @@ namespace ModelPipeline
             Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource rasterSet;
         };
-        renderGraph->AddPass<Data>("Model Transparent Raster: " + view.GetDebugName(),
+        renderGraph->AddPass<Data>("Model (T) Geometry: " + view.GetDebugName(),
             [this, &resources, &view, &work, &geometry, &materials, &scene, frameIndex](Data& data,
                 Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;

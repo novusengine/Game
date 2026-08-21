@@ -79,7 +79,6 @@
 
 #include <limits>
 
-AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
 AutoCVar_Float CVAR_CursorRestoreGuardPeriod(CVarCategory::Client, "cursorRestoreGuardPeriod", "Time in milliseconds to reject stale cursor events after restoring a captured cursor", 100.0f, CVarFlags::EditFloatDrag);
 AutoCVar_Int CVAR_RenderAssetValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "renderAssetValidateGPUVectors",
                                                "if enabled ON START we will validate render asset GPUVector uploads", 0, CVarFlags::EditCheckbox);
@@ -200,9 +199,6 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _window = new Novus::Window();
     _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
     glfwSetWindowAspectRatio(_window->GetWindow(), 16, 9);
-
-    if (CVAR_StartWindowMaximized.Get() == ShowFlag::ENABLED)
-        glfwMaximizeWindow(_window->GetWindow());
 
     glfwSetKeyCallback(_window->GetWindow(), KeyCallback);
     glfwSetCharCallback(_window->GetWindow(), CharCallback);
@@ -498,9 +494,17 @@ f32 GameRenderer::Render()
     {
         _renderer->SetRenderSize(renderSize);
         _lastWindowSize = renderSize;
+        _lockedCullingDepthPyramidValid = false;
         if (RenderScenes::RenderView* mainView = _modelRenderSystem->GetMainView())
             mainView->SetDimensions(static_cast<uvec2>(renderSize));
     }
+
+    const bool cameraCullingLocked = *CVarSystem::Get()->GetIntCVar(
+        CVarCategory::Client | CVarCategory::Rendering, "cameraLockCulling"_h) != 0;
+    const Camera& mainCamera = _resources.cameras[0];
+    const bool cullingCameraMatchesRenderSize = mainCamera.cullingViewportSize.x == renderSize.x &&
+                                                 mainCamera.cullingViewportSize.y == renderSize.y;
+    const bool buildDepthPyramids = !cameraCullingLocked || !_lockedCullingDepthPyramidValid;
 
     editorHandler->DrawImGui();
     editorHandler->EndEditor();
@@ -533,7 +537,6 @@ f32 GameRenderer::Render()
                 builder.Write(_resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                builder.Write(_resources.depthColorCopy, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.ssaoTarget, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
 
@@ -575,8 +578,9 @@ f32 GameRenderer::Render()
     _joltDebugRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddVisibilityPhase1Passes(&renderGraph, _resources, _frameIndex);
 
-    DepthPyramidUtils::AddBuildPass(&renderGraph, "Occluder Depth Pyramid", _resources.depth,
-                                    _resources.depthPyramid, _frameIndex);
+    if (buildDepthPyramids)
+        DepthPyramidUtils::AddBuildPass(&renderGraph, "Occluder Depth Pyramid: Game", _resources.depth,
+                                        _resources.depthPyramid, _frameIndex);
 
     _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
@@ -589,8 +593,10 @@ f32 GameRenderer::Render()
 
     _modelRenderSystem->AddVisibilityPhase2Passes(&renderGraph, _resources, _frameIndex);
 
-    DepthPyramidUtils::AddBuildPass(&renderGraph, "Opaque Depth Pyramid", _resources.depth,
-                                    _resources.depthPyramid, _frameIndex);
+    if (cameraCullingLocked && buildDepthPyramids && cullingCameraMatchesRenderSize)
+        _lockedCullingDepthPyramidValid = true;
+    else if (!cameraCullingLocked)
+        _lockedCullingDepthPyramidValid = false;
     _modelRenderSystem->AddTransparentCullPass(&renderGraph, _resources, _frameIndex);
 
     _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
@@ -627,7 +633,10 @@ f32 GameRenderer::Render()
     _modelRenderSystem->AddTransparencyCompositePasses(&renderGraph, _resources, *_materialRenderer,
         RenderScenes::RenderViewPassFamily::ForwardModels, _frameIndex);
 
-    _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
+    if (ModelRendering::UseMeshletModelRenderer())
+        _modelRenderSystem->AddCommonMaterialResolvePass(&renderGraph, _resources, *_materialRenderer, _frameIndex);
+    else
+        _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddMaterialResolvePass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddTransparentRasterPass(&renderGraph, _resources,
         RenderScenes::RenderViewPassFamily::Models, _frameIndex);

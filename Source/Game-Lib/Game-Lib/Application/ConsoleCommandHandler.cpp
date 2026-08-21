@@ -15,6 +15,7 @@ ConsoleCommandHandler::ConsoleCommandHandler()
     RegisterCommand("reload"_h, &ConsoleCommands::CommandReloadScripts);
     RegisterCommand("reloadscripts"_h, &ConsoleCommands::CommandReloadScripts);
     RegisterCommand("refresh"_h, &ConsoleCommands::CommandRefreshDB);
+    RegisterCommand("performance_snapshot"_h, &ConsoleCommands::CommandPerformanceSnapshot);
     RegisterCommand("descriptor_pool_stats"_h, &ConsoleCommands::CommandDescriptorPoolStats);
     RegisterCommand("gpu_pass_times"_h, &ConsoleCommands::CommandGpuPassTimes);
 

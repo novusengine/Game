@@ -27,8 +27,10 @@ namespace ModelView
     {
         u32 packedInstanceAndMesh = 0;
         u32 packedLODSubmeshAndMeshlet = 0;
+        u32 instanceGeneration = 0;
+        u32 replayRevision = 0;
     };
-    static_assert(sizeof(VisibilityRecord) == 8);
+    static_assert(sizeof(VisibilityRecord) == 16);
 
     struct DecodedVisibilityRecord
     {
@@ -76,27 +78,12 @@ namespace ModelView
 
     struct MeshletChunk
     {
-        u32 instanceIndex = 0;
-        u32 meshIndex = 0;
+        u32 packedInstanceAndMesh = 0;
         u32 meshletBase = 0;
         u32 packedCountRasterAndLOD = 0;
         u32 lodHistoryIndex = 0;
-        u32 reserved[3] = {};
     };
-    static_assert(sizeof(MeshletChunk) == 32);
-
-    struct MeshletSurvivor
-    {
-        u32 instanceIndex = 0;
-        u32 instanceGeneration = 0;
-        u32 lodHistoryIndex = 0;
-        u32 meshIndex = 0;
-        u32 lodIndex = 0;
-        u32 submeshIndex = 0;
-        u32 meshletIndex = 0;
-        u32 rasterClass = 0;
-    };
-    static_assert(sizeof(MeshletSurvivor) == 32);
+    static_assert(sizeof(MeshletChunk) == 16);
 
     struct WorkStats
     {
@@ -132,5 +119,6 @@ namespace ModelView
         u32 committedTriangles = 0;
         u32 phase1ReplayedTriangles = 0;
         u32 phase2AddedTriangles = 0;
+        u32 geometryMeshlets[MODEL_RASTER_CLASS_COUNT] = {};
     };
 } // namespace ModelView

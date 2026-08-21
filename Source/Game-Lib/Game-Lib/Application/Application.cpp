@@ -26,6 +26,7 @@
 #include "Game-Lib/Input/InputPerformanceTest.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Scripting/Handlers/GlobalHandler.h"
 #include "Game-Lib/Scripting/Handlers/EventHandler.h"
@@ -583,6 +584,47 @@ bool Application::Tick(f32 deltaTime)
             case MessageInbound::Type::RefreshDB:
             {
                 ECS::Util::EventUtil::PushEvent(ECS::Components::DatabaseReloadEvent{});
+                break;
+            }
+
+            case MessageInbound::Type::PerformanceSnapshot:
+            {
+                ECS::Singletons::EngineStats& stats = _registries.gameRegistry->ctx().get<ECS::Singletons::EngineStats>();
+                const u32 samples = static_cast<u32>(stats.frameStats.size());
+                const ECS::Singletons::FrameTimes frame = stats.AverageFrame(ECS::Singletons::EngineStats::MAX_ENTRIES);
+                NC_LOG_INFO("PERF_FRAME samples={} frame_ms={:.3f} simulation_ms={:.3f} upload_ms={:.3f} render_ms={:.3f} wait_ms={:.3f} gpu_ms={:.3f}",
+                    samples, frame.deltaTimeS * 1000.0f, frame.simulationFrameTimeS * 1000.0f, frame.uploadFrameTimeS * 1000.0f,
+                    frame.renderFrameTimeS * 1000.0f, frame.renderWaitTimeS * 1000.0f, frame.gpuFrameTimeMS);
+
+                Renderer::Renderer* renderer = _gameRenderer->GetRenderer();
+                const std::vector<Renderer::TimeQueryID> frameTimeQueries = renderer->GetFrameTimeQueries();
+                for (Renderer::TimeQueryID timeQueryID : frameTimeQueries)
+                {
+                    const std::string& name = renderer->GetTimeQueryName(timeQueryID);
+                    f32 averageMS = 0.0f;
+                    if (stats.AverageNamed(name, ECS::Singletons::EngineStats::MAX_ENTRIES, averageMS))
+                        NC_LOG_INFO("GPU_PASS_AVG {};{:.3f}", name, averageMS);
+                }
+
+                if (ModelRendering::ModelRenderSystem* modelRenderSystem = _gameRenderer->GetModelRenderSystem())
+                {
+                    const ModelRendering::ModelPerformanceStats model = modelRenderSystem->GetPerformanceStats();
+                    NC_LOG_INFO("MODEL_WORK selected_instances={} tested_instances={} rejected_instances={} expanded_chunks={} tested_chunks={} tested_meshlets={} survivors={} phase1_replayed={} phase2_added={} occlusion_rejected={} tested_triangles={} committed_triangles={}",
+                        model.work.selectedInstances, model.work.testedInstances, model.work.rejectedInstances, model.work.expandedChunks,
+                        model.work.testedChunks, model.work.testedMeshlets, model.work.survivorCount, model.work.phase1ReplayedMeshlets,
+                        model.work.phase2AddedMeshlets, model.work.rejectedOcclusionMeshlets, model.work.testedTriangles, model.work.committedTriangles);
+                    NC_LOG_INFO("MODEL_TRANSPARENT tested_instances={} rejected_instances={} expanded_chunks={} tested_meshlets={} frustum_rejected={} cone_rejected={} occlusion_rejected={} geometry_rejected={} tested_triangles={} committed_triangles={}",
+                        model.transparentWork.testedInstances, model.transparentWork.rejectedInstances, model.transparentWork.expandedChunks,
+                        model.transparentWork.testedMeshlets, model.transparentWork.rejectedFrustumMeshlets,
+                        model.transparentWork.rejectedConeMeshlets, model.transparentWork.rejectedOcclusionMeshlets,
+                        model.transparentWork.rejectedGeometryGroupMeshlets, model.transparentWork.testedTriangles,
+                        model.transparentWork.committedTriangles);
+                    NC_LOG_INFO("MODEL_CAPACITY main_queue_overflows={} chunk_queue_overflows={} visibility_overflows={} survivor_overflows={} transparent_queue_overflows={} transparent_chunk_overflows={} history_kb={} history_live_kb={} history_free_kb={} history_retired_kb={}",
+                        model.work.queueOverflows, model.work.chunkQueueOverflows, model.work.visibilityRecordOverflows,
+                        model.work.survivorQueueOverflows, model.transparentWork.queueOverflows,
+                        model.transparentWork.chunkQueueOverflows, model.historyBytes / 1024u, model.liveHistoryBytes / 1024u,
+                        model.freeHistoryBytes / 1024u, model.retiredHistoryBytes / 1024u);
+                }
                 break;
             }
 

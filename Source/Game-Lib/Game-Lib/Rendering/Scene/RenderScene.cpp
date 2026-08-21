@@ -194,6 +194,7 @@ namespace RenderScenes
         if (needsHistoryClear)
         {
             const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
+            _instances.InvalidateReplay(handle);
             _meshletHistory.RequestClear(resources->meshletHistory);
         }
         return true;
@@ -249,6 +250,7 @@ namespace RenderScenes
         {
             ++_transparentRoutingRevision;
             _instances.QueueRoutingChange(handle);
+            RequestModelHistoryClear(handle);
         }
         const bool newShadowVisible = visible && castsShadows && record->opacity > 0.0f;
         if (oldOpacity != record->opacity && _geometryStorage->HasModel(resources->model))
@@ -541,7 +543,10 @@ namespace RenderScenes
     {
         const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
         if (resources)
+        {
+            _instances.InvalidateReplay(handle);
             _meshletHistory.RequestClear(resources->meshletHistory);
+        }
     }
 
     ModelMaterialTableHandle RenderScene::AcquireDefaultMaterialTable(RenderAssets::ModelHandle model) const

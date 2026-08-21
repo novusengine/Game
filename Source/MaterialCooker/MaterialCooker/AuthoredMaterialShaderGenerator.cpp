@@ -117,6 +117,38 @@ std::string GenerateAlphaTestGroupsSource(const std::set<u16> &groups) {
   source << "    return 1.0f;\n}\n";
   return source.str();
 }
+
+std::string GenerateResolveGroupsSource(const std::set<u16> &groups) {
+  std::ostringstream source;
+  source << "// Generated opaque Material resolve interface. Do not hand edit.\n";
+  for (u16 group : groups) {
+    const u16 groupClass =
+        group % FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
+    if (groupClass < 4u)
+      source << "#include \"Generated/MaterialGroup" << group
+             << ".inc.slang\"\n";
+  }
+  source << "\nSurfaceDescription EvaluateResolveCookedMaterial(\n"
+            "    uint executionGroup, uint groupLocalProgramID, MaterialEvaluationContext context)\n"
+            "{\n"
+            "    switch (executionGroup)\n"
+            "    {\n";
+  for (u16 group : groups) {
+    const u16 groupClass =
+        group % FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
+    if (groupClass < 4u)
+      source << "    case " << group
+             << "u: return EvaluateCookedMaterialGroup" << group
+             << "(groupLocalProgramID, context);\n";
+  }
+  source << "    default:\n"
+            "        SurfaceDescription surface = MakeDefaultSurface(context.input);\n"
+            "        surface.albedo = float3(1.0f, 0.0f, 1.0f);\n"
+            "        return surface;\n"
+            "    }\n"
+            "}\n";
+  return source.str();
+}
 } // namespace
 
 std::string AuthoredMaterialShaderGenerator::GenerateGroupSource(
@@ -391,13 +423,22 @@ bool AuthoredMaterialShaderGenerator::Generate(
   if (!WriteIfChanged(directory / "MaterialActiveGroup.inc.slang",
                       GenerateActiveGroupSource(groups)) ||
       !WriteIfChanged(directory / "MaterialAlphaTestGroups.inc.slang",
-                      GenerateAlphaTestGroupsSource(groups)))
+                      GenerateAlphaTestGroupsSource(groups)) ||
+      !WriteIfChanged(directory / "MaterialResolveGroups.inc.slang",
+                      GenerateResolveGroupsSource(groups)))
     return false;
 
   std::ostringstream resolve;
   resolve << "permutation MATERIAL_COOK_GROUP = [";
   bool firstResolveGroup = true;
+  std::set<u16> resolveGroups;
   for (u16 group : groups) {
+    const u16 groupClass =
+        group % FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
+    if (groupClass < 4u)
+      resolveGroups.emplace(group - groupClass + (groupClass & 1u));
+  }
+  for (u16 group : resolveGroups) {
     resolve << (firstResolveGroup ? "" : ", ") << group;
     firstResolveGroup = false;
   }

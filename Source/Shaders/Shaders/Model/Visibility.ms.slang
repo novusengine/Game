@@ -1,3 +1,5 @@
+permutation ALPHA_TEST = [0, 1];
+
 #include "DescriptorSet/Global.inc.slang"
 #include "DescriptorSet/Material.inc.slang"
 #include "Model/ModelVisibility.inc.slang"
@@ -7,6 +9,8 @@ struct Constants
     uint queueIndex;
     uint viewIndex;
     uint resourceIndex;
+    uint previousResource;
+    uint geometryQueue;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -33,10 +37,18 @@ struct Constants
 [[vk::binding(20, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityVertexIndices;
 [[vk::binding(21, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityTriangles;
 [[vk::binding(22, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityMaterialTable;
+[[vk::binding(23, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueSolidOneSided0;
+[[vk::binding(24, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueSolidTwoSided0;
+[[vk::binding(25, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueAlphaTestOneSided0;
+[[vk::binding(26, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueAlphaTestTwoSided0;
+[[vk::binding(27, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueSolidOneSided1;
+[[vk::binding(28, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueSolidTwoSided1;
+[[vk::binding(29, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueAlphaTestOneSided1;
+[[vk::binding(30, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueAlphaTestTwoSided1;
 struct MeshVertex
 {
     float4 position : SV_Position;
-    nointerpolation uint recordID : TEXCOORD0;
+    nointerpolation uint recordEntry : TEXCOORD0;
     nointerpolation uint materialInstanceIndex : TEXCOORD1;
     float2 uv0 : TEXCOORD2;
 };
@@ -48,6 +60,20 @@ struct MeshPrimitive
 
 uint LoadRecordID(uint queueIndex)
 {
+    if (_constants.geometryQueue != 0u)
+    {
+        if (_constants.resourceIndex == 0u)
+        {
+            if (_constants.queueIndex == 0u) return _modelGeometryQueueSolidOneSided0[queueIndex];
+            if (_constants.queueIndex == 1u) return _modelGeometryQueueSolidTwoSided0[queueIndex];
+            if (_constants.queueIndex == 2u) return _modelGeometryQueueAlphaTestOneSided0[queueIndex];
+            return _modelGeometryQueueAlphaTestTwoSided0[queueIndex];
+        }
+        if (_constants.queueIndex == 0u) return _modelGeometryQueueSolidOneSided1[queueIndex];
+        if (_constants.queueIndex == 1u) return _modelGeometryQueueSolidTwoSided1[queueIndex];
+        if (_constants.queueIndex == 2u) return _modelGeometryQueueAlphaTestOneSided1[queueIndex];
+        return _modelGeometryQueueAlphaTestTwoSided1[queueIndex];
+    }
     if (_constants.resourceIndex == 0u)
     {
         if (_constants.queueIndex == 0u) return _modelRasterQueueSolidOneSided0[queueIndex];
@@ -65,7 +91,24 @@ uint RasterQueueCapacity()
 {
     uint count;
     uint stride;
-    if (_constants.resourceIndex == 0u)
+    if (_constants.geometryQueue != 0u)
+    {
+        if (_constants.resourceIndex == 0u)
+        {
+            if (_constants.queueIndex == 0u) _modelGeometryQueueSolidOneSided0.GetDimensions(count, stride);
+            else if (_constants.queueIndex == 1u) _modelGeometryQueueSolidTwoSided0.GetDimensions(count, stride);
+            else if (_constants.queueIndex == 2u) _modelGeometryQueueAlphaTestOneSided0.GetDimensions(count, stride);
+            else _modelGeometryQueueAlphaTestTwoSided0.GetDimensions(count, stride);
+        }
+        else
+        {
+            if (_constants.queueIndex == 0u) _modelGeometryQueueSolidOneSided1.GetDimensions(count, stride);
+            else if (_constants.queueIndex == 1u) _modelGeometryQueueSolidTwoSided1.GetDimensions(count, stride);
+            else if (_constants.queueIndex == 2u) _modelGeometryQueueAlphaTestOneSided1.GetDimensions(count, stride);
+            else _modelGeometryQueueAlphaTestTwoSided1.GetDimensions(count, stride);
+        }
+    }
+    else if (_constants.resourceIndex == 0u)
     {
         if (_constants.queueIndex == 0u) _modelRasterQueueSolidOneSided0.GetDimensions(count, stride);
         else if (_constants.queueIndex == 1u) _modelRasterQueueSolidTwoSided0.GetDimensions(count, stride);
@@ -90,7 +133,9 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
           out primitives MeshPrimitive primitives[124])
 {
     uint queueIndex = groupID.x + groupID.y * MODEL_MESH_DISPATCH_MAX_GROUPS_X;
-    uint countIndex = MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + _constants.queueIndex;
+    uint countIndex = (_constants.geometryQueue != 0u ? MODEL_WORK_STAT_GEOMETRY_MESHLETS_BASE :
+                                                       MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE) +
+                      _constants.queueIndex;
     uint queueCount = _constants.resourceIndex == 0u ? _modelVisibilityStats0[countIndex]
                                                       : _modelVisibilityStats1[countIndex];
     if (queueIndex >= queueCount || queueIndex >= RasterQueueCapacity())
@@ -99,7 +144,8 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         return;
     }
 
-    uint recordID = LoadRecordID(queueIndex);
+    uint queueEntry = LoadRecordID(queueIndex);
+    uint recordID = ModelRasterQueueRecordID(queueEntry);
     uint recordCount = _constants.resourceIndex == 0u ? ModelVisibilityRecordCount(_modelVisibilityStats0)
                                                        : ModelVisibilityRecordCount(_modelVisibilityStats1);
     uint boundRecordCount;
@@ -120,20 +166,25 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
     uint lodCount, lodStride;
     uint submeshCount, submeshStride;
     uint meshletCount, meshletStride;
-    uint materialTableCount, materialTableStride;
     _modelVisibilityInstances.GetDimensions(instanceCount, instanceStride);
     _modelVisibilityModels.GetDimensions(modelCount, modelStride);
     _modelVisibilityMeshes.GetDimensions(meshCount, meshStride);
     _modelVisibilityLODs.GetDimensions(lodCount, lodStride);
     _modelVisibilitySubmeshes.GetDimensions(submeshCount, submeshStride);
     _modelVisibilityMeshlets.GetDimensions(meshletCount, meshletStride);
-    _modelVisibilityMaterialTable.GetDimensions(materialTableCount, materialTableStride);
     if (record.instanceIndex >= instanceCount)
     {
         SetMeshOutputCounts(0, 0);
         return;
     }
     ModelInstanceRecord instance = _modelVisibilityInstances[record.instanceIndex];
+    if (instance.generation != packedRecord.instanceGeneration ||
+        instance.replayRevision != packedRecord.replayRevision ||
+        (instance.flags & 1u) == 0u)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
     if (instance.modelIndex >= modelCount)
     {
         SetMeshOutputCounts(0, 0);
@@ -161,25 +212,31 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         return;
     }
     ModelSubmesh submesh = _modelVisibilitySubmeshes[submeshIndex];
-    uint materialTableIndex = instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex;
     uint meshletIndex = model.meshletBase + record.meshletIndex;
-    if (materialTableIndex < instance.materialTableOffset || materialTableIndex >= materialTableCount ||
-        meshletIndex < model.meshletBase || meshletIndex >= meshletCount)
+    if (meshletIndex < model.meshletBase || meshletIndex >= meshletCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
+#if ALPHA_TEST
+    uint materialTableCount, materialTableStride;
+    _modelVisibilityMaterialTable.GetDimensions(materialTableCount, materialTableStride);
+    uint materialTableIndex = instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex;
+    if (materialTableIndex < instance.materialTableOffset || materialTableIndex >= materialTableCount)
     {
         SetMeshOutputCounts(0, 0);
         return;
     }
     uint materialInstanceIndex = _modelVisibilityMaterialTable[materialTableIndex];
+#endif
     ModelMeshlet meshlet = _modelVisibilityMeshlets[meshletIndex];
     uint vertexCount = ModelMeshletVertexCount(meshlet);
     uint triangleCount = ModelMeshletTriangleCount(meshlet);
     uint vertexIndexCount, vertexIndexStride;
     uint positionCount, positionStride;
-    uint attributeCount, attributeStride;
     uint triangleBufferCount, triangleStride;
     _modelVisibilityVertexIndices.GetDimensions(vertexIndexCount, vertexIndexStride);
     _modelVisibilityPositions.GetDimensions(positionCount, positionStride);
-    _modelVisibilityVertexAttributes.GetDimensions(attributeCount, attributeStride);
     _modelVisibilityTriangles.GetDimensions(triangleBufferCount, triangleStride);
     uint vertexBase = model.meshletVertexIndexBase + meshlet.vertexOffset;
     uint triangleBase = model.meshletTriangleBase + meshlet.triangleOffset;
@@ -197,16 +254,24 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
     {
         uint vertexIndex = _modelVisibilityVertexIndices[vertexBase + threadID.x];
         uint positionIndex = model.positionBase + lod.vertexOffset + vertexIndex;
+#if ALPHA_TEST
+        uint attributeCount, attributeStride;
+        _modelVisibilityVertexAttributes.GetDimensions(attributeCount, attributeStride);
         uint attributeIndex = model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex;
         bool validVertex = positionIndex >= model.positionBase && positionIndex < positionCount &&
                            attributeIndex >= model.vertexAttributeBase && attributeIndex < attributeCount;
+#else
+        bool validVertex = positionIndex >= model.positionBase && positionIndex < positionCount;
+#endif
         float3 localPosition = validVertex ? DecodePosition(_modelVisibilityPositions[positionIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent) : float3(0.0f, 0.0f, 0.0f);
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[_constants.viewIndex].worldToClip);
-        vertices[threadID.x].recordID = recordID;
+        vertices[threadID.x].recordEntry = queueEntry;
+#if ALPHA_TEST
         vertices[threadID.x].materialInstanceIndex = materialInstanceIndex;
         vertices[threadID.x].uv0 = validVertex ? DecodeHalf2(_modelVisibilityVertexAttributes[attributeIndex].z) :
                                                  float2(0.0f, 0.0f);
+#endif
     }
 
     for (uint triangleIndex = threadID.x; triangleIndex < triangleCount; triangleIndex += 64u)

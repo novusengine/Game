@@ -18,6 +18,7 @@ public:
 
     mat4x4 worldToView;
     mat4x4 worldToClip;
+    mat4x4 cullingWorldToClip;
 
     vec4 eyePosition;
     vec4 eyeRotation;
@@ -26,6 +27,7 @@ public:
 
     vec4 frustum[6] = { vec4(0.0f), vec4(0.0f), vec4(0.0f), vec4(0.0f), vec4(0.0f), vec4(0.0f) };
     vec4 cullingEyePosition;
+    vec4 cullingViewportSize;
 };
 
 namespace CameraUtils

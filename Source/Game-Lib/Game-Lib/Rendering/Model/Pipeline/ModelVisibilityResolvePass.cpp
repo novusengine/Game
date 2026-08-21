@@ -161,7 +161,7 @@ namespace ModelPipeline
         const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        if (!ModelRendering::UseMeshletModelRenderer())
+        if (!ModelRendering::UseMeshletModelRenderer() || view.GetNormalTarget() == Renderer::ImageID::Invalid())
             return;
         struct Data
         {

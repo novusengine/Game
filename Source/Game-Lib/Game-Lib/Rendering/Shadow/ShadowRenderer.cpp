@@ -538,6 +538,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 
 void ShadowRenderer::Upload()
 {
+    ZoneScoped;
     if (ModelRendering::UseMeshletModelRenderer())
         _modelShadowRenderer->Upload(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer);
 }
@@ -887,7 +888,7 @@ void ShadowRenderer::SVSMUpdateRecorder::RebuildDynamicPageSet()
     dynamicAcquireConstants->dynamicPhase = 1;
 
     commandList.PushConstant(dynamicAcquireConstants, 0, sizeof(Constants));
-    commandList.Dispatch(tableCapacity / 256, 1, 1);
+    commandList.Dispatch((numClipmaps * config.pageTableSize * config.pageTableSize) / 256, 1, 1);
     commandList.EndPipeline(owner._svsmDynamicUpdatePipeline);
 
     commandList.BufferBarrier(data.dynamicPageTableBuffer, Renderer::BufferPassUsage::COMPUTE);

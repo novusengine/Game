@@ -175,16 +175,16 @@ void CullForCamera(DrawInput drawInput,
         bool isIntersectingNearZ = false;
         if (_constants.cullingDataIsWorldspace)
         {
-            bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, camera.worldToClip);
+            bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, camera.cullingWorldToClip);
         }
         else
         {
-            float4x4 mvp = mul(camera.worldToClip, drawInput.instanceMatrix);
+            float4x4 mvp = mul(camera.cullingWorldToClip, drawInput.instanceMatrix);
             bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, mvp);
         }
 
-        uint2 viewportSize = uint2(_constants.viewportSizeX, _constants.viewportSizeY);
-        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip, viewportSize))
+        uint2 viewportSize = uint2(camera.cullingViewportSize.xy);
+        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.cullingEyePosition.xyz, _depthPyramid, _depthSampler, camera.cullingWorldToClip, viewportSize))
         {
             isVisible = false;
         }

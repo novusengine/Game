@@ -18,21 +18,20 @@ struct Constants
 };
 [[vk::push_constant]] Constants _constants;
 
-[[vk::binding(0, PER_PASS)]] StructuredBuffer<ViewInstanceInput> _viewInputs;
-[[vk::binding(1, PER_PASS)]] RWStructuredBuffer<uint> _lodHistory;
-[[vk::binding(2, PER_PASS)]] StructuredBuffer<ModelInstanceRecord> _modelInstances;
-[[vk::binding(3, PER_PASS)]] StructuredBuffer<ModelRecord> _modelRecords;
-[[vk::binding(4, PER_PASS)]] StructuredBuffer<ModelMesh> _modelMeshes;
-[[vk::binding(5, PER_PASS)]] StructuredBuffer<ModelLOD> _modelLODs;
-[[vk::binding(6, PER_PASS)]] StructuredBuffer<ModelSubmesh> _modelSubmeshes;
-[[vk::binding(7, PER_PASS)]] StructuredBuffer<uint> _geometryGroupMasks;
-[[vk::binding(8, PER_PASS)]] StructuredBuffer<uint> _materialTable;
+[[vk::binding(0, PER_PASS)]] StructuredBuffer<ViewInstanceInput> _selectedInputs0;
+[[vk::binding(1, PER_PASS)]] StructuredBuffer<ViewInstanceInput> _selectedInputs1;
+[[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint> _lodHistory;
+[[vk::binding(3, PER_PASS)]] StructuredBuffer<ModelInstanceRecord> _modelInstances;
+[[vk::binding(4, PER_PASS)]] StructuredBuffer<ModelRecord> _modelRecords;
+[[vk::binding(5, PER_PASS)]] StructuredBuffer<ModelMesh> _modelMeshes;
+[[vk::binding(6, PER_PASS)]] StructuredBuffer<ModelLOD> _modelLODs;
+[[vk::binding(7, PER_PASS)]] StructuredBuffer<ModelSubmesh> _modelSubmeshes;
+[[vk::binding(8, PER_PASS)]] StructuredBuffer<uint> _geometryGroupMasks;
+[[vk::binding(9, PER_PASS)]] StructuredBuffer<uint> _materialTable;
 [[vk::binding(11, PER_PASS)]] RWStructuredBuffer<ModelMeshletChunk> _chunkQueue0;
 [[vk::binding(12, PER_PASS)]] RWStructuredBuffer<uint> _workStats0;
 [[vk::binding(13, PER_PASS)]] RWStructuredBuffer<ModelMeshletChunk> _chunkQueue1;
 [[vk::binding(14, PER_PASS)]] RWStructuredBuffer<uint> _workStats1;
-[[vk::binding(15, PER_PASS)]] RWStructuredBuffer<uint> _instanceVisibility0;
-[[vk::binding(16, PER_PASS)]] RWStructuredBuffer<uint> _instanceVisibility1;
 
 void AddStat(uint index, uint value)
 {
@@ -50,20 +49,6 @@ void StoreChunk(uint index, ModelMeshletChunk chunk)
 {
     if (_constants.resourceIndex == 0u) _chunkQueue0[index] = chunk;
     else _chunkQueue1[index] = chunk;
-}
-
-void MarkInstanceVisible(uint instanceIndex)
-{
-    uint wordIndex = instanceIndex >> 5u;
-    uint boundWordCount;
-    uint boundWordStride;
-    if (_constants.resourceIndex == 0u) _instanceVisibility0.GetDimensions(boundWordCount, boundWordStride);
-    else _instanceVisibility1.GetDimensions(boundWordCount, boundWordStride);
-    if (wordIndex >= boundWordCount)
-        return;
-    uint bit = 1u << (instanceIndex & 31u);
-    if (_constants.resourceIndex == 0u) InterlockedOr(_instanceVisibility0[wordIndex], bit);
-    else InterlockedOr(_instanceVisibility1[wordIndex], bit);
 }
 
 uint SelectLOD(ModelMesh mesh, ModelRecord model, ModelInstanceRecord instance, Camera camera, uint meshIndex,
@@ -123,44 +108,20 @@ bool GeometryGroupEnabled(ModelInstanceRecord instance, uint groupID)
            (_geometryGroupMasks[absoluteWord] & (1u << (groupID & 31u))) != 0u;
 }
 
+groupshared uint _selectedLOD;
+groupshared uint _selectedLODValid;
+
 [shader("compute")]
-[numthreads(1, 1, 1)]
-void main(uint3 DispatchThreadID : SV_DispatchThreadID)
+[numthreads(16, 1, 1)]
+void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    if (DispatchThreadID.x >= _constants.inputCount)
-        return;
-
-    ViewInstanceInput input = _viewInputs[DispatchThreadID.x];
-    if (input.instanceIndex == 0xFFFFFFFFu)
-        return;
-    uint boundInstanceCount;
-    uint boundInstanceStride;
-    _modelInstances.GetDimensions(boundInstanceCount, boundInstanceStride);
-    if (input.instanceIndex >= boundInstanceCount)
-        return;
+    uint inputIndex = groupID.x;
+    uint lane = groupThreadID.x;
+    ViewInstanceInput input = _constants.resourceIndex == 0u ? _selectedInputs0[inputIndex] :
+                                                                _selectedInputs1[inputIndex];
     ModelInstanceRecord instance = _modelInstances[input.instanceIndex];
-    AddStat(MODEL_WORK_STAT_TESTED_INSTANCES, 1u);
-    if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u ||
-        (instance.flags & MODEL_INSTANCE_FORCE_TRANSPARENT) != 0u)
-    {
-        AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
-        return;
-    }
-
-    uint boundModelCount;
-    uint boundModelStride;
-    _modelRecords.GetDimensions(boundModelCount, boundModelStride);
-    if (instance.modelIndex >= boundModelCount)
-        return;
     ModelRecord model = _modelRecords[instance.modelIndex];
     Camera camera = _cameras[_constants.viewIndex];
-    float4 worldBounds = TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld);
-    if (_constants.showCullReasons == 0u && !ModelSphereInsideFrustum(camera, worldBounds))
-    {
-        AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
-        return;
-    }
-    MarkInstanceVisible(input.instanceIndex);
 
     uint boundMeshCount;
     uint boundMeshStride;
@@ -184,30 +145,37 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
         if (absoluteMeshIndex < model.meshBase || absoluteMeshIndex >= boundMeshCount)
             continue;
         ModelMesh mesh = _modelMeshes[absoluteMeshIndex];
-        if (mesh.numLODs == 0u)
-            continue;
-
         uint lodBase = model.meshLODBase + mesh.lodOffset;
         uint lodEnd = lodBase + mesh.numLODs;
         uint historyIndex = input.lodHistoryOffset + meshIndex;
-        if (lodBase < model.meshLODBase || lodEnd < lodBase || lodEnd > boundLODCount ||
-            historyIndex < input.lodHistoryOffset || historyIndex >= boundLODHistoryCount)
+        if (lane == 0u)
+        {
+            _selectedLODValid = mesh.numLODs != 0u && lodBase >= model.meshLODBase && lodEnd >= lodBase &&
+                lodEnd <= boundLODCount && historyIndex >= input.lodHistoryOffset &&
+                historyIndex < boundLODHistoryCount ? 1u : 0u;
+            if (_selectedLODValid != 0u)
+                _selectedLOD = SelectLOD(mesh, model, instance, camera, meshIndex, input.lodHistoryOffset);
+        }
+        GroupMemoryBarrierWithGroupSync();
+        if (_selectedLODValid == 0u)
             continue;
 
-        uint localLOD = SelectLOD(mesh, model, instance, camera, meshIndex, input.lodHistoryOffset);
+        uint localLOD = _selectedLOD;
         ModelLOD lod = _modelLODs[lodBase + localLOD];
         if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u &&
             (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u)
         {
-            AddStat(MODEL_WORK_STAT_SKIPPED_SKINNED_LODS, 1u);
+            if (lane == 0u)
+                AddStat(MODEL_WORK_STAT_SKIPPED_SKINNED_LODS, 1u);
             continue;
         }
-        AddStat(MODEL_WORK_STAT_LOD_SELECTION_BASE + min(localLOD, MODEL_WORK_STAT_LOD_SELECTION_COUNT - 1u), 1u);
+        if (lane == 0u)
+            AddStat(MODEL_WORK_STAT_LOD_SELECTION_BASE + min(localLOD, MODEL_WORK_STAT_LOD_SELECTION_COUNT - 1u), 1u);
 
         uint submeshBase = model.submeshBase + lod.submeshOffset;
         uint safeSubmeshCount = submeshBase < model.submeshBase ? 0u :
             min(lod.numSubmeshes, boundSubmeshCount - min(submeshBase, boundSubmeshCount));
-        for (uint submeshIndex = 0u; submeshIndex < safeSubmeshCount; ++submeshIndex)
+        for (uint submeshIndex = lane; submeshIndex < safeSubmeshCount; submeshIndex += 16u)
         {
             uint absoluteSubmeshIndex = submeshBase + submeshIndex;
             if (submeshBase < model.submeshBase || absoluteSubmeshIndex < submeshBase ||
@@ -237,6 +205,7 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
             if (materialRasterClass > 1u)
                 continue;
             uint rasterClass = materialRasterClass * 2u + ((materialInstance.flags & MATERIAL_TWO_SIDED) != 0u);
+            uint resolveClass = MaterialResolveGroup(MaterialExecutionGroup(materialInstance)) & 1u;
 
             uint numChunks = (submesh.numMeshlets + MODEL_CHUNK_MESHLET_COUNT - 1u) / MODEL_CHUNK_MESHLET_COUNT;
             uint chunkBase;
@@ -249,20 +218,18 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
             {
                 uint chunkOffset = localChunk * MODEL_CHUNK_MESHLET_COUNT;
                 ModelMeshletChunk chunk;
-                chunk.instanceIndex = input.instanceIndex;
-                chunk.meshIndex = meshIndex;
+                chunk.packedInstanceAndMesh = PackModelInstanceAndMesh(input.instanceIndex, meshIndex);
                 chunk.meshletBase = model.meshletBase + submesh.meshletOffset + chunkOffset;
                 uint meshletCount = min(submesh.numMeshlets - chunkOffset, MODEL_CHUNK_MESHLET_COUNT);
                 chunk.packedCountRasterAndLOD = meshletCount |
                     (rasterClass << MODEL_CHUNK_RASTER_CLASS_SHIFT) |
                     (localLOD << MODEL_CHUNK_LOD_SHIFT) |
-                    (submeshIndex << MODEL_CHUNK_SUBMESH_SHIFT);
+                    (submeshIndex << MODEL_CHUNK_SUBMESH_SHIFT) |
+                    (resolveClass << MODEL_CHUNK_RESOLVE_CLASS_SHIFT);
                 chunk.lodHistoryIndex = input.lodHistoryOffset + meshIndex;
-                chunk.reserved0 = 0u;
-                chunk.reserved1 = 0u;
-                chunk.reserved2 = 0u;
                 StoreChunk(chunkBase + localChunk, chunk);
             }
         }
+        GroupMemoryBarrierWithGroupSync();
     }
 }

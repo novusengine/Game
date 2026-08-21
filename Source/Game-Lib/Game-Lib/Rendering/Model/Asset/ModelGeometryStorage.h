@@ -71,6 +71,23 @@ namespace ModelLoading
     static_assert(offsetof(ModelGPURecord, positionBase) == 80);
     static_assert(offsetof(ModelGPURecord, reserved0) == 168);
 
+    struct ModelShaderRecord
+    {
+        FileFormat::Model::Bounds bounds;
+        u32 meshBase = 0;
+        u32 numMeshes = 0;
+        u32 meshLODBase = 0;
+        u32 submeshBase = 0;
+        u32 meshletBase = 0;
+        u32 numMeshlets = 0;
+        u32 positionBase = 0;
+        u32 vertexAttributeBase = 0;
+        u32 meshletVertexIndexBase = 0;
+        u32 meshletTriangleBase = 0;
+        u32 reserved[2] = {};
+    };
+    static_assert(sizeof(ModelShaderRecord) == 80);
+
     struct ModelGeometryStorageStats
     {
         u32 numModels = 0;
@@ -101,14 +118,14 @@ namespace ModelLoading
         }
         bool HasModel(RenderAssets::ModelHandle handle) const
         {
-            return static_cast<RenderAssets::ModelHandle::type>(handle) < _records.Count();
+            return static_cast<RenderAssets::ModelHandle::type>(handle) < _records.size();
         }
         bool FindMaterialSlot(RenderAssets::ModelHandle handle, u32 stableID, u32& outSlot) const;
         std::span<const FileFormat::Model::Parameter> GetParameters(RenderAssets::ModelHandle handle) const;
         std::span<const FileFormat::Model::ParameterBinding> GetParameterBindings(RenderAssets::ModelHandle handle) const;
         ModelGeometryStorageStats GetStats() const;
 
-        const Renderer::GPUVector<ModelGPURecord>& GetRecords() const { return _records; }
+        const Renderer::GPUVector<ModelShaderRecord>& GetRecords() const { return _gpuRecords; }
         const Renderer::GPUVector<FileFormat::Model::Mesh>& GetMeshes() const { return _meshes; }
         const Renderer::GPUVector<FileFormat::Model::MeshLOD>& GetMeshLODs() const { return _meshLODs; }
         const Renderer::GPUVector<FileFormat::Model::Submesh>& GetSubmeshes() const { return _submeshes; }
@@ -119,9 +136,9 @@ namespace ModelLoading
         const Renderer::GPUVector<u32>& GetMeshletVertexIndices() const { return _meshletVertexIndices; }
         const Renderer::GPUVector<FileFormat::Model::PackedMeshletTriangle>& GetMeshletTriangles() const { return _meshletTriangles; }
         const Renderer::GPUVector<u16>& GetJointPaletteRemaps() const { return _jointPaletteRemaps; }
-        const Renderer::GPUVector<FileFormat::Model::MaterialSlot>& GetMaterialSlots() const { return _materialSlots; }
-        const Renderer::GPUVector<FileFormat::Model::EmbeddedInstanceSet>& GetEmbeddedInstanceSets() const { return _embeddedInstanceSets; }
-        const Renderer::GPUVector<FileFormat::Model::EmbeddedInstance>& GetEmbeddedInstances() const { return _embeddedInstances; }
+        const std::vector<FileFormat::Model::MaterialSlot>& GetMaterialSlots() const { return _materialSlots; }
+        const std::vector<FileFormat::Model::EmbeddedInstanceSet>& GetEmbeddedInstanceSets() const { return _embeddedInstanceSets; }
+        const std::vector<FileFormat::Model::EmbeddedInstance>& GetEmbeddedInstances() const { return _embeddedInstances; }
 
       private:
         struct ParameterRange
@@ -132,7 +149,8 @@ namespace ModelLoading
             u32 bindingCount = 0;
         };
 
-        Renderer::GPUVector<ModelGPURecord> _records;
+        std::vector<ModelGPURecord> _records;
+        Renderer::GPUVector<ModelShaderRecord> _gpuRecords;
         Renderer::GPUVector<FileFormat::Model::Mesh> _meshes;
         Renderer::GPUVector<FileFormat::Model::MeshLOD> _meshLODs;
         Renderer::GPUVector<FileFormat::Model::Submesh> _submeshes;
@@ -143,9 +161,9 @@ namespace ModelLoading
         Renderer::GPUVector<u32> _meshletVertexIndices;
         Renderer::GPUVector<FileFormat::Model::PackedMeshletTriangle> _meshletTriangles;
         Renderer::GPUVector<u16> _jointPaletteRemaps;
-        Renderer::GPUVector<FileFormat::Model::MaterialSlot> _materialSlots;
-        Renderer::GPUVector<FileFormat::Model::EmbeddedInstanceSet> _embeddedInstanceSets;
-        Renderer::GPUVector<FileFormat::Model::EmbeddedInstance> _embeddedInstances;
+        std::vector<FileFormat::Model::MaterialSlot> _materialSlots;
+        std::vector<FileFormat::Model::EmbeddedInstanceSet> _embeddedInstanceSets;
+        std::vector<FileFormat::Model::EmbeddedInstance> _embeddedInstances;
         std::vector<ParameterRange> _parameterRanges;
         std::vector<FileFormat::Model::Parameter> _parameters;
         std::vector<FileFormat::Model::ParameterBinding> _parameterBindings;

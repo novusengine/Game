@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Game-Lib/Rendering/Material/MaterialResolvePass.h"
-#include "Game-Lib/Rendering/Material/MaterialResolveResources.h"
 #include "Game-Lib/Rendering/Model/Pipeline/ModelForwardPass.h"
 #include "Game-Lib/Rendering/Model/Pipeline/ModelViewWorkPass.h"
 #include "Game-Lib/Rendering/Model/Pipeline/ModelTransparentPass.h"
@@ -13,10 +12,12 @@
 #include "Game-Lib/Rendering/Model/View/ModelTransparentWorkResources.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
 
+#include <array>
 #include <memory>
 
 struct RenderResources;
 class GameRenderer;
+class MaterialRenderer;
 
 namespace RenderAssets { class RenderAssetResources; }
 namespace Renderer { class RenderGraph; class Renderer; }
@@ -40,6 +41,8 @@ namespace ModelRendering
                                        bool mainView);
         void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddCommonMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                          MaterialRenderer& materialRenderer, u8 frameIndex);
         void AddTransparentCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddTransparentRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddTransparentSelectionOutlinePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -50,6 +53,7 @@ namespace ModelRendering
         RenderScenes::RenderView& GetView() { return _view; }
         const RenderScenes::RenderView& GetView() const { return _view; }
         bool IsReadyThisFrame() const { return _readyThisFrame; }
+        bool HasTransparentWork() const { return _state.GetLoadedLOD0TransparentMeshlets() != 0; }
         const ModelView::ModelViewWorkResources& GetWork() const { return _work; }
         const ModelView::ModelTransparentWorkResources& GetTransparentWork() const { return _transparentWork; }
         ModelView::ModelViewState& GetState() { return _state; }
@@ -64,7 +68,6 @@ namespace ModelRendering
         ModelView::ModelViewState _state;
         ModelView::ModelViewWorkResources _work;
         ModelView::ModelTransparentWorkResources _transparentWork;
-        std::unique_ptr<MaterialRendering::MaterialResolveResources> _materialResources;
         ModelPipeline::ModelViewWorkPass _viewWorkPass;
         std::unique_ptr<ModelPipeline::ModelVisibilityPass> _visibilityPass;
         std::unique_ptr<ModelPipeline::ModelForwardPass> _forwardPass;
@@ -72,14 +75,22 @@ namespace ModelRendering
         ModelPipeline::ModelTransparentSelectionPass _transparentSelectionPass;
         std::unique_ptr<MaterialRendering::MaterialResolvePass> _materialResolvePass;
         std::unique_ptr<ModelPipeline::ModelVisibilityResolvePass> _visibilityResolvePass;
+        std::array<Renderer::BufferID, 17> _uploadBindings = {};
+        u32 _uploadQueueGeneration = 0;
+        u32 _uploadSelectionGeneration = 0;
+        u32 _uploadHistoryGeneration = 0;
+        u32 _uploadTransparentGeneration = 0;
+        u32 _uploadWarmupFrames = 0;
         i32 _forcedLOD = -1;
         u32 _handledTemporalReset = 0;
+        bool _temporalResetThisFrame = false;
         bool _readyThisFrame = false;
         bool _phase1Ready = false;
         bool _viewWorkDescriptorsReady = false;
         bool _rasterDescriptorsReady = false;
         bool _transparentDescriptorsReady = false;
         bool _transparentSelectionDescriptorsReady = false;
+        bool _uploadBindingsValid = false;
         Renderer::DepthImageID _transparentSelectionDepth = Renderer::DepthImageID::Invalid();
         uvec2 _transparentSelectionDimensions = {};
         bool _reportedQueueOverflow = false;

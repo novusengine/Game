@@ -25,14 +25,14 @@ namespace ModelPipeline
     {
         Renderer::MeshShaderDesc meshShader;
         meshShader.shaderEntry = gameRenderer->GetShaderEntry("Model/Forward.ms"_h, "Model/Forward.ms");
-        Renderer::PixelShaderDesc pixelShader;
-        pixelShader.shaderEntry = gameRenderer->GetShaderEntry("Generated/MaterialGroupsDirectForward.ps"_h,
-                                                                "Generated/MaterialGroupsDirectForward.ps");
+        Renderer::PixelShaderDesc opaquePixelShader;
+        opaquePixelShader.shaderEntry = gameRenderer->GetShaderEntry("Generated/MaterialGroupsDirectForwardOpaque.ps"_h,
+                                                                      "Generated/MaterialGroupsDirectForwardOpaque.ps");
 
         Renderer::GraphicsPipelineDesc desc;
-        desc.debugName = "Model Direct Forward One Sided";
+        desc.debugName = "Model Direct Forward Opaque One Sided";
         desc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(meshShader)};
-        desc.states.pixelShader = renderer->LoadShader(pixelShader);
+        desc.states.pixelShader = renderer->LoadShader(opaquePixelShader);
         desc.states.renderTargetFormats[0] = renderer->GetSwapChainImageFormat();
         desc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
         desc.states.depthStencilState.depthEnable = true;
@@ -40,14 +40,28 @@ namespace ModelPipeline
         desc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER_EQUAL;
         desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
         desc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-        _oneSidedPipeline = renderer->CreatePipeline(desc);
+        _opaqueOneSidedPipeline = renderer->CreatePipeline(desc);
 
-        desc.debugName = "Model Direct Forward Two Sided";
+        desc.debugName = "Model Direct Forward Opaque Two Sided";
         desc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
-        _twoSidedPipeline = renderer->CreatePipeline(desc);
+        _opaqueTwoSidedPipeline = renderer->CreatePipeline(desc);
 
-        _descriptorSet.RegisterPipeline(renderer, _oneSidedPipeline);
-        _descriptorSet.RegisterPipeline(renderer, _twoSidedPipeline);
+        Renderer::PixelShaderDesc alphaTestPixelShader;
+        alphaTestPixelShader.shaderEntry = gameRenderer->GetShaderEntry("Generated/MaterialGroupsDirectForwardAlphaTest.ps"_h,
+                                                                         "Generated/MaterialGroupsDirectForwardAlphaTest.ps");
+        desc.debugName = "Model Direct Forward Alpha Test One Sided";
+        desc.states.pixelShader = renderer->LoadShader(alphaTestPixelShader);
+        desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        _alphaTestOneSidedPipeline = renderer->CreatePipeline(desc);
+
+        desc.debugName = "Model Direct Forward Alpha Test Two Sided";
+        desc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+        _alphaTestTwoSidedPipeline = renderer->CreatePipeline(desc);
+
+        _descriptorSet.RegisterPipeline(renderer, _opaqueOneSidedPipeline);
+        _descriptorSet.RegisterPipeline(renderer, _opaqueTwoSidedPipeline);
+        _descriptorSet.RegisterPipeline(renderer, _alphaTestOneSidedPipeline);
+        _descriptorSet.RegisterPipeline(renderer, _alphaTestTwoSidedPipeline);
         _descriptorSet.Init(renderer);
     }
 
@@ -208,10 +222,10 @@ namespace ModelPipeline
                     commandList.DrawMeshTasksIndirect(data.arguments, queueIndex * sizeof(u32) * ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(pipeline);
                 };
-                Draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED);
-                Draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED);
-                Draw(_oneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED);
-                Draw(_twoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED);
+                Draw(_opaqueOneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED);
+                Draw(_opaqueTwoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED);
+                Draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED);
+                Draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED);
                 commandList.EndRenderPass(pass);
             });
     }

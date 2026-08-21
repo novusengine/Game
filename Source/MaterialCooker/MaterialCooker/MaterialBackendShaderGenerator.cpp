@@ -26,6 +26,25 @@ namespace
         return groups;
     }
 
+    std::set<u16> CollectDirectForwardGroups(const MaterialCookPlan& plan, bool alphaTest)
+    {
+        std::set<u16> groups;
+        for (const CookedMaterialProgram& cooked : plan.programs)
+        {
+            for (const FileFormat::Material::MaterialProgramRoute& route : cooked.rasterRoutes)
+            {
+                const auto groupClass = FileFormat::Material::ABI::GetExecutionGroupClass(route.executionGroupID);
+                const bool isOpaque = groupClass == FileFormat::Material::ABI::ExecutionGroup::OpaqueSimple ||
+                    groupClass == FileFormat::Material::ABI::ExecutionGroup::OpaqueLayered;
+                const bool isAlphaTest = groupClass == FileFormat::Material::ABI::ExecutionGroup::AlphaTestSimple ||
+                    groupClass == FileFormat::Material::ABI::ExecutionGroup::AlphaTestLayered;
+                if ((!alphaTest && isOpaque) || (alphaTest && isAlphaTest))
+                    groups.emplace(route.executionGroupID);
+            }
+        }
+        return groups;
+    }
+
     void WriteGroupSelection(std::ostringstream& source, const std::set<u16>& groups)
     {
         source << "permutation MATERIAL_COOK_GROUP = [";
@@ -171,11 +190,22 @@ namespace MaterialCooking
         return source.str();
     }
 
-    std::string MaterialBackendShaderGenerator::GenerateDirectForwardSource(const MaterialCookPlan& plan)
+    std::string MaterialBackendShaderGenerator::GenerateDirectForwardOpaqueSource(const MaterialCookPlan& plan)
     {
-        const std::set<u16> groups = CollectGroups(plan, false);
+        return GenerateDirectForwardSource(plan, false);
+    }
+
+    std::string MaterialBackendShaderGenerator::GenerateDirectForwardAlphaTestSource(const MaterialCookPlan& plan)
+    {
+        return GenerateDirectForwardSource(plan, true);
+    }
+
+    std::string MaterialBackendShaderGenerator::GenerateDirectForwardSource(const MaterialCookPlan& plan, bool alphaTest)
+    {
+        const std::set<u16> groups = CollectDirectForwardGroups(plan, alphaTest);
         std::ostringstream source;
-        source << "// Generated dynamically routed Material forward backend. Do not hand edit.\n";
+        source << "// Generated " << (alphaTest ? "alpha-test" : "opaque")
+               << " Material direct-forward backend. Do not hand edit.\n";
         for (u16 group : groups)
             source << "#include \"Generated/MaterialGroup" << group << ".inc.slang\"\n";
         source << "#include \"DescriptorSet/Global.inc.slang\"\n"
@@ -195,25 +225,21 @@ namespace MaterialCooking
                   "        surface.albedo = float3(1.0f, 0.0f, 1.0f);\n"
                   "        return surface;\n"
                   "    }\n"
-                  "}\n\n"
-                  "float EvaluateDirectCoverage(uint executionGroup, uint localProgramID, MaterialEvaluationContext context)\n"
-                  "{\n"
-                  "    switch (executionGroup)\n"
-                  "    {\n";
-        for (u16 group : groups)
+                  "}\n\n";
+        if (alphaTest)
         {
-            const auto groupClass = FileFormat::Material::ABI::GetExecutionGroupClass(group);
-            if (groupClass == FileFormat::Material::ABI::ExecutionGroup::AlphaTestSimple ||
-                groupClass == FileFormat::Material::ABI::ExecutionGroup::AlphaTestLayered)
-            {
+            source << "float EvaluateDirectCoverage(uint executionGroup, uint localProgramID, MaterialEvaluationContext context)\n"
+                      "{\n"
+                      "    switch (executionGroup)\n"
+                      "    {\n";
+            for (u16 group : groups)
                 source << "    case " << group << "u: return EvaluateCookedMaterialCoverageGroup" << group
                        << "(localProgramID, context);\n";
-            }
+            source << "    default: return 1.0f;\n"
+                      "    }\n"
+                      "}\n\n";
         }
-        source << "    default: return 1.0f;\n"
-                  "    }\n"
-                  "}\n\n"
-                  "struct Constants\n"
+        source << "struct Constants\n"
                   "{\n"
                   "    float4 shadowSettings;\n"
                   "    uint viewIndex;\n"
@@ -232,15 +258,18 @@ namespace MaterialCooking
                   "    MaterialEvaluationContext context = MakeMaterialContext(input, frontFacing);\n"
                   "    MaterialRecord material = _materials[context.instance.materialIndex];\n"
                   "    uint executionGroup = MaterialExecutionGroup(context.instance);\n"
-                  "    uint localProgramID = MaterialGroupLocalProgramID(material, _constants.rasterClass);\n"
-                  "    if (_constants.rasterClass == 1u && material.programID != FALLBACK_MATERIAL_PROGRAM_ID)\n"
-                  "    {\n"
-                  "        float coverage = EvaluateDirectCoverage(executionGroup, localProgramID, context);\n"
-                  "        if (coverage < 0.0f) discard;\n"
-                  "        float alphaCutoff = asfloat(_materialParameters.Load(context.instance.parameterOffset + MATERIAL_ALPHA_CUTOFF_OFFSET));\n"
-                  "        if (saturate(coverage) < alphaCutoff) discard;\n"
-                  "    }\n"
-                  "    SurfaceDescription surface = material.programID == FALLBACK_MATERIAL_PROGRAM_ID\n"
+                  "    uint localProgramID = MaterialGroupLocalProgramID(material, " << (alphaTest ? 1u : 0u) << "u);\n";
+        if (alphaTest)
+        {
+            source << "    if (material.programID != FALLBACK_MATERIAL_PROGRAM_ID)\n"
+                      "    {\n"
+                      "        float coverage = EvaluateDirectCoverage(executionGroup, localProgramID, context);\n"
+                      "        if (coverage < 0.0f) discard;\n"
+                      "        float alphaCutoff = asfloat(_materialParameters.Load(context.instance.parameterOffset + MATERIAL_ALPHA_CUTOFF_OFFSET));\n"
+                      "        if (saturate(coverage) < alphaCutoff) discard;\n"
+                      "    }\n";
+        }
+        source << "    SurfaceDescription surface = material.programID == FALLBACK_MATERIAL_PROGRAM_ID\n"
                   "        ? EvaluateFallbackMaterial(context.instance, LoadMaterialParameters(context.instance.parameterOffset), context.input)\n"
                   "        : EvaluateDirectMaterial(executionGroup, localProgramID, context);\n"
                   "    float3 normal = context.input.geometricNormal;\n"
@@ -292,8 +321,10 @@ namespace MaterialCooking
     {
         return WriteSource(directory / "MaterialGroupsCoverage.ps.slang",
                            GenerateCoverageSource(plan)) &&
-               WriteSource(directory / "MaterialGroupsDirectForward.ps.slang",
-                           GenerateDirectForwardSource(plan)) &&
+               WriteSource(directory / "MaterialGroupsDirectForwardOpaque.ps.slang",
+                           GenerateDirectForwardOpaqueSource(plan)) &&
+               WriteSource(directory / "MaterialGroupsDirectForwardAlphaTest.ps.slang",
+                           GenerateDirectForwardAlphaTestSource(plan)) &&
                WriteSource(directory / "MaterialGroupsForward.ps.slang",
                            GenerateForwardSource(plan)) &&
                WriteSource(directory / "MaterialGroupsSelection.ps.slang",

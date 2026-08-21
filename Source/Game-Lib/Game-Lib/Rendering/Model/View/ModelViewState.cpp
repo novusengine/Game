@@ -6,13 +6,17 @@
 
 #include <Renderer/Renderer.h>
 
+#include <algorithm>
+
 namespace ModelView
 {
     ModelViewState::ModelViewState(bool validateTransfers)
-        : _inputs(validateTransfers), _lodHistory(validateTransfers)
+        : _inputs(validateTransfers), _transparentEligibility(validateTransfers), _lodHistory(validateTransfers)
     {
         _inputs.SetDebugName("Model View Instance Inputs");
         _inputs.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+        _transparentEligibility.SetDebugName("Model View Transparent Eligibility");
+        _transparentEligibility.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
         _lodHistory.SetDebugName("Model View LOD History");
         _lodHistory.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
@@ -105,6 +109,13 @@ namespace ModelView
         const u32 firstInput = _inputs.AddCount(static_cast<u32>(_inputSlots.size() - oldSize));
         for (u32 inputIndex = firstInput; inputIndex < _inputs.Count(); ++inputIndex)
             _inputs[inputIndex].instanceIndex = RenderScenes::INVALID_SCENE_INDEX;
+        const u32 requiredEligibilityWords = (static_cast<u32>(_inputSlots.size()) + 31u) / 32u;
+        if (requiredEligibilityWords > _transparentEligibility.Count())
+        {
+            const u32 firstWord = _transparentEligibility.AddCount(requiredEligibilityWords - _transparentEligibility.Count());
+            for (u32 wordIndex = firstWord; wordIndex < requiredEligibilityWords; ++wordIndex)
+                _transparentEligibility[wordIndex] = 0;
+        }
     }
 
     void ModelViewState::ActivateInputSlot(const RenderScenes::RenderScene& scene, u32 slotIndex, RenderScenes::ModelInstanceHandle handle,
@@ -151,6 +162,7 @@ namespace ModelView
         _loadedLOD0Triangles -= slot.lod0Triangles;
         _loadedLOD0TransparentMeshlets -= slot.transparentMeshlets;
         _loadedLOD0TransparentTriangles -= slot.transparentTriangles;
+        SetTransparentEligible(slotIndex, false);
         _lodHistoryAllocator.Free(slot.lodHistory);
         slot = {};
         _inputs[slotIndex] = {RenderScenes::INVALID_SCENE_INDEX, 0};
@@ -209,6 +221,7 @@ namespace ModelView
         _loadedLOD0TransparentTriangles -= slotState.transparentTriangles;
         slotState.transparentMeshlets = 0;
         slotState.transparentTriangles = 0;
+        SetTransparentEligible(slotIndex, false);
         if (!slotState.active)
             return;
 
@@ -221,6 +234,23 @@ namespace ModelView
 
         const auto& materialTable = scene.GetModelMaterialTables().GetEntries();
         const bool forceTransparent = (instance->flags & ModelScene::ModelInstanceFlagForceTransparent) != 0;
+        bool transparentEligible = forceTransparent;
+        const u32 availableMaterialCount = instance->materialTableOffset < materialTable.Count()
+            ? materialTable.Count() - instance->materialTableOffset : 0u;
+        const u32 materialTableEnd = instance->materialTableOffset +
+                                     std::min(instance->materialTableCount, availableMaterialCount);
+        for (u32 materialIndex = instance->materialTableOffset;
+             !transparentEligible && materialIndex < materialTableEnd; ++materialIndex)
+        {
+            const u32 materialInstanceIndex = materialTable[materialIndex];
+            if (materialInstanceIndex >= materials.GetMaterialInstances().Count())
+                continue;
+            const auto& materialInstance = materials.GetMaterialInstances()[materialInstanceIndex];
+            const u32 executionGroupClass = (materialInstance.packedClassification >> 16u) % FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
+            transparentEligible = executionGroupClass / 2u == static_cast<u32>(FileFormat::Material::RasterClass::Transparent);
+        }
+        SetTransparentEligible(slotIndex, transparentEligible);
+
         const ModelLoading::ModelGPURecord& modelRecord = geometry.GetRecord(model);
         for (u32 meshIndex = 0; meshIndex < modelRecord.numMeshes; ++meshIndex)
         {
@@ -251,10 +281,25 @@ namespace ModelView
         _loadedLOD0TransparentTriangles += slotState.transparentTriangles;
     }
 
+    void ModelViewState::SetTransparentEligible(u32 slotIndex, bool eligible)
+    {
+        const u32 wordIndex = slotIndex >> 5u;
+        if (wordIndex >= _transparentEligibility.Count())
+            return;
+        const u32 bit = 1u << (slotIndex & 31u);
+        const u32 previous = _transparentEligibility[wordIndex];
+        const u32 updated = eligible ? previous | bit : previous & ~bit;
+        if (updated == previous)
+            return;
+        _transparentEligibility[wordIndex] = updated;
+        _transparentEligibility.SetDirtyElement(wordIndex);
+    }
+
     bool ModelViewState::SyncToGPU(Renderer::Renderer* renderer)
     {
         const bool inputsChanged = _inputs.SyncToGPU(renderer);
+        const bool transparentEligibilityChanged = _transparentEligibility.SyncToGPU(renderer);
         const bool historyChanged = _lodHistory.SyncToGPU(renderer);
-        return inputsChanged || historyChanged;
+        return inputsChanged || transparentEligibilityChanged || historyChanged;
     }
 } // namespace ModelView

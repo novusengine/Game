@@ -36,6 +36,8 @@ public:
     // Resolves normals for the effect passes
     void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view, u8 frameIndex);
     void AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddCommonResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                              const RenderScenes::RenderView& view, u8 frameIndex);
     void AddTransparencyCompositePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                       const RenderScenes::RenderView& view, u8 frameIndex);
 
@@ -45,6 +47,8 @@ public:
 private:
     void CreatePermanentResources();
     void CreateMaterialPipeline();
+    void AddMaterialHostPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                             const RenderScenes::RenderView* view, u8 frameIndex);
 
     struct DirectionalLight
     {

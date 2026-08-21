@@ -63,8 +63,11 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
                            uint cameraIndex, uint resourceIndex, out ReconstructedModelPixel result)
 {
     ModelVisibilityRecord packedRecord;
-    if (payload.geometryTypeID != TYPED_VISIBILITY_MODEL || payload.triangleID > TYPED_VISIBILITY_MAX_TRIANGLE_ID ||
-        !LoadResolvedModelRecord(payload.recordID, resourceIndex, packedRecord))
+    uint recordResourceIndex = ModelVisibilityUsesPreviousResource(payload.geometryTypeID) ? 1u - resourceIndex :
+                                                                                             resourceIndex;
+    if (!IsModelVisibility(PackTypedVisibility(payload.geometryTypeID, 0u, 0u)) ||
+        payload.triangleID > TYPED_VISIBILITY_MAX_TRIANGLE_ID ||
+        !LoadResolvedModelRecord(payload.recordID, recordResourceIndex, packedRecord))
         return false;
 
     result.record = DecodeModelVisibilityRecord(packedRecord);

@@ -242,6 +242,20 @@ void CullingResourcesBase::ResetCullingStats()
     }
 }
 
+void CullingResourcesBase::BindSharedCullingResources(Renderer::SamplerID depthSampler, Renderer::BufferID cullingDatas)
+{
+    if (_boundDepthSampler != depthSampler)
+    {
+        _cullingDescriptorSet.Bind("_depthSampler"_h, depthSampler);
+        _boundDepthSampler = depthSampler;
+    }
+    if (_boundCullingDatas != cullingDatas)
+    {
+        _cullingDescriptorSet.Bind("_cullingDatas"_h, cullingDatas);
+        _boundCullingDatas = cullingDatas;
+    }
+}
+
 void CullingResourcesIndexedBase::Init(InitParams& params)
 {
     CullingResourcesBase::Init(params);

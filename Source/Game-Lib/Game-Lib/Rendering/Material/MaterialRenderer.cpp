@@ -181,6 +181,18 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
 
 void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
+    AddMaterialHostPass(renderGraph, resources, nullptr, frameIndex);
+}
+
+void MaterialRenderer::AddCommonResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                            const RenderScenes::RenderView& view, u8 frameIndex)
+{
+    AddMaterialHostPass(renderGraph, resources, &view, frameIndex);
+}
+
+void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                           const RenderScenes::RenderView* view, u8 frameIndex)
+{
     struct MaterialPassData
     {
         Renderer::ImageResource visibilityBuffer;
@@ -203,12 +215,15 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
     const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 4);
 
-    renderGraph->AddPass<MaterialPassData>("Material Pass",
-        [this, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+    const bool commonResolve = view != nullptr;
+    renderGraph->AddPass<MaterialPassData>(commonResolve ? "Material Common Resolve" : "Material Pass",
+        [this, &resources, view](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+            const Renderer::ImageID visibilityTarget = view ? view->GetVisibilityTarget() : resources.visibilityBuffer;
+            const Renderer::ImageID colorTarget = view ? view->GetColorTarget() : resources.sceneColor;
+            data.visibilityBuffer = builder.Read(visibilityTarget, Renderer::PipelineType::COMPUTE);
             data.skyboxColor = builder.Read(resources.skyboxColor, Renderer::PipelineType::COMPUTE);
-            data.resolvedColor = builder.Write(resources.sceneColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+            data.resolvedColor = builder.Write(colorTarget, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
             data.ambientOcclusion = builder.Read(resources.ssaoTarget, Renderer::PipelineType::COMPUTE);
 
@@ -239,7 +254,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex, visibilityBufferDebugID](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, view, frameIndex, visibilityBufferDebugID](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, MaterialPass);
 
@@ -303,7 +318,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 Constants* constants = graphResources.FrameNew<Constants>();
 
-                vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(resources.sceneColor, 0));
+                const Renderer::ImageID colorTarget = view ? view->GetColorTarget() : resources.sceneColor;
+                vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(colorTarget, 0));
                 constants->renderInfo = vec4(outputSize, 1.0f / outputSize);
 
                 CVarSystem* cvarSystem = CVarSystem::Get();
@@ -343,9 +359,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }
 
-            uvec2 outputSize = _renderer->GetImageDimensions(resources.sceneColor, 0);
-
-            uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
+            const Renderer::ImageID colorTarget = view ? view->GetColorTarget() : resources.sceneColor;
+            const uvec2 outputSize = _renderer->GetImageDimensions(colorTarget, 0);
+            const uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
 
             commandList.EndPipeline(_materialPipeline);
@@ -510,7 +526,7 @@ void MaterialRenderer::CreateMaterialPipeline()
     u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Material/MaterialPass.cs", permutationFields);
 
     Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Material/MaterialPass.cs");
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Material/MaterialPass.cs");
 
     Renderer::ComputePipelineDesc pipelineDesc;
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);

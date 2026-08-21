@@ -5,7 +5,7 @@
 
 struct Constants
 {
-    uint instanceCapacity;
+    uint casterCount;
     uint numClipmaps;
     uint queueCapacity;
     int forcedLOD;
@@ -27,6 +27,7 @@ struct Constants
 [[vk::binding(9, PER_PASS)]] RWStructuredBuffer<uint> _shadowStats0;
 [[vk::binding(10, PER_PASS)]] RWStructuredBuffer<ModelShadowChunk> _shadowChunks1;
 [[vk::binding(11, PER_PASS)]] RWStructuredBuffer<uint> _shadowStats1;
+[[vk::binding(12, PER_PASS)]] StructuredBuffer<uint> _shadowCasterInstances;
 
 void AddStat(uint frameIndex, uint index, uint value)
 {
@@ -78,12 +79,13 @@ uint SelectShadowLOD(ModelMesh mesh, ModelRecord model, ModelInstanceRecord inst
 [numthreads(64, 1, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    uint instanceIndex = dispatchThreadID.x;
+    uint casterIndex = dispatchThreadID.x;
     uint clipmapIndex = dispatchThreadID.y;
     uint frameIndex = _constants.frameIndex;
-    if (instanceIndex >= _constants.instanceCapacity || clipmapIndex >= _constants.numClipmaps)
+    if (casterIndex >= _constants.casterCount || clipmapIndex >= _constants.numClipmaps)
         return;
 
+    uint instanceIndex = _shadowCasterInstances[casterIndex];
     ModelInstanceRecord instance = _shadowModelInstances[instanceIndex];
     AddStat(frameIndex, MODEL_SHADOW_STAT_TESTED_INSTANCES, 1u);
     if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u ||
