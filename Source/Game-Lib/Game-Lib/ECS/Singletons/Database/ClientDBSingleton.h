@@ -29,7 +29,6 @@ enum class ClientDBHash : u64
     CinematicSequences                  = XXHash64::hashLiteral("clientdb/cinematicsequences.cdb"),
     CameraSave                          = XXHash64::hashLiteral("clientdb/camerasave.cdb"),
     Cursor                              = XXHash64::hashLiteral("clientdb/cursor.cdb"),
-    AnimationData                       = XXHash64::hashLiteral("clientdb/animationdata.cdb"),
     CreatureDisplayInfo                 = XXHash64::hashLiteral("clientdb/creaturedisplayinfo.cdb"),
     CreatureDisplayInfoExtra            = XXHash64::hashLiteral("clientdb/creaturedisplayinfoextra.cdb"),
     CreatureModelData                   = XXHash64::hashLiteral("clientdb/creaturemodeldata.cdb"),
@@ -70,7 +69,7 @@ public:
     std::string_view debugName;
 };
 
-inline constexpr std::array<ClientDBDefinition, 44> ClientDBHashes =
+inline constexpr std::array<ClientDBDefinition, 43> ClientDBHashes =
 {{
     { ClientDBHash::DisplayRegistration, "DisplayRegistration" },
     { ClientDBHash::DisplayParameter, "DisplayParameter" },
@@ -84,7 +83,6 @@ inline constexpr std::array<ClientDBDefinition, 44> ClientDBHashes =
     { ClientDBHash::CinematicSequences, "CinematicSequences" },
     { ClientDBHash::CameraSave, "CameraSave" },
     { ClientDBHash::Cursor, "Cursor" },
-    { ClientDBHash::AnimationData, "AnimationData" },
     { ClientDBHash::CreatureDisplayInfo, "CreatureDisplayInfo" },
     { ClientDBHash::CreatureDisplayInfoExtra, "CreatureDisplayInfoExtra" },
     { ClientDBHash::CreatureModelData, "CreatureModelData" },

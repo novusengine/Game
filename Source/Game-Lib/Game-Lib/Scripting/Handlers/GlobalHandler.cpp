@@ -7,7 +7,6 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include <Game-Lib/ECS/Util/Network/NetworkUtil.h>
-#include "Game-Lib/Gameplay/Attachment/Defines.h"
 #include "Game-Lib/Gameplay/Database/Item.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsoleCommandHandler.h"

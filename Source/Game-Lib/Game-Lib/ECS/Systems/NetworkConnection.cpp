@@ -3,8 +3,6 @@
 #include "OrbitalCamera.h"
 
 #include "Game-Lib/ECS/Components/AABB.h"
-#include "Game-Lib/ECS/Components/AnimationData.h"
-#include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/Container.h"
 #include "Game-Lib/ECS/Components/CastInfo.h"
@@ -204,12 +202,6 @@ namespace ECS::Systems
         {
             if (!registry.valid(entity))
                 continue;
-
-            if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))
-            {
-                for (auto& pair : attachmentData->attachmentToInstance)
-                    ::Util::Unit::RemoveItemFromAttachment(registry, entity, pair.first);
-            }
 
             if (auto* model = registry.try_get<Components::Model>(entity))
             {
@@ -856,7 +848,6 @@ namespace ECS::Systems
         registry->emplace<Components::UnitPowersComponent>(newEntity);
         registry->emplace<Components::UnitResistancesComponent>(newEntity);
         registry->emplace<Components::UnitStatsComponent>(newEntity);
-        registry->emplace<Components::AttachmentData>(newEntity);
         auto& displayInfo = registry->emplace<Components::DisplayInfo>(newEntity);
         displayInfo.displayID = 0;
 
@@ -912,20 +903,10 @@ namespace ECS::Systems
             return true;
         }
 
-        if (auto* attachmentData = registry->try_get<Components::AttachmentData>(entity))
-        {
-            for (auto& pair : attachmentData->attachmentToInstance)
-            {
-                ::Util::Unit::RemoveItemFromAttachment(*registry, entity, pair.first);
-            }
-        }
-
         if (auto* model = registry->try_get<Components::Model>(entity))
         {
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
             modelLoader->UnloadModelForEntity(entity, *model);
-
-            registry->remove<Components::AnimationData>(entity);
         }
 
         networkState.networkIDToEntity.erase(packet.guid);
@@ -1180,11 +1161,8 @@ namespace ECS::Systems
             auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
             auto& itemSingleton = dbRegistry->ctx().get<Singletons::ItemSingleton>();
 
-            auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
-
             auto& unitEquipment = registry->get<Components::UnitEquipment>(entity);
             u32 mainHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand)];
-            auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(mainHandItemID);
 
             if (characterSingleton.moverEntity == entity)
             {
@@ -1193,17 +1171,6 @@ namespace ECS::Systems
                 auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
                 
                 characterSingleton.primaryAttackTimer = itemWeaponTemplate.speed;
-            }
-
-            if (auto* model = registry->try_get<Components::Model>(entity))
-            {
-                if (auto* modelInfo = ServiceLocator::GetGameRenderer()->GetModelLoader()->GetModelInfo(model->modelHash))
-                {
-                    auto& animationData = registry->get<Components::AnimationData>(entity);
-
-                    unit->attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
-                    unit->attackMainHandAnimation = ::Util::Unit::GetMainHandAttackAnimation(itemTemplate.categoryType);
-                }
             }
         }
         else if (packet.spellID == 2)
@@ -1214,11 +1181,8 @@ namespace ECS::Systems
             auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
             auto& itemSingleton = dbRegistry->ctx().get<Singletons::ItemSingleton>();
 
-            auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
-
             auto& unitEquipment = registry->get<Components::UnitEquipment>(entity);
             u32 offHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand)];
-            auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(offHandItemID);
 
             if (characterSingleton.moverEntity == entity)
             {
@@ -1227,18 +1191,6 @@ namespace ECS::Systems
                 auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
                 
                 characterSingleton.secondaryAttackTimer = itemWeaponTemplate.speed;
-            }
-
-
-            if (auto* model = registry->try_get<Components::Model>(entity))
-            {
-                if (auto* modelInfo = ServiceLocator::GetGameRenderer()->GetModelLoader()->GetModelInfo(model->modelHash))
-                {
-                    auto& animationData = registry->get<Components::AnimationData>(entity);
-
-                    unit->attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
-                    unit->attackMainHandAnimation = ::Util::Unit::GetOffHandAttackAnimation(itemTemplate.categoryType);
-                }
             }
         }
         else

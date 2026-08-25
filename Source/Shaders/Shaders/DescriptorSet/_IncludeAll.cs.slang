@@ -10,7 +10,6 @@
 
 // Includes that provide types used by descriptor sets
 #include "Light/LightShared.inc.slang"
-#include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
 
 [shader("compute")]

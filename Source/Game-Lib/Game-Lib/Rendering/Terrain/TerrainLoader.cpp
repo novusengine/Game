@@ -2,10 +2,8 @@
 #include "TerrainRenderer.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components//Model.h"
-#include "Game-Lib/ECS/Singletons/AnimationSingleton.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Systems/CharacterController.h"
@@ -157,22 +155,6 @@ void TerrainLoader::Clear()
         model.instanceID = std::numeric_limits<u32>().max();
     });
     
-    registry->clear<ECS::Components::AnimationData>();
-    registry->clear<ECS::Components::AnimationInitData>();
-    registry->clear<ECS::Components::AnimationStaticInstance>();
-    
-    auto& animationSingleton = registry->ctx().get<ECS::Singletons::AnimationSingleton>();
-    
-    for (auto& pair : animationSingleton.staticModelIDToEntity)
-    {
-        entt::entity entity = pair.second;
-        if (registry->valid(entity))
-        {
-            registry->destroy(entity);
-        }
-    }
-    
-    animationSingleton.staticModelIDToEntity.clear();
 }
 
 void TerrainLoader::Update(f32 deltaTime)

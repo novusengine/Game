@@ -10,7 +10,6 @@
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/RenderState.h"
-#include "Game-Lib/ECS/Systems/Animation.h"
 #include "Game-Lib/ECS/Systems/UpdateAreaLights.h"
 #include "Game-Lib/ECS/Systems/CalculateCameraMatrices.h"
 #include "Game-Lib/ECS/Systems/CalculateTransformMatrices.h"
@@ -53,7 +52,6 @@ namespace ECS
         entt::registry& gameRegistry = *registries.gameRegistry;
 
         Systems::NetworkConnection::Init(gameRegistry);
-        Systems::Animation::Init(gameRegistry);
         Systems::UpdateUnitEntities::Init(gameRegistry);
         Systems::UpdatePhysics::Init(gameRegistry);
         Systems::DrawDebugMesh::Init(gameRegistry);
@@ -95,12 +93,11 @@ namespace ECS
 
         // Day/night cycle is a wall-clock-style timer: pass the unclamped deltaTime so
         // the in-game time tracks real seconds 1:1. Clamping (as the rest of this
-        // function uses for physics/animation stability) makes the cycle drift behind
+        // function uses for physics stability) makes the cycle drift behind
         // wall-clock whenever the framerate dips below 60 FPS.
         Systems::UpdateDayNightCycle::Update(gameRegistry, deltaTime);
         Systems::NetworkConnection::Update(gameRegistry, clampedDeltaTime);
         Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
-        Systems::Animation::Update(gameRegistry, clampedDeltaTime);
         Systems::CharacterController::Update(gameRegistry, clampedDeltaTime);
         Systems::CharacterControllerInput::UpdateAutoAttack(gameRegistry, clampedDeltaTime);
         Systems::UpdateUnitEntities::Update(gameRegistry, clampedDeltaTime);

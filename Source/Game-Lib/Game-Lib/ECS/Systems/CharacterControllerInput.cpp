@@ -22,7 +22,6 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
-#include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
@@ -260,7 +259,6 @@ namespace ECS::Systems::CharacterControllerInput
         auto stopAutoAttack = [&]()
         {
             unit.isAutoAttacking = false;
-            unit.attackReadyAnimation = Animation::Defines::Type::Invalid;
             characterSingleton.primaryAttackTimer = 0.0f;
             characterSingleton.secondaryAttackTimer = 0.0f;
         };
@@ -302,17 +300,6 @@ namespace ECS::Systems::CharacterControllerInput
         {
             stopAutoAttack();
             return;
-        }
-
-        if (unit.attackReadyAnimation == ::Animation::Defines::Type::Invalid)
-        {
-            auto& equippedItems = registry.get<Components::UnitEquipment>(characterSingleton.moverEntity);
-            const u32 mainHandItemID = equippedItems.equipmentSlotToItemID[static_cast<u32>(Database::Item::ItemEquipSlot::MainHand)];
-
-            auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
-            auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
-            auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(mainHandItemID);
-            unit.attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
         }
 
         const auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
@@ -369,7 +356,6 @@ namespace ECS::Systems::CharacterControllerInput
 
         unit->targetEntity = entt::null;
         unit->isAutoAttacking = false;
-        unit->attackReadyAnimation = Animation::Defines::Type::Invalid;
         characterSingleton.primaryAttackTimer = 0.0f;
         characterSingleton.secondaryAttackTimer = 0.0f;
 

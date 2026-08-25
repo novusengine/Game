@@ -1,7 +1,5 @@
 #include "UnitHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Components/AnimationData.h"
-#include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitAuraInfo.h"
@@ -18,7 +16,6 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Scripting/UI/Widget.h"
-#include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
@@ -495,7 +492,7 @@ namespace Scripting::Unit
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::entity entityID = entt::entity(unitID);
 
-        if (!registry->valid(entityID) || !registry->all_of<ECS::Components::AttachmentData>(entityID))
+        if (!registry->valid(entityID) || !registry->all_of<ECS::Components::Model, ECS::Components::Transform, ECS::Components::AABB>(entityID))
             return pushFailure();
 
         auto& model = registry->get<ECS::Components::Model>(entityID);
@@ -505,31 +502,13 @@ namespace Scripting::Unit
         const auto& transform = registry->get<ECS::Components::Transform>(entityID);
         vec3 position = transform.GetWorldPosition();
 
-        auto* animationData = registry->try_get<ECS::Components::AnimationData>(entityID);
-        auto& attachmentData = registry->get<ECS::Components::AttachmentData>(entityID);
-        bool hasNameAttachmentPosition = false;
-        if (animationData && Util::Attachment::EnableAttachment(entityID, model, attachmentData, *animationData, Attachment::Defines::Type::PlayerName))
-        {
-            const mat4x4* mat = Util::Attachment::GetAttachmentMatrix(model, *animationData, attachmentData, Attachment::Defines::Type::PlayerName);
-            auto attachmentIt = attachmentData.attachmentToInstance.find(Attachment::Defines::Type::PlayerName);
-            if (mat && attachmentIt != attachmentData.attachmentToInstance.end() && registry->valid(attachmentIt->second.entity))
-            {
-                const auto& attachmentTransform = registry->get<ECS::Components::Transform>(attachmentIt->second.entity);
-                position = attachmentTransform.GetWorldPosition();
-                hasNameAttachmentPosition = true;
-            }
-        }
+        auto& aabb = registry->get<ECS::Components::AABB>(entityID);
 
-        if (!hasNameAttachmentPosition)
-        {
-            auto& aabb = registry->get<ECS::Components::AABB>(entityID);
+        vec3 centerPos = transform.GetWorldRotation() * (aabb.centerPos * transform.GetLocalScale());
+        vec3 extents = aabb.extents * transform.GetLocalScale();
 
-            vec3 centerPos = transform.GetWorldRotation() * (aabb.centerPos * transform.GetLocalScale());
-            vec3 extents = aabb.extents * transform.GetLocalScale();
-
-            position += centerPos;
-            position.y += extents.y * 1.25f; // Above head
-        }
+        position += centerPos;
+        position.y += extents.y * 1.25f; // Above head
 
         ECS::Util::UI::SetPos3D(widget, position);
 

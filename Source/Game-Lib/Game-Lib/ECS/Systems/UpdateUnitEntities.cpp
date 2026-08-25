@@ -1,7 +1,5 @@
 #include "UpdateUnitEntities.h"
 
-#include "Game-Lib/ECS/Components/AnimationData.h"
-#include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
@@ -22,13 +20,10 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Database/TextureUtil.h"
 #include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
-#include "Game-Lib/Gameplay/Animation/Defines.h"
 #include "Game-Lib/Gameplay/Database/Unit.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
-#include "Game-Lib/Util/AnimationUtil.h"
-#include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
@@ -65,31 +60,6 @@ namespace ECS::Systems
     void UpdateUnitEntities::Init(entt::registry& registry)
     {
     }
-
-    void SetOrientation(vec4& settings, f32 orientation, f32 timeToChange = 0.15f)
-    {
-        f32 currentOrientation = settings.x;
-        if (orientation == currentOrientation)
-            return;
-
-        settings.y = orientation;
-        settings.z = timeToChange;
-        settings.w = 0.0f;
-    };
-
-    bool HandleUpdateOrientation(vec4& settings, f32 deltaTime)
-    {
-        if (settings.x == settings.y)
-            return false;
-
-        settings.w += deltaTime;
-        settings.w = glm::clamp(settings.w, 0.0f, settings.z);
-
-        f32 progress = settings.w / settings.z;
-        settings.x = glm::mix(settings.x, settings.y, progress);
-
-        return true;
-    };
 
     void UpdateUnitEntities::Update(entt::registry& registry, f32 deltaTime)
     {
@@ -232,120 +202,6 @@ namespace ECS::Systems
 
         Util::RemoteUnitPresentation::Update(registry, deltaTime);
 
-        auto unitView = registry.view<Components::Unit, Components::Model, Components::AnimationData, Components::MovementInfo>();
-        unitView.each([&](entt::entity entity, Components::Unit& unit, Components::Model& model, Components::AnimationData& animationData, Components::MovementInfo& movementInfo)
-        {
-            if (!registry.all_of<>(entity))
-                return;
-
-            if (unit.overrideAnimation == ::Animation::Defines::Type::Invalid)
-                ::Util::Unit::UpdateAnimationState(registry, entity, model, deltaTime);
-
-            const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
-
-            if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))
-            {
-                if (modelInfo)
-                {
-                    for (auto& pair : attachmentData->attachmentToInstance)
-                    {
-                        ::Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, pair.first, pair.second);
-                    }
-                }
-            }
-
-            auto& unitPowersComponent = registry.get<Components::UnitPowersComponent>(entity);
-            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
-
-            bool isAlive = healthPower.current > 0.0f;
-            if (!isAlive)
-                return;
-
-            bool isMovingForward = movementInfo.movementFlags.forward;
-            bool isMovingBackward = movementInfo.movementFlags.backward;
-            bool isMovingLeft = movementInfo.movementFlags.left;
-            bool isMovingRight = movementInfo.movementFlags.right;
-            bool isGrounded = movementInfo.movementFlags.grounded;
-            bool isFlying = !isGrounded && movementInfo.movementFlags.flying;
-
-            if (isAlive && modelInfo && (isGrounded || isFlying /* || (canControlInAir && isMoving))*/))
-            {
-                f32 spineOrientation = 0.0f;
-                f32 headOrientation = 0.0f;
-                f32 waistOrientation = 0.0f;
-
-                if (!isFlying)
-                {
-                    if (isMovingForward)
-                    {
-                        if (isMovingRight)
-                        {
-                            spineOrientation = -30.0f;
-                            headOrientation = -30.0f;
-                            waistOrientation = 45.0f;
-                        }
-                        else if (isMovingLeft)
-                        {
-                            spineOrientation = 30.0f;
-                            headOrientation = 30.0f;
-                            waistOrientation = -45.0f;
-                        }
-                    }
-                    else if (isMovingBackward)
-                    {
-                        if (isMovingRight)
-                        {
-                            spineOrientation = 30.0f;
-                            headOrientation = 15.0f;
-                            waistOrientation = -45.0f;
-                        }
-                        else if (isMovingLeft)
-                        {
-                            spineOrientation = -30.0f;
-                            headOrientation = -15.0f;
-                            waistOrientation = 45.0f;
-                        }
-                    }
-                    else if (isMovingRight)
-                    {
-                        spineOrientation = -45.0f;
-                        headOrientation = -30.0f;
-                        waistOrientation = 90.0f;
-                    }
-                    else if (isMovingLeft)
-                    {
-                        spineOrientation = 45.0f;
-                        headOrientation = 30.0f;
-                        waistOrientation = -90.0f;
-                    }
-                }
-
-                f32 timeToChange = 0.1f;
-                if (!isMovingForward && !isMovingBackward && spineOrientation == 0.0f && headOrientation == 0.0f && waistOrientation == 0.0f)
-                    timeToChange = 0.35f;
-
-                SetOrientation(movementInfo.spineRotationSettings, spineOrientation, timeToChange);
-                SetOrientation(movementInfo.headRotationSettings, headOrientation, timeToChange);
-                SetOrientation(movementInfo.rootRotationSettings, waistOrientation, timeToChange);
-            }
-
-            if (HandleUpdateOrientation(movementInfo.spineRotationSettings, deltaTime))
-            {
-                quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
-                ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::SpineLow, rotation);
-            }
-            if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
-            {
-                quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
-                ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Head, rotation);
-            }
-            if (HandleUpdateOrientation(movementInfo.rootRotationSettings, deltaTime))
-            {
-                quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.rootRotationSettings.x), 0.0f));
-                ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Default, rotation);
-            }
-        });
-
         auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
         auto unitVisualEquipmentView = registry.view<const Components::Unit, const Components::DisplayInfo, const Components::Model, const Components::UnitCustomization, Components::UnitEquipment, Components::UnitVisualEquipmentDirty>();
@@ -359,68 +215,10 @@ namespace ECS::Systems
 
             for (const MetaGen::Shared::Unit::ItemEquipSlotEnum equipSlot : unitEquipment.dirtyVisualItemIDSlots)
             {
-                u32 itemID = unitEquipment.equipmentSlotToVisualItemID[(u32)equipSlot];
-
                 needToRefreshGeometry |= equipSlot != ::MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand && equipSlot != ::MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand && equipSlot != ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Ranged;
-                needToRefreshSkin |= equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Chest || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Shirt || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Tabard || 
-                    equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Bracers || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Gloves || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Belt || 
+                needToRefreshSkin |= equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Chest || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Shirt || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Tabard ||
+                    equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Bracers || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Gloves || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Belt ||
                     equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Pants || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Boots;
-
-                if (itemID == 0)
-                {
-                    if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand)
-                    {
-                        ::Util::Unit::OpenHand(registry, entity, false);
-                        ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::HandRight);
-                    }
-                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand)
-                    {
-                        ::Util::Unit::OpenHand(registry, entity, true);
-                        ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::HandLeft);
-                        ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::Shield);
-                    }
-                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Helm)
-                    {
-                        ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::Helm);
-                    }
-                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Shoulders)
-                    {
-                        ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::ShoulderLeft);
-                        ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::ShoulderRight);
-                    }
-                }
-                else
-                {
-                    auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(itemID);
-
-                    if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand)
-                    {
-                        entt::entity itemEntity = entt::null;
-
-                        if (::Util::Unit::AddWeaponToHand(registry, entity, item, false, itemEntity))
-                            ::Util::Unit::CloseHand(registry, entity, false);
-                    }
-                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand)
-                    {
-                        entt::entity itemEntity = entt::null;
-
-                        if (::Util::Unit::AddWeaponToHand(registry, entity, item, true, itemEntity))
-                            ::Util::Unit::CloseHand(registry, entity, true);
-                    }
-                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Helm)
-                    {
-                        entt::entity itemEntity = entt::null;
-
-                        ::Util::Unit::AddHelm(registry, entity, item, displayInfo.race, displayInfo.gender, itemEntity);
-                    }
-                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Shoulders)
-                    {
-                        entt::entity shoulderLeftEntity = entt::null;
-                        entt::entity shoulderRightEntity = entt::null;
-
-                        ::Util::Unit::AddShoulders(registry, entity, item, shoulderLeftEntity, shoulderRightEntity);
-                    }
-                }
             }
 
             if (unitCustomization.flags.useCustomSkin)

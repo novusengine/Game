@@ -1,6 +1,5 @@
 #include "EditorHandler.h"
 #include "ActionStack.h"
-#include "AnimationController.h"
 #include "BaseEditor.h"
 #include "CDBEditor.h"
 #include "CVarEditor.h"
@@ -38,7 +37,6 @@ namespace Editor
 
         _viewport = new Viewport();
         _editors.push_back(_viewport);
-        _editors.push_back(new AnimationController());
         _editors.push_back(new CVarEditor());
         _editors.push_back(new CDBEditor());
         _editors.push_back(new PerformanceDiagnostics());

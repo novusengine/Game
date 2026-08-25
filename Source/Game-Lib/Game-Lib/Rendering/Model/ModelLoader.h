@@ -223,7 +223,6 @@ private:
     std::mutex _instanceIDToModelIDMutex;
     std::mutex _transformSystemMutex;
     std::mutex _physicsSystemMutex;
-    std::mutex _animationMutex;
 
     robin_hood::unordered_map<u32, u64> _modelIDToModelHash;
     robin_hood::unordered_map<u32, ECS::Components::AABB> _modelIDToAABB;

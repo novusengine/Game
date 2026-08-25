@@ -2,7 +2,6 @@
 #include "Include/VisibilityBuffers.inc.slang"
 #include "Include/TypedVisibility.inc.slang"
 #include "Model/ModelVisibility.inc.slang"
-#include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
 
 struct Constants

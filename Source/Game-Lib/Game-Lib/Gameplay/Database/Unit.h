@@ -64,39 +64,4 @@ namespace Database::Unit
         u32 isGeosetOption : 1 = 0;
     };
 
-    struct AnimationDataFlags
-    {
-        u64 UsedForEmote : 1 = 0;
-        u64 UsedForSpell : 1 = 0;
-        u64 IsPierceAnim : 1 = 0;
-        u64 HideWeapons : 1 = 0;
-        u64 FallbackPlaysReverse : 1 = 0;
-        u64 FallbackHoldsEnd : 1 = 0;
-        u64 Unused0x40 : 1 = 0;
-        u64 FallbackToVariationZero : 1 = 0;
-        u64 Unused0x100 : 1 = 0;
-        u64 Unused0x200 : 1 = 0;
-        u64 Unused0x400 : 1 = 0;
-        u64 MoveWeaponsToSheath : 1 = 0;
-        u64 MoveMeleeWeaponsToHand : 1 = 0;
-        u64 ScaleToGround : 1 = 0;
-        u64 ScaleToGroundRev : 1 = 0;
-        u64 ScaleToGroundAlways : 1 = 0;
-        u64 IsSplitBodyBehavior : 1 = 0;
-        u64 IsBowWeaponBehavior : 1 = 0;
-        u64 IsRifleWeaponBehavior : 1 = 0;
-        u64 IsThrownWeaponBehavior : 1 = 0;
-        u64 IsDeathBehavior : 1 = 0;
-        u64 IsMeleeCombatBehavior : 1 = 0;
-        u64 IsSpecialCombatBehavior : 1 = 0;
-        u64 IsWoundBehavior : 1 = 0;
-        u64 IsUnarmedBehavior : 1 = 0;
-        u64 UseMountedNameplatePos : 1 = 0;
-        u64 FlipSpearWeapons180Deg : 1 = 0;
-        u64 Unused0x8000000 : 1 = 0;
-        u64 Unused0x10000000 : 1 = 0;
-        u64 IsSpellCombatBehavior : 1 = 0;
-        u64 BrewmasterSheathe : 1 = 0;
-        u64 Unused0x80000000 : 1 = 0;
-    };
 }

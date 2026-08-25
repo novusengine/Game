@@ -4,7 +4,6 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
-#include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
@@ -452,7 +451,6 @@ void ModelLoader::Update(f32 deltaTime)
                 registry->create(begin, _createdEntities.end());
 
                 registry->insert<ECS::Components::AABB>(begin, _createdEntities.end());
-                registry->insert<ECS::Components::AnimationInitData>(begin, _createdEntities.end());
                 registry->insert<ECS::Components::DirtyTransform>(begin, _createdEntities.end());
                 registry->insert<ECS::Components::Model>(begin, _createdEntities.end());
                 registry->insert<ECS::Components::Name>(begin, _createdEntities.end());
@@ -1486,8 +1484,6 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
         }
     }
 
-    auto& animationInitData = registry->get<ECS::Components::AnimationInitData>(entityID);
-    animationInitData.flags.isDynamic = false;
 }
 
 void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request)
@@ -1638,11 +1634,5 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         }
     }
 
-    {
-        std::scoped_lock lock(_animationMutex);
-
-        auto& animationInitData = registry->get_or_emplace<ECS::Components::AnimationInitData>(entityID);
-        animationInitData.flags.isDynamic = true;
-    }
 
 }

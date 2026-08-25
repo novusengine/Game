@@ -2,7 +2,6 @@
 #include "CharacterControllerInput.h"
 
 #include "Game-Lib/ECS/Components/AABB.h"
-#include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Events.h"
@@ -1313,8 +1312,6 @@ namespace ECS::Systems
             auto& transform = registry.get_or_emplace<Components::Transform>(state.moverEntity);
             auto& moverModel = registry.get_or_emplace<Components::Model>(state.moverEntity);
             auto& movementInfo = registry.get_or_emplace<Components::MovementInfo>(state.moverEntity);
-            auto& attachment = registry.get_or_emplace<Components::AttachmentData>(state.moverEntity);
-
             auto& unit = registry.get_or_emplace<Components::Unit>(state.moverEntity);
             unit.name = "Localplayer";
             unit.targetEntity = entt::null;

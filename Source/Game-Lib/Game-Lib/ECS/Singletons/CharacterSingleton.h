@@ -8,10 +8,6 @@
 
 #include <array>
 
-namespace Animation
-{
-    enum class Type;
-}
 namespace ECS::Singletons
 {
     struct CharacterSingleton
