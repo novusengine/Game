@@ -6,6 +6,7 @@
 #include "Game-Lib/Scripting/Game/Container.h"
 #include "Game-Lib/Scripting/Handlers/RenderTargetHandler.h"
 #include "Game-Lib/Scripting/Handlers/RenderDocHandler.h"
+#include "Game-Lib/Scripting/Handlers/NsightGPUTraceHandler.h"
 #include "Game-Lib/Scripting/Handlers/TracyHandler.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -28,6 +29,7 @@ namespace Scripting::Game
         Scripting::Game::Container::Register(zenith);
         Scripting::RenderTarget::RenderTargetHandler::Register(zenith);
         Scripting::RenderDoc::RenderDocHandler::Register(zenith);
+        Scripting::NsightGPUTrace::NsightGPUTraceHandler::Register(zenith);
         Scripting::Tracy::TracyHandler::Register(zenith);
     }
 

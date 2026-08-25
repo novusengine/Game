@@ -28,6 +28,7 @@
 #include "Shadow/ShadowRenderer.h"
 #include "RenderTargetCapture.h"
 #include "RenderDocCapture.h"
+#include "NsightGPUTrace.h"
 #include "PixelQuery.h"
 #include "CullUtils.h"
 
@@ -186,12 +187,31 @@ void WindowIconifyCallback(GLFWwindow* window, int iconified)
     userWindow->SetIsMinimized(iconified == 1);
 }
 
-GameRenderer::GameRenderer(bool enableRenderDoc)
+GameRenderer::GameRenderer(bool enableRenderDoc, bool enableNsightGPUTrace)
 {
     NC_LOG_INFO("GameRenderer : Initializing");
     ServiceLocator::SetGameRenderer(this);
 
     Util::JoltMemoryTelemetry::RegisterAllocator();
+
+    if (enableNsightGPUTrace)
+    {
+        _nsightGPUTrace = new NsightGPUTrace();
+
+        const char* installationPath = std::getenv("NOVUS_NSIGHT_GRAPHICS_PATH");
+        std::string error;
+        if (!installationPath || installationPath[0] == '\0')
+        {
+            error = "NOVUS_NSIGHT_GRAPHICS_PATH is not configured";
+        }
+        else
+        {
+            _nsightGPUTrace->Initialize(installationPath, error);
+        }
+
+        if (!error.empty())
+            NC_LOG_ERROR("NOVUS_NSIGHT_GPU_TRACE event=initialization-failed error={}", error);
+    }
 
     _window = new Novus::Window();
     _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
@@ -303,6 +323,7 @@ GameRenderer::~GameRenderer()
     _resources.materialDescriptorSet.Shutdown();
     delete _renderer;
     delete _renderDocCapture;
+    delete _nsightGPUTrace;
 }
 
 RenderScenes::RenderScene* GameRenderer::GetSkyboxModelScene()

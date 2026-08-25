@@ -45,6 +45,7 @@ CMakeSettings.json
 .cache/
 *.patch
 .claude/
+.codex/
 images/
 /Source/Resources/Automation/Artifacts/
 /Source/Resources/Automation/Reports/

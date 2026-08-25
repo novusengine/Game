@@ -154,10 +154,18 @@ declare Map : {
 }
 declare RenderTarget : {
     Dump : (debugName : string, artifactPath : string) -> (boolean, string),
+    IsIdle : () -> boolean,
 }
 declare RenderDoc : {
     IsAvailable : () -> boolean,
     CaptureNextFrame : (artifactPath : string) -> (boolean, string),
+}
+declare NsightGPUTrace : {
+    IsAvailable : () -> boolean,
+    IsReady : () -> boolean,
+    IsCapturing : () -> boolean,
+    Start : () -> (boolean, string),
+    Stop : () -> (boolean, string),
 }
 declare Tracy : {
     IsConnected : () -> boolean,

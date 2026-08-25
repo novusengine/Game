@@ -43,4 +43,14 @@ namespace Scripting::RenderTarget
         zenith->Push(error.c_str());
         return 2;
     }
+
+    i32 RenderTargetHandler::IsIdle(Zenith* zenith)
+    {
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        RenderTargetCapture* capture = gameRenderer
+            ? gameRenderer->GetRenderTargetCapture()
+            : nullptr;
+        zenith->Push(capture && capture->IsIdle());
+        return 1;
+    }
 }

@@ -64,6 +64,43 @@ NOVUS_VALIDATION_SEQUENCE_COMPLETE steps=<count> skipped=<count>
 The skipped count is an action count. A failed map load skips both that load
 and its now-inapplicable unload, contributing two skipped actions.
 
+### Model-rendering refactor baselines
+
+The `model_refactor_capture_<camera>.luau` workloads each load one named
+`ModelRefactor_*` camera save, set the world time to noon, dwell for five
+seconds, and dump `SceneColor` and `VisibilityBuffer` into a unique timestamped
+artifact folder.
+
+The complete retained baseline campaign is:
+
+```text
+automation_run <request-id> Scripts/Game/model_refactor_capture_all.luau
+```
+
+Success:
+
+```text
+NOVUS_MODEL_REFACTOR_CAPTURE_SEQUENCE_COMPLETE run=<run-id> cameras=11 root=<artifact-root>
+```
+
+The player geometry-group baseline does not load a map. It waits five seconds
+for the startup character to appear before capture:
+
+```text
+automation_run <request-id> Scripts/Game/model_refactor_capture_geometry_groups.luau
+```
+
+The retained RenderDoc baseline uses `ModelRefactor_DenseMixed` and requires a
+Game process started with the MCPTools `renderdoc` launch option:
+
+```text
+automation_run <request-id> Scripts/Game/model_refactor_capture_renderdoc.luau
+```
+
+Every workload uses `os.time()` in its artifact root so later runs do not
+overwrite earlier evidence. Keep all completed, failed, and intermediate
+artifacts; they are the visual history of the refactor.
+
 ### CVAR validation
 
 ```text
@@ -85,9 +122,10 @@ and exercises every finite value it can derive:
 Every applied choice remains active for ten complete application frames through
 `Scheduler.AfterFrames`, after which the original value is restored.
 
-`cl_r_joltEnabled` is explicitly blacklisted because enabling it is known to
-hang Game. `cl_developerMode` is exercised last and restored synchronously
-because changing it schedules a Luau-state reload.
+`cl_r_joltEnabled` is covered by the dedicated Jolt debug-rendering validation
+and is excluded here to avoid duplicating that stateful workload.
+`cl_developerMode` is exercised last and restored synchronously because changing
+it schedules a Luau-state reload.
 
 Success:
 
@@ -98,6 +136,16 @@ NOVUS_CVAR_SEQUENCE_COMPLETE count=<count> restoreMismatches=0 liveDrifts=<count
 `cl_r_fogBlendBegin`, `cl_r_fogBlendEnd`, and `cl_r_fogColor` are continuously
 updated by sky/time simulation. Differences in those values are reported as
 live drifts rather than restoration failures.
+
+### Jolt debug-rendering validation
+
+```text
+automation_run validation-jolt-debug Scripts/Game/jolt_debug_validation.luau
+```
+
+Loads the dense mixed-model camera, enables the Jolt occluder, culling, and
+geometry paths together, captures `SceneColor`, and restores every changed CVAR.
+Success is reported by `NOVUS_JOLT_DEBUG_VALIDATION_COMPLETE`.
 
 ## Automation APIs
 
@@ -147,6 +195,16 @@ Feature-specific scripts can insert diagnostic messages with:
 ```luau
 Tracy.Message("feature-184 shadows-off")
 ```
+
+The model-rendering V1 baseline uses `ModelRefactor_DenseMixed`, settles for
+five seconds at noon, and marks a ten-second steady-state sample:
+
+```text
+automation_run <request-id> Scripts/Game/model_refactor_tracy_baseline.luau
+```
+
+Run it only after the Tracy capture process is connected. Retain the resulting
+`.tracy` capture even when the workload reports a failure.
 
 ## Vulkan validation modes
 

@@ -5,7 +5,8 @@ Solution.Util.SetGroup(Solution.DependencyGroup)
 
 local dependencies =
 {
-    "jolt/jolt.lua"
+    "jolt/jolt.lua",
+    "nsightgraphicssdk/nsight.lua"
 }
 
 for k,v in pairs(dependencies) do

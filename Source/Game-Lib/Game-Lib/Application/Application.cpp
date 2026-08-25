@@ -141,7 +141,7 @@ Application::~Application()
     delete _assetWriter;
 }
 
-void Application::Start(bool startInSeparateThread, bool enableRenderDoc)
+void Application::Start(bool startInSeparateThread, bool enableRenderDoc, bool enableNsightGPUTrace)
 {
     if (_isRunning)
         return;
@@ -151,12 +151,12 @@ void Application::Start(bool startInSeparateThread, bool enableRenderDoc)
         _isRunning = true;
 
         std::thread applicationThread =
-            std::thread(&Application::Run, this, enableRenderDoc);
+            std::thread(&Application::Run, this, enableRenderDoc, enableNsightGPUTrace);
         applicationThread.detach();
     }
     else
     {
-        _isRunning = Init(enableRenderDoc);
+        _isRunning = Init(enableRenderDoc, enableNsightGPUTrace);
     }
 }
 
@@ -230,11 +230,11 @@ bool Application::TryGetMessageOutbound(MessageOutbound& message)
     return messageFound;
 }
 
-void Application::Run(bool enableRenderDoc)
+void Application::Run(bool enableRenderDoc, bool enableNsightGPUTrace)
 {
     tracy::SetThreadName("Application Thread");
 
-    if (Init(enableRenderDoc))
+    if (Init(enableRenderDoc, enableNsightGPUTrace))
     {
         Timer timer;
         Timer updateTimer;
@@ -338,7 +338,7 @@ void Application::Run(bool enableRenderDoc)
     Stop();
 }
 
-bool Application::Init(bool enableRenderDoc)
+bool Application::Init(bool enableRenderDoc, bool enableNsightGPUTrace)
 {
     _registries.gameRegistry = new entt::registry();
     _registries.uiRegistry = new entt::registry();
@@ -444,7 +444,7 @@ bool Application::Init(bool enableRenderDoc)
     Util::Texture::DiscoverAll();
     Util::ClientDB::DiscoverAll();
 
-    _gameRenderer = new GameRenderer(enableRenderDoc);
+    _gameRenderer = new GameRenderer(enableRenderDoc, enableNsightGPUTrace);
     _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
 
     NC_LOG_INFO("EditorHandler : Initializing");

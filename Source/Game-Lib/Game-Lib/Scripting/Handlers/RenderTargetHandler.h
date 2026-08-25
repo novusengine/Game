@@ -16,10 +16,12 @@ namespace Scripting::RenderTarget
     public:
         static void Register(Zenith* zenith);
         static i32 Dump(Zenith* zenith);
+        static i32 IsIdle(Zenith* zenith);
     };
 
     static LuaRegister<> renderTargetGlobalMethods[] =
     {
         { "Dump", RenderTargetHandler::Dump, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "IsIdle", RenderTargetHandler::IsIdle, Scripting::LuaMethodFlags::DeveloperOnly },
     };
 }

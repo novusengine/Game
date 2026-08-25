@@ -37,10 +37,13 @@ i32 main(i32 argc, char* argv[])
 #endif
 
     bool enableRenderDoc = false;
+    bool enableNsightGPUTrace = false;
     for (i32 argumentIndex = 1; argumentIndex < argc; argumentIndex++)
     {
         if (std::string_view(argv[argumentIndex]) == "-renderdoc")
             enableRenderDoc = true;
+        else if (std::string_view(argv[argumentIndex]) == "-nsight-gpu-trace")
+            enableNsightGPUTrace = true;
     }
 
     quill::Backend::start();
@@ -49,7 +52,13 @@ i32 main(i32 argc, char* argv[])
     quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime, quill::ClockSourceType::System);
     
     Application app;
-    app.Start(true, enableRenderDoc);
+    if (enableRenderDoc && enableNsightGPUTrace)
+    {
+        NC_LOG_ERROR("RenderDoc and Nsight GPU Trace cannot be enabled in the same process");
+        return 1;
+    }
+
+    app.Start(true, enableRenderDoc, enableNsightGPUTrace);
 
     ConsoleCommandHandler commandHandler;
 #if WIN32

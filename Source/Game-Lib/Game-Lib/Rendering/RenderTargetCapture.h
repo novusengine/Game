@@ -6,9 +6,12 @@
 #include <Renderer/Descriptors/ImageDesc.h>
 
 #include <array>
+#include <condition_variable>
 #include <deque>
 #include <filesystem>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace Renderer
@@ -21,11 +24,13 @@ class RenderTargetCapture
 {
 public:
     explicit RenderTargetCapture(Renderer::Renderer* renderer);
+    ~RenderTargetCapture();
 
     bool Queue(
         const std::string& debugName,
         const std::filesystem::path& artifactPath,
         std::string& error);
+    bool IsIdle() const;
     void AddReadbackPass(Renderer::RenderGraph& renderGraph);
     void ProcessPending();
 
@@ -64,9 +69,26 @@ private:
         Renderer::DepthImageID depthImage = Renderer::DepthImageID::Invalid();
     };
 
+    struct CapturedFrame
+    {
+        Request request;
+        uvec2 dimensions = {};
+        Renderer::ImageFormat colorFormat = Renderer::ImageFormat::UNKNOWN;
+        Renderer::DepthImageFormat depthFormat = Renderer::DepthImageFormat::UNKNOWN;
+        std::string formatName;
+        std::vector<u8> source;
+    };
+
     bool FindTarget(const std::string& debugName, Request& request, std::string& error) const;
     void Process(Request request);
+    void EncodeFrames();
 
     Renderer::Renderer* _renderer = nullptr;
     std::deque<Request> _pending;
+    mutable std::mutex _encodeMutex;
+    std::condition_variable _encodeCondition;
+    std::deque<CapturedFrame> _capturedFrames;
+    std::thread _encodeThread;
+    bool _encoding = false;
+    bool _stopping = false;
 };

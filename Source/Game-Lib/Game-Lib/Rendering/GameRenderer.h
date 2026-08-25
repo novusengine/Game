@@ -43,6 +43,7 @@ class EffectRenderer;
 class ShadowRenderer;
 class RenderTargetCapture;
 class RenderDocCapture;
+class NsightGPUTrace;
 
 namespace RenderAssets
 {
@@ -91,7 +92,7 @@ public:
 class GameRenderer
 {
 public:
-    explicit GameRenderer(bool enableRenderDoc = false);
+    GameRenderer(bool enableRenderDoc = false, bool enableNsightGPUTrace = false);
     ~GameRenderer();
 
     bool UpdateWindow(f32 deltaTime);
@@ -134,6 +135,7 @@ public:
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
     RenderTargetCapture* GetRenderTargetCapture() { return _renderTargetCapture; }
     RenderDocCapture* GetRenderDocCapture() { return _renderDocCapture; }
+    NsightGPUTrace* GetNsightGPUTrace() { return _nsightGPUTrace; }
     RenderAssets::RenderAssetResources* GetRenderAssetResources() { return _renderAssetResources; }
     RenderScenes::RenderScene* GetWorldRenderScene() { return _worldRenderScene; }
     RenderScenes::RenderScene* GetSkyboxModelScene();
@@ -187,6 +189,7 @@ private:
     PixelQuery* _pixelQuery = nullptr;
     RenderTargetCapture* _renderTargetCapture = nullptr;
     RenderDocCapture* _renderDocCapture = nullptr;
+    NsightGPUTrace* _nsightGPUTrace = nullptr;
 
     Memory::StackAllocator* _frameAllocator[2];
 

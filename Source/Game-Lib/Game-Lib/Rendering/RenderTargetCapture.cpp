@@ -551,6 +551,23 @@ namespace
 RenderTargetCapture::RenderTargetCapture(Renderer::Renderer* renderer)
     : _renderer(renderer)
 {
+    _encodeThread = std::thread(&RenderTargetCapture::EncodeFrames, this);
+}
+
+RenderTargetCapture::~RenderTargetCapture()
+{
+    {
+        std::scoped_lock lock(_encodeMutex);
+        _stopping = true;
+    }
+    _encodeCondition.notify_one();
+    _encodeThread.join();
+}
+
+bool RenderTargetCapture::IsIdle() const
+{
+    std::scoped_lock lock(_encodeMutex);
+    return _pending.empty() && _capturedFrames.empty() && !_encoding;
 }
 
 bool RenderTargetCapture::ResolveArtifactPath(
@@ -843,26 +860,71 @@ void RenderTargetCapture::Process(Request request)
         return;
     }
 
-    std::vector<u8> source(static_cast<size_t>(byteCount));
-    const bool read = request.kind == TargetKind::Color
-        ? _renderer->ReadImageImmediate(request.image, source.data(), source.size())
-        : _renderer->ReadImageImmediate(request.depthImage, source.data(), source.size());
+    CapturedFrame frame;
+    frame.request = std::move(request);
+    frame.dimensions = dimensions;
+    frame.formatName = format;
+    frame.source.resize(static_cast<size_t>(byteCount));
+    const bool read = frame.request.kind == TargetKind::Color
+        ? _renderer->ReadImageImmediate(frame.request.image, frame.source.data(), frame.source.size())
+        : _renderer->ReadImageImmediate(frame.request.depthImage, frame.source.data(), frame.source.size());
     if (!read)
     {
-        EmitArtifactMarker("artifact_failed", request.debugName, request.path, dimensions, format, "GPU readback failed");
+        EmitArtifactMarker("artifact_failed", frame.request.debugName, frame.request.path, dimensions, format, "GPU readback failed");
         return;
     }
 
-    std::vector<u8> rgba;
-    std::string error;
-    const bool converted = request.kind == TargetKind::Color
-        ? ConvertColorToRGBA8(_renderer->GetDesc(request.image).format, dimensions, source, rgba, error)
-        : ConvertDepthToRGBA8(_renderer->GetDesc(request.depthImage).format, dimensions, source, rgba, error);
-    if (!converted || !EncodeAndPublish(request.path, dimensions, rgba, error))
+    if (frame.request.kind == TargetKind::Color)
+        frame.colorFormat = _renderer->GetDesc(frame.request.image).format;
+    else
+        frame.depthFormat = _renderer->GetDesc(frame.request.depthImage).format;
+
     {
-        EmitArtifactMarker("artifact_failed", request.debugName, request.path, dimensions, format, error);
-        return;
+        std::scoped_lock lock(_encodeMutex);
+        _capturedFrames.push_back(std::move(frame));
     }
+    _encodeCondition.notify_one();
+}
 
-    EmitArtifactMarker("artifact_ready", request.debugName, request.path, dimensions, format);
+void RenderTargetCapture::EncodeFrames()
+{
+    while (true)
+    {
+        CapturedFrame frame;
+        {
+            std::unique_lock lock(_encodeMutex);
+            _encodeCondition.wait(lock, [this] { return _stopping || !_capturedFrames.empty(); });
+            if (_capturedFrames.empty())
+            {
+                if (_stopping)
+                    return;
+                continue;
+            }
+
+            frame = std::move(_capturedFrames.front());
+            _capturedFrames.pop_front();
+            _encoding = true;
+        }
+
+        std::vector<u8> rgba;
+        std::string error;
+        const bool converted = frame.request.kind == TargetKind::Color
+            ? ConvertColorToRGBA8(frame.colorFormat, frame.dimensions, frame.source, rgba, error)
+            : ConvertDepthToRGBA8(frame.depthFormat, frame.dimensions, frame.source, rgba, error);
+        if (!converted || !EncodeAndPublish(frame.request.path, frame.dimensions, rgba, error))
+        {
+            EmitArtifactMarker("artifact_failed", frame.request.debugName, frame.request.path,
+                frame.dimensions, frame.formatName, error);
+        }
+        else
+        {
+            EmitArtifactMarker("artifact_ready", frame.request.debugName, frame.request.path,
+                frame.dimensions, frame.formatName);
+        }
+
+        {
+            std::scoped_lock lock(_encodeMutex);
+            _encoding = false;
+        }
+    }
 }
