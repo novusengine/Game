@@ -23,7 +23,6 @@ namespace ModelLoading
     struct ModelGPURecord
     {
         FileFormat::Model::Bounds bounds;
-        FileFormat::AssetID collisionAssetID = FileFormat::INVALID_ASSET_ID;
 
         u32 meshBase = 0;
         u32 numMeshes = 0;
@@ -65,11 +64,11 @@ namespace ModelLoading
     // GPU ABI: keep in lockstep with ModelRecord in Model/ModelViewWork.inc.slang.
     // Slang's std430 StructuredBuffer stride is rounded to the record's 16-byte
     // alignment because ModelBounds contains float3 members.
-    static_assert(sizeof(ModelGPURecord) == 176);
-    static_assert(alignof(ModelGPURecord) == 8);
-    static_assert(offsetof(ModelGPURecord, lod0Meshlets) == 72);
-    static_assert(offsetof(ModelGPURecord, positionBase) == 80);
-    static_assert(offsetof(ModelGPURecord, reserved0) == 168);
+    static_assert(sizeof(ModelGPURecord) == 168);
+    static_assert(alignof(ModelGPURecord) == 4);
+    static_assert(offsetof(ModelGPURecord, lod0Meshlets) == 64);
+    static_assert(offsetof(ModelGPURecord, positionBase) == 72);
+    static_assert(offsetof(ModelGPURecord, reserved0) == 160);
 
     struct ModelShaderRecord
     {

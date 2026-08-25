@@ -2,7 +2,7 @@
 AssetBrowser — Lua port of the C++ ImGui Asset Browser. Left column is a collapsible
 folder tree (lazily expanded); selecting a folder lists its files in the right column
 in either a Row or thumbnail Display mode, with a search filter. Right-clicking a
-.complexmodel file spawns it at the camera.
+.model file spawns it at the camera.
 
 Filesystem access and model spawning go through the dev-only Asset handler. Thumbnails
 reuse Panel:SetBackground, which loads a texture by path at runtime.
@@ -34,7 +34,7 @@ local CELL_W   = 56
 local CELL_H   = CELL_W + 14
 local CELL_GAP = 4
 local MAX_FILES = 400
-local MODEL_EXT = ".complexmodel"
+local MODEL_EXT = ".model"
 
 local WINDOW_BG_COLOR = vector.create(0.10, 0.10, 0.12)
 local WINDOW_BG_ALPHA = 0.96

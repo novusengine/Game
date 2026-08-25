@@ -309,7 +309,6 @@ namespace ModelLoading
                 _limitations.invalidSkeletonReferences += result.decoded.limitations.invalidSkeletonReferences;
                 _limitations.invalidAnimationBoundsReferences +=
                     result.decoded.limitations.invalidAnimationBoundsReferences;
-                _limitations.invalidCollisionReferences += result.decoded.limitations.invalidCollisionReferences;
                 _limitations.invalidEmbeddedModelReferences +=
                     result.decoded.limitations.invalidEmbeddedModelReferences;
                 _entries.emplace(assetID, Entry{outHandle, references, false, false});

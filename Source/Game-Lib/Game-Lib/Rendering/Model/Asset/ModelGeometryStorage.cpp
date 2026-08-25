@@ -160,7 +160,6 @@ namespace ModelLoading
 
         ModelGPURecord record;
         record.bounds = view.root.bounds;
-        record.collisionAssetID = view.root.collisionAssetID;
         record.meshBase = AppendSpan(_meshes, view.meshes);
         record.numMeshes = static_cast<u32>(view.meshes.size());
         record.meshLODBase = AppendSpan(_meshLODs, view.meshLODs);

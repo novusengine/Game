@@ -251,7 +251,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
     max.y += 0.5f;
 
     // Write culling data
-    Model::ComplexModel::CullingData& cullingData = _cullingDatas[desc.instanceOffset];
+    CullingBoundsData& cullingData = _cullingDatas[desc.instanceOffset];
     cullingData.center = min; // TODO: Unfuck our AABB representations, we currently mix AABBs with min/max variables and ones with center/extents...
     cullingData.extents = max;
     cullingData.boundingSphereRadius = glm::distance(min, max);

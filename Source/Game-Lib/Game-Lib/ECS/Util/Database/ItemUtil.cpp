@@ -8,6 +8,8 @@
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <FileFormat/Novus/Model/Model.h>
+
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
@@ -260,7 +262,7 @@ namespace ECSUtil::Item
                     "tr"
                 };
 
-                u32 modelExtensionLength = static_cast<u32>(Model::FILE_EXTENSION.size());
+                u32 modelExtensionLength = static_cast<u32>(std::size(FileFormat::Model::FILE_EXTENSION) - 1);
                 u32 modelPathLength = static_cast<u32>(modelPath.size());
                 u32 modelHelmIdentifierSize = 3;
                 u32 modelHelmIdentifierRaceSize = 2;

@@ -789,7 +789,7 @@ void JoltDebugRenderer::DrawGeometry(JPH::RMat44Arg inModelMatrix, const JPH::AA
 
     // Add culling data
     u32 cullingDataID = _cullingDatas.Add();
-    Model::ComplexModel::CullingData& cullingData = _cullingDatas[cullingDataID];
+    CullingBoundsData& cullingData = _cullingDatas[cullingDataID];
 
     // Increment instanceCount and add instanceID to manifest
     if (isIndexed)

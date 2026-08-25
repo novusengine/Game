@@ -7,9 +7,12 @@
 #include "Game-Lib/ECS/Singletons/Skybox.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
+
+#include <FileFormat/Novus/Model/Model.h>
 
 #include <Input/InputSystem.h>
 
@@ -26,9 +29,9 @@ namespace fs = std::filesystem;
 
 namespace Editor
 {
-    static const fs::path complexModelPath = fs::path("Data/ComplexModel/");
-    static const fs::path skyboxFolderPath = complexModelPath / "environments/stars";
-    static const fs::path fileExtension = ".complexmodel";
+    static const fs::path modelPath = fs::path("Data/Model/");
+    static const fs::path skyboxFolderPath = modelPath / "environments/stars";
+    static const fs::path fileExtension = FileFormat::Model::FILE_EXTENSION;
 
     struct SkyboxSelectorData : SkyboxSelectorDataBase
     {
@@ -58,7 +61,7 @@ namespace Editor
             if (path.extension() != fileExtension)
                 continue;
 
-            path = fs::relative(path, complexModelPath);
+            path = fs::relative(path, modelPath);
             data->skyboxPaths.push_back(path);
         }
     }
@@ -229,7 +232,7 @@ namespace Editor
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
                             auto& model = registry.get<ECS::Components::Model>(skybox.entity);
-                            u64 modelHash = modelLoader->GetModelHashFromModelPath(skyboxPath.generic_string());
+                            u64 modelHash = modelLoader->GetModelHashFromModelPath(Util::AssetPath::Model(skyboxPath.generic_string()));
                             if (!modelLoader->LoadModelForEntity(skybox.entity, model, modelHash))
                             {
                                 std::string pathStr = skyboxPath.string();

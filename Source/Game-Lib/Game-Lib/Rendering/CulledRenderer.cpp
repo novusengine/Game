@@ -711,7 +711,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             params.commandList->PushMarker(drawMarkerName, Color::White);
 
-            const u32 debugDrawCallBufferIndex = 0;//CVAR_ComplexModelDebugShadowDraws.Get();
+            const u32 debugDrawCallBufferIndex = 0;
 
             DrawParams drawParams;
             drawParams.cullingEnabled = params.cullingEnabled;

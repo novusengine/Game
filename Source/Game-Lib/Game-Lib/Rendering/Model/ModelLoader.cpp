@@ -18,6 +18,7 @@
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
+#include "Game-Lib/Rendering/Model/Asset/ModelAssetReader.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelSceneBridge.h"
 #include "Game-Lib/Rendering/Model/DisplayResolver.h"
 #include "Game-Lib/Rendering/Model/ModelParameterOverrides.h"
@@ -59,25 +60,19 @@
 
 namespace fs = std::filesystem;
 
-static const fs::path dataPath = fs::path("Data/");
-static const fs::path complexModelPath = dataPath / "ComplexModel";
-
 namespace
 {
-    FileFormat::AssetID ResolveModelV2AssetID(u64 sourceReference)
+    std::unique_ptr<ModelLoading::LoadedModelData> ReadModelData(const void* data, size_t size)
     {
-        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
-        const std::string* sourcePath = pactStorage->GetFilePath(sourceReference);
-        if (!sourcePath)
-            return FileFormat::INVALID_ASSET_ID;
+        const std::span<const u8> payload(static_cast<const u8*>(data), size);
+        const ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full);
+        if (!result)
+            return nullptr;
 
-        fs::path modelPath(*sourcePath);
-        modelPath.replace_extension(".model");
-        std::string normalized = modelPath.generic_string();
-        std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char character) {
-            return static_cast<char>(std::tolower(character));
-        });
-        return Util::AssetPath::Hash(normalized);
+        auto model = std::make_unique<ModelLoading::LoadedModelData>();
+        model->asset = result.view.root;
+        model->physicsData.assign(result.view.physicsData.begin(), result.view.physicsData.end());
+        return model;
     }
 
     u64 ModelParameterNameHash(std::string_view name)
@@ -128,22 +123,11 @@ public:
         }
         result.debugName = std::move(modelPath);
 
-        constexpr size_t HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
-        if (fileHandle.GetSize() < HEADER_SIZE)
         {
-            result.error = "model file is smaller than its required headers";
-            _completionQueue->enqueue(std::move(result));
-            return;
-        }
+            ZoneScopedN("Parse Model Asset");
 
-        {
-            ZoneScopedN("Parse Complex Model");
-
-            std::unique_ptr<Model::ComplexModel> model = std::make_unique<Model::ComplexModel>();
-            std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
-            buffer->writtenData = fileHandle.GetSize();
-
-            if (!Model::ComplexModel::Read(buffer, *model))
+            std::unique_ptr<ModelLoading::LoadedModelData> model = ReadModelData(fileHandle.GetData(), fileHandle.GetSize());
+            if (!model)
             {
                 result.error = "failed to parse model data";
                 _completionQueue->enqueue(std::move(result));
@@ -335,18 +319,6 @@ void ModelLoader::Update(f32 deltaTime)
 
                 const std::string* modelPath = pactStorage->GetFilePath(loadRequest.modelHash);
 
-                size_t fileSize = fileHandle.GetSize();
-                constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
-
-                if (fileSize < HEADER_SIZE)
-                {
-                    NC_LOG_ERROR("ModelLoader : Tried to open model file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", *modelPath);
-
-                    _modelAssets[loadRequest.modelHash].loadState = LoadState::Failed;
-
-                    continue;
-                }
-
                 DiscoveredModel newDiscoveredModel =
                 {
                     .name = *modelPath,
@@ -358,21 +330,16 @@ void ModelLoader::Update(f32 deltaTime)
                 {
                     ZoneScopedN("Read Model");
 
-                    Model::ComplexModel* model = new Model::ComplexModel();
-                    std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
-                    buffer->writtenData = fileHandle.GetSize();
-
-                    if (!Model::ComplexModel::Read(buffer, *model))
+                    std::unique_ptr<ModelLoading::LoadedModelData> model = ReadModelData(fileHandle.GetData(), fileHandle.GetSize());
+                    if (!model)
                     {
                         NC_LOG_ERROR("ModelLoader : Failed to read the Model for file ({0})", newDiscoveredModel.name);
-                        delete model;
-
                         _modelAssets[loadRequest.modelHash].loadState = LoadState::Failed;
 
                         continue;
                     }
 
-                    newDiscoveredModel.model = model;
+                    newDiscoveredModel.model = model.release();
                     _modelAssets[newDiscoveredModel.modelHash].loadState = LoadState::NotLoaded;
                     _modelHashToDiscoveredModel[newDiscoveredModel.modelHash] = std::move(newDiscoveredModel);
                 }
@@ -1066,17 +1033,6 @@ void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Re
     }
 }
 
-const Model::ComplexModel* ModelLoader::GetModelInfo(u64 modelHash)
-{
-    ZoneScopedN("ModelLoader::GetModelInfo");
-
-    if (!_modelHashToDiscoveredModel.contains(modelHash))
-        return nullptr;
-
-    const auto& discoveredModel = _modelHashToDiscoveredModel[modelHash];
-    return discoveredModel.model;
-}
-
 u64 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
 {
     ZoneScopedN("ModelLoader::GetModelHashFromModelPath");
@@ -1357,8 +1313,8 @@ bool ModelLoader::CommitLoadedModel(DiscoveredModel& discoveredModel)
     _modelIDToModelHash[modelID] = discoveredModel.modelHash;
 
     ECS::Components::AABB& aabb = _modelIDToAABB[modelID];
-    aabb.centerPos = discoveredModel.model->aabbCenter;
-    aabb.extents = discoveredModel.model->aabbExtents;
+    aabb.centerPos = discoveredModel.model->asset.bounds.center;
+    aabb.extents = discoveredModel.model->asset.bounds.extents;
 
     // Generate Jolt Shape
     {
@@ -1521,7 +1477,7 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         RenderScenes::RenderScene* scene = registry->all_of<ECS::Components::SkyboxModelTag>(entityID)
             ? gameRenderer->GetSkyboxModelScene()
             : gameRenderer->GetWorldRenderScene();
-        const FileFormat::AssetID modelAssetID = ResolveModelV2AssetID(request.modelHash);
+        const FileFormat::AssetID modelAssetID = request.modelHash;
         const RenderAssets::ModelHandle modelHandle = assets->LoadModel(modelAssetID);
 
         sceneBridge->Remove(entityID);

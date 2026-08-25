@@ -54,9 +54,6 @@ namespace ModelLoading
             return Fail(DiagnosticCode::NonFiniteValue, "ModelAsset.bounds");
         if (root.bounds.reserved != 0)
             return Fail(DiagnosticCode::ReservedValueNonZero, "ModelAsset.bounds.reserved", Diagnostic::NO_INDEX, root.bounds.reserved, 0);
-        if (root.collisionAssetID == FileFormat::INVALID_ASSET_ID)
-            ++result.limitations.invalidCollisionReferences;
-
         for (u32 index = 0; index < result.view.positions.size(); ++index)
         {
             if (result.view.positions[index].reserved != 0)

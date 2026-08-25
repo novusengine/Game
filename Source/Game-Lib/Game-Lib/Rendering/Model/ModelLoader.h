@@ -8,7 +8,7 @@
 #include <Base/Container/SafeUnorderedMap.h>
 
 #include <FileFormat/Novus/Map/MapChunk.h>
-#include <FileFormat/Novus/Model/ComplexModel.h>
+#include <FileFormat/Novus/Model/Model.h>
 
 #include <Renderer/Descriptors/TextureDesc.h>
 
@@ -51,7 +51,7 @@ public:
         std::string name;
         u64 modelHash;
         bool hasShape;
-        Model::ComplexModel* model;
+        ModelLoading::LoadedModelData* model;
     };
 
     struct UnloadRequest
@@ -162,7 +162,6 @@ public: // Load Request Helpers
     void SetHairTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID);
 
 public:
-    const Model::ComplexModel* GetModelInfo(u64 modelHash);
     u64 GetModelHashFromModelPath(const std::string& modelPath);
     bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
     bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);

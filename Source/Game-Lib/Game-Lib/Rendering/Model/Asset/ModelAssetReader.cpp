@@ -73,6 +73,7 @@ namespace ModelLoading
         VALIDATE_ROOT_SECTION(parameterBindings, numParameterBindings, Model::ParameterBinding);
         VALIDATE_ROOT_SECTION(embeddedInstanceSets, numEmbeddedInstanceSets, Model::EmbeddedInstanceSet);
         VALIDATE_ROOT_SECTION(embeddedInstances, numEmbeddedInstances, Model::EmbeddedInstance);
+        VALIDATE_ROOT_SECTION(physicsData, numPhysicsDataBytes, u8);
 #undef VALIDATE_ROOT_SECTION
 
         std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<u8*>(payload.data()), payload.size());
@@ -99,6 +100,7 @@ namespace ModelLoading
         SET_ROOT_SECTION(parameterBindings, numParameterBindings, Model::ParameterBinding);
         SET_ROOT_SECTION(embeddedInstanceSets, numEmbeddedInstanceSets, Model::EmbeddedInstanceSet);
         SET_ROOT_SECTION(embeddedInstances, numEmbeddedInstances, Model::EmbeddedInstance);
+        SET_ROOT_SECTION(physicsData, numPhysicsDataBytes, u8);
 #undef SET_ROOT_SECTION
 
         if (AssetLoading::ShouldPerformFullValidation(validationMode))

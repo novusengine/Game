@@ -149,13 +149,14 @@ namespace Scripting::Asset
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
         entt::registry& registry = *registries->gameRegistry;
 
-        // The model loader expects a path relative to Data/ComplexModel with forward slashes.
+        // The model loader expects the canonical PACT path beneath Data/Model with forward slashes.
         fs::path dataRoot = GetDataRoot();
         std::error_code ec;
-        std::string modelPath = fs::relative(dataRoot / dataRelativePath, dataRoot / "ComplexModel", ec).string();
+        std::string modelPath = fs::relative(dataRoot / dataRelativePath, dataRoot, ec).string();
         if (ec)
             modelPath = dataRelativePath;
         std::replace(modelPath.begin(), modelPath.end(), '\\', '/');
+        std::transform(modelPath.begin(), modelPath.end(), modelPath.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 
         entt::entity entity = registry.create();
         registry.emplace<ECS::Components::Name>(entity);

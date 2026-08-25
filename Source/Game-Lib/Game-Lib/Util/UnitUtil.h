@@ -33,11 +33,6 @@ namespace ECS
     }
 }
 
-namespace Model
-{
-    struct ComplexModel;
-}
-
 namespace Util::Unit
 {
     bool HasPower(const ECS::Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType);

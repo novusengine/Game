@@ -26,13 +26,13 @@ namespace ModelLoading
         std::span<const FileFormat::Model::ParameterBinding> parameterBindings;
         std::span<const FileFormat::Model::EmbeddedInstanceSet> embeddedInstanceSets;
         std::span<const FileFormat::Model::EmbeddedInstance> embeddedInstances;
+        std::span<const u8> physicsData;
     };
 
     struct ModelAssetLimitations
     {
         u32 invalidSkeletonReferences = 0;
         u32 invalidAnimationBoundsReferences = 0;
-        u32 invalidCollisionReferences = 0;
         u32 invalidEmbeddedModelReferences = 0;
     };
 

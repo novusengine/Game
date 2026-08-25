@@ -5,7 +5,6 @@
 #include <Base/Math/Geometry.h>
 
 #include <FileFormat/Shared.h>
-#include <FileFormat/Novus/Model/ComplexModel.h>
 
 #include <Renderer/RenderGraphBuilder.h>
 #include <Renderer/DescriptorSetResource.h>
@@ -26,6 +25,14 @@ namespace Renderer
 }
 
 struct DrawParams;
+
+struct CullingBoundsData
+{
+    hvec3 center = hvec3(f16(0.0f));
+    hvec3 extents = hvec3(f16(0.0f));
+    f32 boundingSphereRadius = 0.0f;
+};
+static_assert(sizeof(CullingBoundsData) == 16);
 
 class CulledRenderer
 {
@@ -367,7 +374,7 @@ protected:
     GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
 
-    Renderer::GPUVector<Model::ComplexModel::CullingData> _cullingDatas;
+    Renderer::GPUVector<CullingBoundsData> _cullingDatas;
 
     static bool _pipelinesCreated;
     static Renderer::ComputePipelineID _fillInstancedDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed

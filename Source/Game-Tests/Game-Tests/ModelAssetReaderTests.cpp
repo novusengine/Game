@@ -44,6 +44,7 @@ namespace
         data.meshletVertexIndices = {0, 1, 2};
         data.meshletTriangles.push_back({0x00020100u});
         data.materialSlots.push_back({42, 1, 0, 0});
+        data.physicsData = {1, 2, 3, 4};
 
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(asset.GetSerializedSize(data));
         REQUIRE(asset.Save(buffer, data));
@@ -67,7 +68,8 @@ TEST_CASE("Model asset reader accepts a minimal cooker-final payload", "[Renderi
     CHECK(result.view.meshes.size() == 1);
     CHECK(result.view.meshLODs.size() == 1);
     CHECK(result.view.meshlets.size() == 1);
-    CHECK(result.limitations.invalidCollisionReferences == 1);
+    CHECK(result.view.physicsData.size() == 4);
+    CHECK(result.view.physicsData[0] == 1);
     CHECK(result.limitations.invalidSkeletonReferences == 1);
     CHECK(result.limitations.invalidAnimationBoundsReferences == 1);
 }
