@@ -77,10 +77,6 @@ namespace ShadowRendering
         Renderer::GraphicsPipelineID _alphaTwoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         robin_hood::unordered_flat_map<u32, Renderer::BufferID> _cullBindings;
         robin_hood::unordered_flat_map<u64, Renderer::BufferID> _rasterBindings;
-        std::array<Renderer::BufferID, 16> _uploadBindings = {};
         u32 _generation = 0;
-        u32 _cullDescriptorWarmupFrames = 0;
-        u32 _rasterDescriptorWarmupFrames = 0;
-        bool _uploadBindingsValid = false;
     };
 } // namespace ShadowRendering

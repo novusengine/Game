@@ -39,14 +39,12 @@ namespace ModelView
         Renderer::BufferID GetGeometryArguments(u8 frameIndex) const { return _geometryArguments[frameIndex]; }
         Renderer::BufferID GetStatsBuffer(u8 frameIndex) const { return _statsBuffers[frameIndex]; }
         Renderer::BufferID GetStatsReadback(u8 frameIndex) const { return _statsReadbacks[frameIndex]; }
-        Renderer::BufferID GetInstanceVisibility(u8 frameIndex) const { return _instanceVisibility[frameIndex]; }
         Renderer::BufferID GetMeshletHistory(u8 frameIndex) const { return _meshletHistory[frameIndex]; }
         u32 GetQueueCapacity() const { return _queueCapacity; }
         u32 GetQueueGeneration() const { return _queueGeneration; }
         u32 GetSelectionGeneration() const { return _selectionGeneration; }
         u32 GetSelectionCapacity() const { return _selectionCapacity; }
         u32 GetHistoryGeneration() const { return _historyGeneration; }
-        u32 GetInstanceVisibilityWords() const { return _instanceVisibilityWords; }
         u32 GetMeshletHistoryWords() const { return _meshletHistoryWords; }
         const WorkStats& GetStats() const { return _stats; }
         const u32* GetArgumentSnapshot() const { return _argumentSnapshot; }
@@ -65,7 +63,6 @@ namespace ModelView
         Renderer::BufferID _geometryArguments[FRAME_COUNT] = {};
         Renderer::BufferID _statsBuffers[FRAME_COUNT] = {};
         Renderer::BufferID _statsReadbacks[FRAME_COUNT] = {};
-        Renderer::BufferID _instanceVisibility[FRAME_COUNT] = {};
         Renderer::BufferID _meshletHistory[FRAME_COUNT] = {};
         WorkStats _stats;
         u32 _argumentSnapshot[MODEL_RASTER_CLASS_COUNT * MODEL_DISPATCH_ARGUMENT_COUNT] = {};
@@ -75,7 +72,6 @@ namespace ModelView
         u32 _selectionGeneration = 0;
         u32 _selectionCapacity = 0;
         u32 _historyGeneration = 0;
-        u32 _instanceVisibilityWords = 0;
         u32 _meshletHistoryWords = 0;
         bool _hasReadback[FRAME_COUNT] = {};
     };

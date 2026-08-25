@@ -300,6 +300,14 @@ GameRenderer::~GameRenderer()
     delete _worldRenderScene;
     delete _renderAssetResources;
     delete _renderTargetCapture;
+    _modelRenderer->Shutdown();
+    DepthPyramidUtils::Shutdown();
+    _resources.debugDescriptorSet.Shutdown();
+    _resources.globalDescriptorSet.Shutdown();
+    _resources.lightDescriptorSet.Shutdown();
+    _resources.terrainDescriptorSet.Shutdown();
+    _resources.modelDescriptorSet.Shutdown();
+    _resources.materialDescriptorSet.Shutdown();
     delete _renderer;
     delete _renderDocCapture;
 }
@@ -662,6 +670,8 @@ f32 GameRenderer::Render()
     Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);
     _renderTargetCapture->AddReadbackPass(renderGraph);
+    if (isEditorMode)
+        renderGraph.Export(_resources.sceneColor);
     renderGraph.Export(finalTarget);
 
     renderGraph.AddSignalSemaphore(_resources.sceneRenderedSemaphore); // Signal that we are ready to present

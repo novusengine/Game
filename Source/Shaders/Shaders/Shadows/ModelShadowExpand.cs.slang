@@ -50,8 +50,13 @@ void StoreChunk(uint frameIndex, uint index, ModelShadowChunk chunk)
 bool GeometryGroupEnabled(ModelInstanceRecord instance, uint groupID)
 {
     uint word = groupID >> 5u;
-    return word < instance.geometryGroupWordCount &&
-           (_shadowGeometryGroupMasks[instance.geometryGroupWordOffset + word] & (1u << (groupID & 31u))) != 0u;
+    uint boundWordCount;
+    uint boundWordStride;
+    _shadowGeometryGroupMasks.GetDimensions(boundWordCount, boundWordStride);
+    uint absoluteWord = instance.geometryGroupWordOffset + word;
+    return word < instance.geometryGroupWordCount && absoluteWord >= instance.geometryGroupWordOffset &&
+           absoluteWord < boundWordCount &&
+           (_shadowGeometryGroupMasks[absoluteWord] & (1u << (groupID & 31u))) != 0u;
 }
 
 uint SelectShadowLOD(ModelMesh mesh, ModelRecord model, ModelInstanceRecord instance, uint clipmapIndex)
@@ -124,14 +129,30 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         for (uint submeshIndex = 0u; submeshIndex < lod.numSubmeshes; ++submeshIndex)
         {
             ModelSubmesh submesh = _shadowSubmeshes[model.submeshBase + lod.submeshOffset + submeshIndex];
+            if (meshIndex >= (1u << MODEL_VISIBILITY_MESH_BITS) ||
+                localLOD >= (1u << MODEL_VISIBILITY_LOD_BITS) ||
+                submeshIndex >= (1u << MODEL_VISIBILITY_SUBMESH_BITS) ||
+                submesh.meshletOffset + submesh.numMeshlets > (1u << MODEL_VISIBILITY_MESHLET_BITS))
+            {
+                AddStat(frameIndex, MODEL_SHADOW_STAT_REJECTED_BOUNDS, submesh.numMeshlets);
+                continue;
+            }
             if (!GeometryGroupEnabled(instance, submesh.geometryGroupID))
             {
                 AddStat(frameIndex, MODEL_SHADOW_STAT_REJECTED_GEOMETRY_GROUP, submesh.numMeshlets);
                 continue;
             }
 
-            uint materialInstanceIndex = _shadowMaterialTable[instance.materialTableOffset +
-                mesh.materialSlotOffset + submesh.materialSlotIndex];
+            uint materialIndex = instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex;
+            uint materialCount;
+            uint materialStride;
+            _shadowMaterialTable.GetDimensions(materialCount, materialStride);
+            if (materialIndex < instance.materialTableOffset || materialIndex >= materialCount)
+            {
+                AddStat(frameIndex, MODEL_SHADOW_STAT_REJECTED_BOUNDS, submesh.numMeshlets);
+                continue;
+            }
+            uint materialInstanceIndex = _shadowMaterialTable[materialIndex];
             MaterialInstanceRecord materialInstance = _materialInstances[materialInstanceIndex];
             if ((materialInstance.flags & MATERIAL_CASTS_SHADOWS) == 0u)
             {

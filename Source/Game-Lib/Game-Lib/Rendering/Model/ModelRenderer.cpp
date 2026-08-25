@@ -102,6 +102,16 @@ ModelRenderer::~ModelRenderer()
 
 }
 
+void ModelRenderer::Shutdown()
+{
+    _opaqueCullingResources.Shutdown();
+    _transparentCullingResources.Shutdown();
+    _opaqueSkyboxCullingResources.Shutdown();
+    _transparentSkyboxCullingResources.Shutdown();
+    _svsmDrawDescriptorSet.Shutdown();
+    _svsmDynamicDrawDescriptorSet.Shutdown();
+}
+
 void ModelRenderer::Update(f32 deltaTime)
 {
     ZoneScopedN("ModelRenderer::Update");

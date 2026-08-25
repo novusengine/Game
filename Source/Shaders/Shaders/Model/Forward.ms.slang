@@ -1,5 +1,6 @@
 #include "DescriptorSet/Global.inc.slang"
 #include "Model/ModelVisibility.inc.slang"
+#include "Model/ModelRasterQueue.inc.slang"
 
 struct Constants
 {
@@ -81,7 +82,7 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         return;
     }
 
-    uint recordID = LoadRecordID(queueIndex);
+    uint recordID = ModelRasterQueueRecordID(LoadRecordID(queueIndex));
     uint recordCount = _constants.resourceIndex == 0u ? ModelVisibilityRecordCount(_modelVisibilityStats0)
                                                        : ModelVisibilityRecordCount(_modelVisibilityStats1);
     if (recordID >= recordCount)

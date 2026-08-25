@@ -29,15 +29,23 @@ void main()
                                          MODEL_SHADOW_MESH_DISPATCH_MAX_GROUPS_X;
         if (_constants.frameIndex == 0u)
         {
+            _shadowFinalizeStats0[MODEL_SHADOW_STAT_QUEUE_COUNTS_BASE + queueIndex] = count;
             _shadowArguments0[offset] = x;
             _shadowArguments0[offset + 1u] = y;
             _shadowArguments0[offset + 2u] = count == 0u ? 0u : 1u;
         }
         else
         {
+            _shadowFinalizeStats1[MODEL_SHADOW_STAT_QUEUE_COUNTS_BASE + queueIndex] = count;
             _shadowArguments1[offset] = x;
             _shadowArguments1[offset + 1u] = y;
             _shadowArguments1[offset + 2u] = count == 0u ? 0u : 1u;
         }
     }
+    if (_constants.frameIndex == 0u)
+        _shadowFinalizeStats0[MODEL_SHADOW_STAT_VISIBILITY_RECORDS] =
+            min(_shadowFinalizeStats0[MODEL_SHADOW_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
+    else
+        _shadowFinalizeStats1[MODEL_SHADOW_STAT_VISIBILITY_RECORDS] =
+            min(_shadowFinalizeStats1[MODEL_SHADOW_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
 }

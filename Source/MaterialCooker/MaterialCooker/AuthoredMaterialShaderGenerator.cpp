@@ -428,22 +428,8 @@ bool AuthoredMaterialShaderGenerator::Generate(
                       GenerateResolveGroupsSource(groups)))
     return false;
 
-  std::ostringstream resolve;
-  resolve << "permutation MATERIAL_COOK_GROUP = [";
-  bool firstResolveGroup = true;
-  std::set<u16> resolveGroups;
-  for (u16 group : groups) {
-    const u16 groupClass =
-        group % FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
-    if (groupClass < 4u)
-      resolveGroups.emplace(group - groupClass + (groupClass & 1u));
-  }
-  for (u16 group : resolveGroups) {
-    resolve << (firstResolveGroup ? "" : ", ") << group;
-    firstResolveGroup = false;
-  }
-  resolve << "];\n#include \"Material/MaterialResolve.inc.slang\"\n";
-  if (!WriteIfChanged(directory / "MaterialResolve.cs.slang", resolve.str()))
+  std::filesystem::remove(directory / "MaterialResolve.cs.slang", error);
+  if (error)
     return false;
 
   const std::filesystem::path validationPath =

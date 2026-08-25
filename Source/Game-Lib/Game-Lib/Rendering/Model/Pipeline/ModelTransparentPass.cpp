@@ -336,8 +336,8 @@ namespace ModelPipeline
                 commandList.Dispatch(1, 1, 1);
                 commandList.EndPipeline(_finalizePipeline);
                 commandList.CopyBuffer(data.readback, 0, data.stats, 0, sizeof(ModelView::TransparentWorkStats));
-            });
-        work.MarkSubmitted(frameIndex);
+                work.MarkSubmitted(frameIndex);
+            }, Renderer::RenderPassFlags::SideEffect);
     }
 
     void ModelTransparentPass::AddRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,

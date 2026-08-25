@@ -103,6 +103,14 @@ void DepthPyramidUtils::Init(Renderer::Renderer* renderer, GameRenderer* gameRen
     _pyramidDescriptorSet.Bind("srcSampler", _pyramidSampler);
 }
 
+void DepthPyramidUtils::Shutdown()
+{
+    _copyDescriptorSet.Shutdown();
+    _pyramidDescriptorSet.Shutdown();
+    _renderer = nullptr;
+    _gameRenderer = nullptr;
+}
+
 void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 {
     params.commandList->PushMarker("Depth Pyramid ", Color::White);

@@ -251,6 +251,18 @@ namespace Scripting::Asset
         zenith->AddTableField("residentModels", stats.models.residentModels);
         zenith->AddTableField("modelReferences", stats.models.references);
         zenith->AddTableField("modelCacheHits", stats.models.cacheHits);
+        zenith->AddTableField("modelPendingLoads", stats.models.pendingLoads);
+        zenith->AddTableField("modelActiveJobs", stats.models.activeJobs);
+        zenith->AddTableField("modelPeakActiveJobs", stats.models.peakActiveJobs);
+        zenith->AddTableField("modelPeakPendingLoads", stats.models.peakPendingLoads);
+        zenith->AddTableField("modelCoalescedRequests", stats.models.coalescedRequests);
+        zenith->AddTableField("modelCompletedReads", stats.models.completedReads);
+        zenith->AddTableField("modelCommittedLoads", stats.models.committedLoads);
+        zenith->AddTableField("modelCancelledLoads", stats.models.cancelledLoads);
+        zenith->AddTableField("modelDecodedBytes", stats.models.decodedBytes);
+        zenith->AddTableField("modelPeakDecodedBytes", stats.models.peakDecodedBytes);
+        zenith->AddTableField("modelTotalCommitTimeUS", stats.models.totalCommitTimeUS);
+        zenith->AddTableField("modelMaxCommitTimeUS", stats.models.maxCommitTimeUS);
         zenith->AddTableField("usedBytes", stats.modelGeometry.usedBytes + stats.materialStorage.usedBytes);
         zenith->AddTableField("reservedBytes", stats.modelGeometry.reservedBytes + stats.materialStorage.reservedBytes);
         zenith->AddTableField("growths", stats.modelGeometry.bufferGrowths + stats.materialStorage.bufferGrowths);
@@ -288,6 +300,7 @@ namespace Scripting::Asset
         zenith->AddTableField("shadowTestedMeshlets", shadowStats.testedMeshlets);
         zenith->AddTableField("shadowPageRejectedMeshlets", shadowStats.rejectedPageMeshlets);
         zenith->AddTableField("shadowGeometryGroupRejectedMeshlets", shadowStats.rejectedGeometryGroupMeshlets);
+        zenith->AddTableField("shadowBoundsRejectedMeshlets", shadowStats.rejectedBoundsMeshlets);
         zenith->AddTableField("shadowQueueOverflows", shadowStats.queueOverflows + shadowStats.recordOverflows + shadowStats.chunkQueueOverflows);
         zenith->AddTableField("mapPlacements", placementStats.livePlacements);
         zenith->AddTableField("mapPlacementDuplicates", placementStats.duplicatePlacements);
@@ -317,12 +330,9 @@ namespace Scripting::Asset
         zenith->AddTableField("modelQueueOverflows", diagnosticStats.queueOverflows);
         zenith->AddTableField("modelChunkQueueOverflows", diagnosticStats.chunkQueueOverflows);
         zenith->AddTableField("modelVisibilityRecordOverflows", diagnosticStats.visibilityRecordOverflows);
-        zenith->AddTableField("modelSurvivorQueueOverflows", diagnosticStats.survivorQueueOverflows);
         zenith->AddTableField("modelSurvivors", diagnosticStats.survivorCount);
         zenith->AddTableField("modelPhase1ReplayedMeshlets", diagnosticStats.phase1ReplayedMeshlets);
         zenith->AddTableField("modelPhase2AddedMeshlets", diagnosticStats.phase2AddedMeshlets);
-        zenith->AddTableField("modelStaleGenerationSkips", diagnosticStats.staleGenerationSkips);
-        zenith->AddTableField("modelLODMismatchSkips", diagnosticStats.lodMismatchSkips);
         zenith->AddTableField("modelOcclusionRejectedMeshlets", diagnosticStats.rejectedOcclusionMeshlets);
         for (u32 lod = 0; lod < 8; ++lod)
         {

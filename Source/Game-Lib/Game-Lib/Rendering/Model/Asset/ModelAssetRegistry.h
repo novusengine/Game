@@ -46,6 +46,18 @@ namespace ModelLoading
         u32 references = 0;
         u32 cacheHits = 0;
         u32 failures = 0;
+        u32 pendingLoads = 0;
+        u32 activeJobs = 0;
+        u32 peakActiveJobs = 0;
+        u32 peakPendingLoads = 0;
+        u32 coalescedRequests = 0;
+        u32 completedReads = 0;
+        u32 committedLoads = 0;
+        u32 cancelledLoads = 0;
+        u64 decodedBytes = 0;
+        u64 peakDecodedBytes = 0;
+        u64 totalCommitTimeUS = 0;
+        u64 maxCommitTimeUS = 0;
         ModelAssetLimitations limitations;
     };
 
@@ -60,6 +72,7 @@ namespace ModelLoading
         ~ModelAssetRegistry();
 
         bool InitializeFallback();
+        void Update();
         void Reserve(u32 modelCount)
         {
             _entries.reserve(_entries.size() + modelCount);
@@ -68,7 +81,8 @@ namespace ModelLoading
         ModelLoadStatus BeginLoad(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
         ModelLoadStatus PollLoad(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
         bool Release(FileFormat::AssetID assetID);
-        EmbeddedModelLoadStatus LoadEmbedded(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
+        EmbeddedModelLoadStatus LoadEmbedded(FileFormat::AssetID assetID, bool acquireReference,
+                                             RenderAssets::ModelHandle& outHandle);
         RenderAssets::ModelHandle GetFallbackModel() const { return _fallbackModel; }
         ModelAssetRegistryStats GetStats() const;
 
@@ -80,18 +94,22 @@ namespace ModelLoading
             bool usedFallback = false;
             bool sourceFileMissing = false;
         };
-        struct PendingLoad;
+        struct AsyncState;
 
         RenderAssets::ModelHandle RecordFailure(FileFormat::AssetID assetID, const char* reason,
-                                                bool sourceFileMissing = false);
-        RenderAssets::ModelHandle LoadPayload(FileFormat::AssetID assetID, std::span<const u8> payload);
+                                                bool sourceFileMissing = false, u32 references = 1);
+        void PumpCompletedLoads();
+        void DispatchQueuedLoads();
+        void CancelAndDrainLoads();
+        bool CommitPendingLoad(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
+        void WaitForPendingLoad(FileFormat::AssetID assetID);
 
         PACT::PactStorage* _pactStorage = nullptr;
         ModelGeometryStorage* _geometryStorage = nullptr;
         MaterialLoading::MaterialStorage* _materialStorage = nullptr;
         MaterialLoading::MaterialRegistry* _materialRegistry = nullptr;
         robin_hood::unordered_map<FileFormat::AssetID, Entry> _entries;
-        robin_hood::unordered_map<FileFormat::AssetID, std::unique_ptr<PendingLoad>> _pendingLoads;
+        std::unique_ptr<AsyncState> _async;
         RenderAssets::ModelHandle _fallbackModel;
         u32 _cacheHits = 0;
         u32 _failures = 0;

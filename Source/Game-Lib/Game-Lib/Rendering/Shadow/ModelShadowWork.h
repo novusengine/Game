@@ -54,7 +54,7 @@ namespace ShadowRendering
         u32 testedMeshlets = 0;
         u32 rejectedFrustumMeshlets = 0;
         u32 rejectedPageMeshlets = 0;
-        u32 rejectedConeMeshlets = 0;
+        u32 rejectedBoundsMeshlets = 0;
         u32 rejectedGeometryGroupMeshlets = 0;
         u32 rejectedMaterialMeshlets = 0;
         u32 rejectedTransparentMeshlets = 0;

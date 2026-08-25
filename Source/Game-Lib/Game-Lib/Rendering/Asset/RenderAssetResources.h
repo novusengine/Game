@@ -76,9 +76,10 @@ namespace RenderAssets
         {
             return _textureRegistry.Resolve(textureAssetID, ownerAssetID, false);
         }
-        ModelLoading::EmbeddedModelLoadStatus LoadEmbeddedModel(FileFormat::AssetID assetID, ModelHandle& outHandle)
+        ModelLoading::EmbeddedModelLoadStatus LoadEmbeddedModel(FileFormat::AssetID assetID, bool acquireReference,
+                                                                ModelHandle& outHandle)
         {
-            return _modelRegistry.LoadEmbedded(assetID, outHandle);
+            return _modelRegistry.LoadEmbedded(assetID, acquireReference, outHandle);
         }
         ModelHandle GetFallbackModel() const { return _modelRegistry.GetFallbackModel(); }
         MaterialHandle GetFallbackMaterial() const { return _materialStorage.GetFallbackMaterial(); }

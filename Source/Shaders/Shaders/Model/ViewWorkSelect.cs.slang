@@ -18,8 +18,6 @@ struct Constants
 [[vk::binding(4, PER_PASS)]] RWStructuredBuffer<ViewInstanceInput> _selectedInputs1;
 [[vk::binding(5, PER_PASS)]] RWStructuredBuffer<uint> _workStats0;
 [[vk::binding(6, PER_PASS)]] RWStructuredBuffer<uint> _workStats1;
-[[vk::binding(7, PER_PASS)]] RWStructuredBuffer<uint> _instanceVisibility0;
-[[vk::binding(8, PER_PASS)]] RWStructuredBuffer<uint> _instanceVisibility1;
 
 void AddStat(uint index, uint value)
 {
@@ -31,14 +29,6 @@ void AddStat(uint index, uint value, out uint previous)
 {
     if (_constants.resourceIndex == 0u) InterlockedAdd(_workStats0[index], value, previous);
     else InterlockedAdd(_workStats1[index], value, previous);
-}
-
-void MarkInstanceVisible(uint instanceIndex)
-{
-    uint wordIndex = instanceIndex >> 5u;
-    uint bit = 1u << (instanceIndex & 31u);
-    if (_constants.resourceIndex == 0u) InterlockedOr(_instanceVisibility0[wordIndex], bit);
-    else InterlockedOr(_instanceVisibility1[wordIndex], bit);
 }
 
 void StoreSelectedInput(uint index, ViewInstanceInput input)
@@ -91,7 +81,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    MarkInstanceVisible(input.instanceIndex);
     uint selectedIndex;
     AddStat(MODEL_WORK_STAT_SELECTED_INSTANCES, 1u, selectedIndex);
     if (selectedIndex < _constants.selectionCapacity)

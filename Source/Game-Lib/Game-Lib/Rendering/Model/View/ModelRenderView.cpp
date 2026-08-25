@@ -212,16 +212,6 @@ namespace ModelRendering
             _reportedVisibilityRecordPackingFailure = false;
         }
 
-        if (stats.survivorQueueOverflows > 0 && !_reportedSurvivorQueueOverflow)
-        {
-            NC_LOG_ERROR("MODEL_VIEW survivor_queue_overflow view={} dropped={}", _view.GetID(),
-                         stats.survivorQueueOverflows);
-            _reportedSurvivorQueueOverflow = true;
-        }
-        else if (stats.survivorQueueOverflows == 0)
-        {
-            _reportedSurvivorQueueOverflow = false;
-        }
     }
 
     void ModelRenderView::AddVisibilityPhase1Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -241,10 +231,7 @@ namespace ModelRendering
         ReportErrors();
 
         if (!_viewWorkDescriptorsReady || !_rasterDescriptorsReady)
-        {
-            _view.RequestTemporalReset();
             return;
-        }
 
         const u32 temporalReset = _view.GetTemporalResetGeneration();
         _temporalResetThisFrame = temporalReset != _handledTemporalReset;
@@ -269,7 +256,6 @@ namespace ModelRendering
             _viewWorkPass.AddPass(renderGraph, resources, _view, _state, _work,
                                   _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
                                   resources.depthPyramid, frameIndex, _temporalResetThisFrame, true, _forcedLOD);
-            _work.MarkSubmitted(frameIndex);
             _visibilityPass->AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
                                     _assets->GetMaterialStorage(), scene, frameIndex, 2);
         }
@@ -287,16 +273,12 @@ namespace ModelRendering
             _transparentWork.ReadbackStats(frameIndex);
             ReportErrors();
             if (!_viewWorkDescriptorsReady || !_rasterDescriptorsReady)
-            {
-                _view.RequestTemporalReset();
                 return;
-            }
             const u32 temporalReset = _view.GetTemporalResetGeneration();
             _viewWorkPass.AddHistoryClearPass(renderGraph, _view, _state, _work);
             _viewWorkPass.AddPass(renderGraph, resources, _view, _state, _work, _assets->GetModelGeometryStorage(),
                                   _assets->GetMaterialStorage(), *scene, _view.GetDepthPyramidTarget(), frameIndex,
                                   temporalReset != _handledTemporalReset, false, _forcedLOD);
-            _work.MarkSubmitted(frameIndex);
             _handledTemporalReset = temporalReset;
             if (visibilityModels)
             {
@@ -342,7 +324,7 @@ namespace ModelRendering
     void ModelRenderView::AddCommonMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                        MaterialRenderer& materialRenderer, u8 frameIndex)
     {
-        if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
+        if (!_view.ShouldRender() || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         materialRenderer.AddCommonResolvePass(renderGraph, resources, _view, frameIndex);
     }

@@ -49,12 +49,14 @@ namespace ShadowRendering
         _work.EnsureCapacity(static_cast<u32>(std::min<u64>(required, configured)));
     }
 
-    void ModelShadowRenderer::Upload(Renderer::BufferID svsmData, Renderer::BufferID staticPageTable,
+    bool ModelShadowRenderer::Upload(Renderer::BufferID svsmData, Renderer::BufferID staticPageTable,
                                      Renderer::BufferID dynamicPageTable)
     {
         ZoneScoped;
+        const bool wasReady = _descriptorsReady;
         const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
         _descriptorsReady = _pass.Upload(_work, geometry, *_scene, svsmData, staticPageTable, dynamicPageTable);
+        return !wasReady && _descriptorsReady;
     }
 
     void ModelShadowRenderer::AddPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources,

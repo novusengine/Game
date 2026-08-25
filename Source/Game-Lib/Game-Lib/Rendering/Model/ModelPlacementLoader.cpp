@@ -28,8 +28,12 @@ namespace ModelRendering
                                                RenderScenes::RenderScene* scene)
         : _pactStorage(pactStorage), _assets(assets), _scene(scene),
           _embeddedSpawner(&assets->GetModelGeometryStorage(), scene,
-                           [assets](FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle) {
-                               return assets->LoadEmbeddedModel(assetID, outHandle);
+                           [assets](FileFormat::AssetID assetID, bool acquireReference,
+                                    RenderAssets::ModelHandle& outHandle) {
+                               return assets->LoadEmbeddedModel(assetID, acquireReference, outHandle);
+                           },
+                           [assets](FileFormat::AssetID assetID) {
+                               assets->ReleaseModel(assetID);
                            })
     {
         _placements.reserve(4096);
@@ -54,36 +58,41 @@ namespace ModelRendering
         TracyPlot("V2 Placement Queue", static_cast<i64>(_pendingPlacements.size_approx()));
 
         const u32 maxLoads = static_cast<u32>(std::max(1, CVAR_ModelPlacementLoadsPerFrame.Get()));
+        while (_waitingPlacements.size() < maxLoads)
+        {
+            Terrain::Placement placement;
+            if (!_pendingPlacements.try_dequeue(placement))
+                break;
+            WaitingPlacement waiting;
+            waiting.source = placement;
+            waiting.assetID = ResolveModelAssetID(placement.nameHash);
+            waiting.model = _assets->GetFallbackModel();
+            waiting.ready = waiting.assetID == FileFormat::INVALID_ASSET_ID ||
+                _assets->BeginModelLoad(waiting.assetID, waiting.model) == ModelLoading::ModelLoadStatus::Ready;
+            _waitingPlacements.push_back(std::move(waiting));
+        }
+
         u32 loaded = 0;
         while (loaded < maxLoads)
         {
             if (!_activePlacement)
             {
-                Terrain::Placement placement;
-                FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
-                RenderAssets::ModelHandle model = _assets->GetFallbackModel();
-                if (_waitingPlacement)
-                {
-                    if (_assets->PollModelLoad(_waitingPlacement->assetID, model) == ModelLoading::ModelLoadStatus::Pending)
-                        break;
-                    placement = _waitingPlacement->source;
-                    assetID = _waitingPlacement->assetID;
-                    _waitingPlacement.reset();
-                }
-                else
-                {
-                    if (!_pendingPlacements.try_dequeue(placement))
-                        break;
-                    assetID = ResolveModelAssetID(placement.nameHash);
-                    if (assetID != FileFormat::INVALID_ASSET_ID && _assets->BeginModelLoad(assetID, model) == ModelLoading::ModelLoadStatus::Pending)
-                    {
-                        _waitingPlacement = WaitingPlacement{placement, assetID};
-                        break;
-                    }
-                }
+                if (_waitingPlacements.empty())
+                    break;
+                WaitingPlacement& waiting = _waitingPlacements.front();
+                if (!waiting.ready &&
+                    _assets->PollModelLoad(waiting.assetID, waiting.model) == ModelLoading::ModelLoadStatus::Pending)
+                    break;
+                waiting.ready = true;
+                const Terrain::Placement placement = waiting.source;
+                const FileFormat::AssetID assetID = waiting.assetID;
+                const RenderAssets::ModelHandle model = waiting.model;
+                _waitingPlacements.pop_front();
                 ++loaded;
                 if (!BeginPlacement(placement, assetID, model))
                 {
+                    if (assetID != FileFormat::INVALID_ASSET_ID)
+                        _assets->ReleaseModel(assetID);
                     _numProcessedPlacements.fetch_add(1, std::memory_order_relaxed);
                     continue;
                 }
@@ -143,7 +152,9 @@ namespace ModelRendering
 
         ActivePlacement active;
         active.source = placement;
+        active.assetID = assetID;
         active.instances.root = root;
+        active.instances.rootAssetID = assetID;
         active.statsBefore = _embeddedSpawner.GetStats();
         if (!_embeddedSpawner.BeginSpawn(model, worldTransform, placement.doodadSet,
                                          active.instances.embedded, active.embeddedCursor))
@@ -164,8 +175,11 @@ namespace ModelRendering
         _activePlacement.reset();
         if (!succeeded)
         {
+            _embeddedSpawner.CancelSpawn(active.embeddedCursor);
             _embeddedSpawner.Destroy(active.instances.embedded);
             _scene->DestroyModelInstance(active.instances.root);
+            if (active.assetID != FileFormat::INVALID_ASSET_ID)
+                _assets->ReleaseModel(active.assetID);
             return;
         }
 
@@ -215,16 +229,26 @@ namespace ModelRendering
 
         if (_activePlacement)
         {
+            _embeddedSpawner.CancelSpawn(_activePlacement->embeddedCursor);
             _embeddedSpawner.Destroy(_activePlacement->instances.embedded);
             _scene->DestroyModelInstance(_activePlacement->instances.root);
+            if (_activePlacement->assetID != FileFormat::INVALID_ASSET_ID)
+                _assets->ReleaseModel(_activePlacement->assetID);
             _activePlacement.reset();
         }
-        _waitingPlacement.reset();
+        for (const WaitingPlacement& waiting : _waitingPlacements)
+        {
+            if (waiting.assetID != FileFormat::INVALID_ASSET_ID)
+                _assets->ReleaseModel(waiting.assetID);
+        }
+        _waitingPlacements.clear();
 
         for (auto& [uniqueID, placement] : _placements)
         {
             _embeddedSpawner.Destroy(placement.embedded);
             _scene->DestroyModelInstance(placement.root);
+            if (placement.rootAssetID != FileFormat::INVALID_ASSET_ID)
+                _assets->ReleaseModel(placement.rootAssetID);
         }
         _placements.clear();
         _scene->FlushModelResourceFrees();

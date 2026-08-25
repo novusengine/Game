@@ -178,8 +178,7 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         return;
     }
     ModelInstanceRecord instance = _modelVisibilityInstances[record.instanceIndex];
-    if (instance.generation != packedRecord.instanceGeneration ||
-        instance.replayRevision != packedRecord.replayRevision ||
+    if (instance.replayRevision != packedRecord.replayRevision ||
         (instance.flags & 1u) == 0u)
     {
         SetMeshOutputCounts(0, 0);
@@ -277,7 +276,8 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
     for (uint triangleIndex = threadID.x; triangleIndex < triangleCount; triangleIndex += 64u)
     {
         uint packedTriangle = _modelVisibilityTriangles[triangleBase + triangleIndex];
-        triangles[triangleIndex] = DecodeModelMeshletTriangle(packedTriangle);
+        uint3 triangle = DecodeModelMeshletTriangle(packedTriangle);
+        triangles[triangleIndex] = any(triangle >= vertexCount) ? uint3(0u, 0u, 0u) : triangle;
         primitives[triangleIndex].triangleID = triangleIndex;
     }
 }

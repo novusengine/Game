@@ -69,7 +69,6 @@ namespace ModelPipeline
             Renderer::BufferID modelRecords = Renderer::BufferID::Invalid();
             Renderer::BufferID selectedInputs[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
             Renderer::BufferID workStats[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
-            Renderer::BufferID instanceVisibility[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
         };
 
         struct SelectFinalizeFrameBindings
@@ -129,7 +128,6 @@ namespace ModelPipeline
         ExpandFinalizeFrameBindings _expandFinalizeBindings[ModelView::MODEL_VIEW_FRAME_COUNT];
         CullBindings _cullBindings;
         FinalizeFrameBindings _finalizeBindings[ModelView::MODEL_VIEW_FRAME_COUNT];
-        Renderer::BufferID _historyClearInstanceVisibility[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
         Renderer::BufferID _historyClearMeshletHistory[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
     };
 } // namespace ModelPipeline

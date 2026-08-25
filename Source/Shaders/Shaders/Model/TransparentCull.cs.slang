@@ -43,7 +43,19 @@ void AddStat(uint index, uint value, out uint previous)
 [numthreads(MODEL_CHUNK_MESHLET_COUNT, 1, 1)]
 void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    ModelTransparentChunk chunk = _constants.resourceIndex == 0u ? _transparentChunks0[groupID.x] : _transparentChunks1[groupID.x];
+    uint chunkCapacity;
+    uint chunkStride;
+    if (_constants.resourceIndex == 0u) _transparentChunks0.GetDimensions(chunkCapacity, chunkStride);
+    else _transparentChunks1.GetDimensions(chunkCapacity, chunkStride);
+    uint chunkCount = min(_constants.resourceIndex == 0u ?
+        _transparentStats0[MODEL_TRANSPARENT_STAT_EXPANDED_CHUNKS] :
+        _transparentStats1[MODEL_TRANSPARENT_STAT_EXPANDED_CHUNKS], chunkCapacity);
+    uint groupsX = chunkCount <= MODEL_COMPUTE_DISPATCH_LINEAR_THRESHOLD ? max(chunkCount, 1u) : MODEL_COMPUTE_DISPATCH_MAX_GROUPS_X;
+    uint chunkIndex = groupID.x + groupID.y * groupsX;
+    if (chunkIndex >= chunkCount)
+        return;
+    ModelTransparentChunk chunk = _constants.resourceIndex == 0u ? _transparentChunks0[chunkIndex] :
+                                                                    _transparentChunks1[chunkIndex];
     uint meshletCount = chunk.packedCountAndLOD & MODEL_TRANSPARENT_COUNT_MASK;
     if (groupThreadID.x == 0u)
         AddStat(MODEL_TRANSPARENT_STAT_TESTED_MESHLETS, meshletCount);

@@ -13,6 +13,15 @@ CullingResourcesBase::CullingResourcesBase()
 
 }
 
+void CullingResourcesBase::Shutdown()
+{
+    _occluderFillDescriptorSet.Shutdown();
+    _cullingDescriptorSet.Shutdown();
+    _createIndirectAfterCullingDescriptorSet.Shutdown();
+    _geometryFillDescriptorSet.Shutdown();
+    _geometryPassDescriptorSet.Shutdown();
+}
+
 void CullingResourcesBase::Init(InitParams& params)
 {
     NC_ASSERT(params.renderer != nullptr, "CullingResources : params.renderer is nullptr");

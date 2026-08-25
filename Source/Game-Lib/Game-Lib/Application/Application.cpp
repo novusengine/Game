@@ -619,10 +619,10 @@ bool Application::Tick(f32 deltaTime)
                         model.transparentWork.rejectedConeMeshlets, model.transparentWork.rejectedOcclusionMeshlets,
                         model.transparentWork.rejectedGeometryGroupMeshlets, model.transparentWork.testedTriangles,
                         model.transparentWork.committedTriangles);
-                    NC_LOG_INFO("MODEL_CAPACITY main_queue_overflows={} chunk_queue_overflows={} visibility_overflows={} survivor_overflows={} transparent_queue_overflows={} transparent_chunk_overflows={} history_kb={} history_live_kb={} history_free_kb={} history_retired_kb={}",
+                    NC_LOG_INFO("MODEL_CAPACITY main_queue_overflows={} chunk_queue_overflows={} visibility_overflows={} transparent_queue_overflows={} transparent_chunk_overflows={} history_kb={} history_live_kb={} history_free_kb={} history_retired_kb={}",
                         model.work.queueOverflows, model.work.chunkQueueOverflows, model.work.visibilityRecordOverflows,
-                        model.work.survivorQueueOverflows, model.transparentWork.queueOverflows,
-                        model.transparentWork.chunkQueueOverflows, model.historyBytes / 1024u, model.liveHistoryBytes / 1024u,
+                        model.transparentWork.queueOverflows, model.transparentWork.chunkQueueOverflows,
+                        model.historyBytes / 1024u, model.liveHistoryBytes / 1024u,
                         model.freeHistoryBytes / 1024u, model.retiredHistoryBytes / 1024u);
                 }
                 break;

@@ -21,11 +21,14 @@ namespace RenderScenes
 namespace ModelScene
 {
     using ResolveEmbeddedModelCallback =
-        std::function<ModelLoading::EmbeddedModelLoadStatus(FileFormat::AssetID, RenderAssets::ModelHandle&)>;
+        std::function<ModelLoading::EmbeddedModelLoadStatus(FileFormat::AssetID, bool,
+                                                            RenderAssets::ModelHandle&)>;
+    using ReleaseEmbeddedModelCallback = std::function<void(FileFormat::AssetID)>;
 
     struct SpawnedEmbeddedInstance
     {
         RenderScenes::ModelInstanceHandle handle;
+        FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
         u32 sourceIndex = 0;
     };
 
@@ -50,6 +53,7 @@ namespace ModelScene
     {
         mat4x4 parentWorld = mat4x4(1.0f);
         u32 nextSourceIndex = 0;
+        FileFormat::AssetID pendingAssetID = FileFormat::INVALID_ASSET_ID;
         bool active = false;
     };
 
@@ -66,7 +70,8 @@ namespace ModelScene
     {
       public:
         EmbeddedInstanceSpawner(const ModelLoading::ModelGeometryStorage* geometryStorage,
-                                RenderScenes::RenderScene* scene, ResolveEmbeddedModelCallback resolveModel);
+                                RenderScenes::RenderScene* scene, ResolveEmbeddedModelCallback resolveModel,
+                                ReleaseEmbeddedModelCallback releaseModel);
 
         bool Spawn(RenderAssets::ModelHandle parentModel, const mat4x4& parentWorld, u32 requestedSet,
                    SpawnedEmbeddedInstances& outInstances);
@@ -78,6 +83,7 @@ namespace ModelScene
                                                   u32 maxInstances, u32& outProcessed);
         bool SetInstanceSet(SpawnedEmbeddedInstances& instances, u32 requestedSet);
         void Destroy(SpawnedEmbeddedInstances& instances);
+        void CancelSpawn(EmbeddedInstanceSpawnCursor& cursor);
 
         const EmbeddedInstanceSpawnerStats& GetStats() const { return _stats; }
 
@@ -88,6 +94,7 @@ namespace ModelScene
         const ModelLoading::ModelGeometryStorage* _geometryStorage = nullptr;
         RenderScenes::RenderScene* _scene = nullptr;
         ResolveEmbeddedModelCallback _resolveModel;
+        ReleaseEmbeddedModelCallback _releaseModel;
         robin_hood::unordered_set<FileFormat::AssetID> _reportedDependencyFailures;
         EmbeddedInstanceSpawnerStats _stats;
     };

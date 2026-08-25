@@ -60,6 +60,9 @@ namespace ModelScene
         _activeMeshlets += info.meshletCount;
 
         ModelInstanceGPURecord& record = _records[slotIndex];
+        u32 replayRevision = reusedSlot ? record.replayRevision + 1u : 1u;
+        if (replayRevision == 0u)
+            replayRevision = 1u;
         record = {};
         record.currentWorld = info.worldTransform;
         record.previousWorld = info.worldTransform;
@@ -75,7 +78,7 @@ namespace ModelScene
         record.packedHighlightColor = 0xFFFFFFFFu;
         record.highlightIntensity = 1.0f;
         record.opacity = 1.0f;
-        record.replayRevision = 1;
+        record.replayRevision = replayRevision;
         if (info.privateMaterials)
             record.flags |= ModelInstanceFlagPrivateMaterials;
         if (reusedSlot)

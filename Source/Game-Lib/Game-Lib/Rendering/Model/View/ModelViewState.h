@@ -49,7 +49,7 @@ namespace ModelView
         void PrepareChangedTransparentStats(const RenderScenes::RenderScene& scene, const ModelLoading::ModelGeometryStorage& geometry,
                                             const MaterialLoading::MaterialStorage& materials, std::span<const u32> changedSlots);
         void ResetLODHistory();
-        void QueueTemporalClears(std::span<const u32> instanceSlots, std::span<const ModelScene::MeshletHistoryRange> meshletRanges);
+        void QueueTemporalClears(std::span<const ModelScene::MeshletHistoryRange> meshletRanges);
         void AcknowledgeTemporalClears();
         bool SyncToGPU(Renderer::Renderer* renderer);
 
@@ -59,19 +59,15 @@ namespace ModelView
         std::span<const RenderScenes::ModelInstanceHandle> GetDiagnosticSelection() const { return _diagnosticSelection; }
         const Renderer::GPUVector<ViewInstanceInput>& GetInputs() const { return _inputs; }
         const Renderer::GPUVector<u32>& GetTransparentEligibility() const { return _transparentEligibility; }
-        u32 GetDispatchInputCount() const { return _activeInputCount != 0 ? _inputs.Count() : 0; }
+        u32 GetDispatchInputCount() const { return _dispatchInputCount; }
         u32 GetActiveInputCount() const { return _activeInputCount; }
         const Renderer::GPUVector<u32>& GetLODHistory() const { return _lodHistory; }
-        std::span<const u32> GetPendingInstanceClears() const { return _pendingInstanceClears; }
         std::span<const ModelScene::MeshletHistoryRange> GetPendingMeshletClears() const
         {
             return _pendingMeshletClears;
         }
         u32 GetQueueCapacity() const { return _queueCapacity; }
-        u32 GetLoadedLOD0Meshlets() const { return _loadedLOD0Meshlets; }
-        u32 GetLoadedLOD0Triangles() const { return _loadedLOD0Triangles; }
-        u32 GetLoadedLOD0TransparentMeshlets() const { return _loadedLOD0TransparentMeshlets; }
-        u32 GetLoadedLOD0TransparentTriangles() const { return _loadedLOD0TransparentTriangles; }
+        bool HasTransparentWork() const { return _transparentEligibleInstances != 0; }
         u64 GetPreparedTransparentRoutingRevision() const { return _preparedTransparentRoutingRevision; }
         u64 GetPreparedSceneRevision() const { return _preparedSceneRevision; }
 
@@ -81,10 +77,7 @@ namespace ModelView
             RenderScenes::ModelInstanceHandle handle = RenderScenes::InvalidModelInstanceHandle();
             RenderScenes::StableRange lodHistory;
             u32 meshlets = 0;
-            u32 lod0Meshlets = 0;
-            u32 lod0Triangles = 0;
-            u32 transparentMeshlets = 0;
-            u32 transparentTriangles = 0;
+            bool transparentEligible = false;
             bool active = false;
         };
 
@@ -100,17 +93,14 @@ namespace ModelView
         std::vector<RenderScenes::ModelInstanceHandle> _sceneSelection;
         std::vector<InputSlot> _inputSlots;
         RenderScenes::StableRangeAllocator _lodHistoryAllocator;
-        std::vector<u32> _pendingInstanceClears;
         std::vector<ModelScene::MeshletHistoryRange> _pendingMeshletClears;
         Renderer::GPUVector<ViewInstanceInput> _inputs;
         Renderer::GPUVector<u32> _transparentEligibility;
         Renderer::GPUVector<u32> _lodHistory;
         u32 _queueCapacity = 1;
         u32 _activeInputCount = 0;
-        u32 _loadedLOD0Meshlets = 0;
-        u32 _loadedLOD0Triangles = 0;
-        u32 _loadedLOD0TransparentMeshlets = 0;
-        u32 _loadedLOD0TransparentTriangles = 0;
+        u32 _dispatchInputCount = 0;
+        u32 _transparentEligibleInstances = 0;
         u64 _preparedTransparentRoutingRevision = 0;
         bool _workDirty = true;
         u64 _preparedSceneRevision = 0;

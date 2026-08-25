@@ -37,10 +37,6 @@ namespace ModelRendering
     {
         ModelView::WorkStats work;
         ModelView::TransparentWorkStats transparentWork;
-        u32 loadedLOD0Meshlets = 0;
-        u32 loadedLOD0Triangles = 0;
-        u32 loadedLOD0TransparentMeshlets = 0;
-        u32 loadedLOD0TransparentTriangles = 0;
         u32 historyBytes = 0;
         u32 liveHistoryBytes = 0;
         u32 freeHistoryBytes = 0;
@@ -93,10 +89,7 @@ namespace ModelRendering
         RenderScenes::ModelInstanceHandle SetDiagnosticModel(RenderAssets::ModelHandle model,
                                                              const vec3& worldBoundsCenter, f32 worldBoundsRadius,
                                                              bool geometryGroupsEnabled = true, bool teleported = false);
-        const ModelView::WorkStats& GetDiagnosticStats() const
-        {
-            return _mainView->GetWork().GetStats();
-        }
+        ModelView::WorkStats GetDiagnosticStats() const;
         ModelPerformanceStats GetPerformanceStats() const;
 
       private:

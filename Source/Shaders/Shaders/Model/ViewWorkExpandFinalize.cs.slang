@@ -21,16 +21,18 @@ void main()
                          ? _workStats0[MODEL_WORK_STAT_EXPANDED_CHUNKS]
                          : _workStats1[MODEL_WORK_STAT_EXPANDED_CHUNKS],
                      _constants.queueCapacity);
+    uint groupsX = count <= MODEL_COMPUTE_DISPATCH_LINEAR_THRESHOLD ? count : min(count, MODEL_COMPUTE_DISPATCH_MAX_GROUPS_X);
+    uint groupsY = count == 0u ? 0u : (count + groupsX - 1u) / groupsX;
     if (_constants.resourceIndex == 0u)
     {
-        _chunkArguments0[MODEL_DISPATCH_ARGUMENT_X] = count;
-        _chunkArguments0[MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u : 1u;
+        _chunkArguments0[MODEL_DISPATCH_ARGUMENT_X] = groupsX;
+        _chunkArguments0[MODEL_DISPATCH_ARGUMENT_Y] = groupsY;
         _chunkArguments0[MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
     }
     else
     {
-        _chunkArguments1[MODEL_DISPATCH_ARGUMENT_X] = count;
-        _chunkArguments1[MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u : 1u;
+        _chunkArguments1[MODEL_DISPATCH_ARGUMENT_X] = groupsX;
+        _chunkArguments1[MODEL_DISPATCH_ARGUMENT_Y] = groupsY;
         _chunkArguments1[MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
     }
 }

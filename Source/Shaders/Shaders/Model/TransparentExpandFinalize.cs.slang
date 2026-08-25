@@ -19,16 +19,18 @@ void main()
     uint count = min(_constants.resourceIndex == 0u ? _transparentStats0[MODEL_TRANSPARENT_STAT_EXPANDED_CHUNKS]
                                                     : _transparentStats1[MODEL_TRANSPARENT_STAT_EXPANDED_CHUNKS],
                      _constants.chunkCapacity);
+    uint groupsX = count <= MODEL_COMPUTE_DISPATCH_LINEAR_THRESHOLD ? count : min(count, MODEL_COMPUTE_DISPATCH_MAX_GROUPS_X);
+    uint groupsY = count == 0u ? 0u : (count + groupsX - 1u) / groupsX;
     if (_constants.resourceIndex == 0u)
     {
-        _transparentChunkArguments0[0] = count;
-        _transparentChunkArguments0[1] = count == 0u ? 0u : 1u;
+        _transparentChunkArguments0[0] = groupsX;
+        _transparentChunkArguments0[1] = groupsY;
         _transparentChunkArguments0[2] = count == 0u ? 0u : 1u;
     }
     else
     {
-        _transparentChunkArguments1[0] = count;
-        _transparentChunkArguments1[1] = count == 0u ? 0u : 1u;
+        _transparentChunkArguments1[0] = groupsX;
+        _transparentChunkArguments1[1] = groupsY;
         _transparentChunkArguments1[2] = count == 0u ? 0u : 1u;
     }
 }

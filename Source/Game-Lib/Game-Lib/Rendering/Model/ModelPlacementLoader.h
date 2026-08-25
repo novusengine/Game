@@ -9,6 +9,7 @@
 #include <robinhood/robinhood.h>
 
 #include <optional>
+#include <deque>
 
 namespace PACT
 {
@@ -61,12 +62,14 @@ namespace ModelRendering
         struct PlacementInstances
         {
             RenderScenes::ModelInstanceHandle root;
+            FileFormat::AssetID rootAssetID = FileFormat::INVALID_ASSET_ID;
             ModelScene::SpawnedEmbeddedInstances embedded;
         };
 
         struct ActivePlacement
         {
             Terrain::Placement source;
+            FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
             PlacementInstances instances;
             ModelScene::EmbeddedInstanceSpawnCursor embeddedCursor;
             ModelScene::EmbeddedInstanceSpawnerStats statsBefore;
@@ -76,6 +79,8 @@ namespace ModelRendering
         {
             Terrain::Placement source;
             FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
+            RenderAssets::ModelHandle model;
+            bool ready = false;
         };
 
         bool BeginPlacement(const Terrain::Placement& placement, FileFormat::AssetID assetID, RenderAssets::ModelHandle model);
@@ -90,7 +95,7 @@ namespace ModelRendering
         moodycamel::ConcurrentQueue<Terrain::Placement> _pendingPlacements;
         robin_hood::unordered_map<u32, PlacementInstances> _placements;
         std::optional<ActivePlacement> _activePlacement;
-        std::optional<WaitingPlacement> _waitingPlacement;
+        std::deque<WaitingPlacement> _waitingPlacements;
         robin_hood::unordered_map<u64, FileFormat::AssetID> _sourceAssets;
         robin_hood::unordered_set<u64> _reportedResolutionFailures;
         robin_hood::unordered_set<FileFormat::AssetID> _reportedFallbackAssets;

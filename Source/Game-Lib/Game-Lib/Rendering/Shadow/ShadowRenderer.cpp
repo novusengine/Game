@@ -539,8 +539,11 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 void ShadowRenderer::Upload()
 {
     ZoneScoped;
-    if (ModelRendering::UseMeshletModelRenderer())
-        _modelShadowRenderer->Upload(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer);
+    if (ModelRendering::UseMeshletModelRenderer() &&
+        _modelShadowRenderer->Upload(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer))
+    {
+        _svsmForceInvalidateAll = true;
+    }
 }
 
 void ShadowRenderer::AddSVSMModelPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources,

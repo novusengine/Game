@@ -24,8 +24,10 @@ namespace ModelScene
 {
     EmbeddedInstanceSpawner::EmbeddedInstanceSpawner(const ModelLoading::ModelGeometryStorage* geometryStorage,
                                                        RenderScenes::RenderScene* scene,
-                                                       ResolveEmbeddedModelCallback resolveModel)
-        : _geometryStorage(geometryStorage), _scene(scene), _resolveModel(std::move(resolveModel))
+                                                       ResolveEmbeddedModelCallback resolveModel,
+                                                       ReleaseEmbeddedModelCallback releaseModel)
+        : _geometryStorage(geometryStorage), _scene(scene), _resolveModel(std::move(resolveModel)),
+          _releaseModel(std::move(releaseModel))
     {
     }
 
@@ -91,9 +93,15 @@ namespace ModelScene
             const FileFormat::Model::EmbeddedInstance source =
                 embeddedInstances[parent.embeddedInstanceBase + sourceIndex];
             RenderAssets::ModelHandle childModel;
-            const ModelLoading::EmbeddedModelLoadStatus status = _resolveModel(source.modelAssetID, childModel);
+            const bool acquireReference = cursor.pendingAssetID != source.modelAssetID;
+            const ModelLoading::EmbeddedModelLoadStatus status =
+                _resolveModel(source.modelAssetID, acquireReference, childModel);
             if (status == ModelLoading::EmbeddedModelLoadStatus::Pending)
+            {
+                cursor.pendingAssetID = source.modelAssetID;
                 return EmbeddedInstanceSpawnStatus::InProgress;
+            }
+            cursor.pendingAssetID = FileFormat::INVALID_ASSET_ID;
             ++cursor.nextSourceIndex;
             ++outProcessed;
             if (status == ModelLoading::EmbeddedModelLoadStatus::InvalidReference)
@@ -103,6 +111,8 @@ namespace ModelScene
             }
             if (status == ModelLoading::EmbeddedModelLoadStatus::MissingRenderableGeometry)
             {
+                if (acquireReference)
+                    _releaseModel(source.modelAssetID);
                 ++_stats.missingGeometrySkips;
                 continue;
             }
@@ -124,11 +134,12 @@ namespace ModelScene
             const RenderScenes::ModelInstanceHandle handle = _scene->CreateModelInstance(desc);
             if (!_scene->IsPending(handle))
             {
+                _releaseModel(source.modelAssetID);
                 cursor.active = false;
                 return EmbeddedInstanceSpawnStatus::Failed;
             }
 
-            instances.instances.push_back({ handle, sourceIndex });
+            instances.instances.push_back({ handle, source.modelAssetID, sourceIndex });
             ++_stats.spawnedInstances;
         }
 
@@ -159,8 +170,18 @@ namespace ModelScene
         ZoneScopedN("EmbeddedInstanceSpawner::Destroy");
 
         for (const SpawnedEmbeddedInstance& instance : instances.instances)
+        {
             _scene->DestroyModelInstance(instance.handle);
+            _releaseModel(instance.assetID);
+        }
         instances = {};
+    }
+
+    void EmbeddedInstanceSpawner::CancelSpawn(EmbeddedInstanceSpawnCursor& cursor)
+    {
+        if (cursor.pendingAssetID != FileFormat::INVALID_ASSET_ID)
+            _releaseModel(cursor.pendingAssetID);
+        cursor = {};
     }
 
     bool EmbeddedInstanceSpawner::IsEnabled(const SpawnedEmbeddedInstances& instances, u32 sourceIndex) const

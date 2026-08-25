@@ -21,16 +21,18 @@ void main()
                          ? _workStats0[MODEL_WORK_STAT_SELECTED_INSTANCES]
                          : _workStats1[MODEL_WORK_STAT_SELECTED_INSTANCES],
                      _constants.selectionCapacity);
+    uint groupsX = count <= MODEL_COMPUTE_DISPATCH_LINEAR_THRESHOLD ? count : min(count, MODEL_COMPUTE_DISPATCH_MAX_GROUPS_X);
+    uint groupsY = count == 0u ? 0u : (count + groupsX - 1u) / groupsX;
     if (_constants.resourceIndex == 0u)
     {
-        _selectionArguments0[0] = count;
-        _selectionArguments0[1] = count == 0u ? 0u : 1u;
+        _selectionArguments0[0] = groupsX;
+        _selectionArguments0[1] = groupsY;
         _selectionArguments0[2] = count == 0u ? 0u : 1u;
     }
     else
     {
-        _selectionArguments1[0] = count;
-        _selectionArguments1[1] = count == 0u ? 0u : 1u;
+        _selectionArguments1[0] = groupsX;
+        _selectionArguments1[1] = groupsY;
         _selectionArguments1[2] = count == 0u ? 0u : 1u;
     }
 }

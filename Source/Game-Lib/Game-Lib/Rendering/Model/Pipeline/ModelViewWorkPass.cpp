@@ -117,7 +117,8 @@ namespace ModelPipeline
                                              ModelView::ModelViewWorkResources& work,
                                              const RenderScenes::RenderScene& scene)
     {
-        const u32 configuredCapacity = static_cast<u32>(std::max(CVAR_ModelMeshletQueueCapacity.Get(), 1));
+        const u32 configuredCapacity = static_cast<u32>(std::clamp(CVAR_ModelMeshletQueueCapacity.Get(), 1,
+            static_cast<i32>(ModelView::TYPED_VISIBILITY_RECORD_CAPACITY)));
         const bool queuesRecreated =
             work.EnsureQueueCapacity(std::min(viewState.GetQueueCapacity(), configuredCapacity));
         const bool selectionRecreated = work.EnsureSelectionCapacity(viewState.GetDispatchInputCount());
@@ -150,7 +151,6 @@ namespace ModelPipeline
         {
             for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
             {
-                _selectBindings.instanceVisibility[frame] = Renderer::BufferID::Invalid();
                 _cullBindings.frames[frame].meshletHistory = Renderer::BufferID::Invalid();
             }
         }
@@ -180,10 +180,6 @@ namespace ModelPipeline
         Bind(_selectDescriptorSet, "_selectedInputs1"_h, work.GetSelectionQueue(1), _selectBindings.selectedInputs[1]);
         Bind(_selectDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _selectBindings.workStats[0]);
         Bind(_selectDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _selectBindings.workStats[1]);
-        Bind(_selectDescriptorSet, "_instanceVisibility0"_h, work.GetInstanceVisibility(0),
-             _selectBindings.instanceVisibility[0]);
-        Bind(_selectDescriptorSet, "_instanceVisibility1"_h, work.GetInstanceVisibility(1),
-             _selectBindings.instanceVisibility[1]);
         Bind(_selectFinalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0),
              _selectFinalizeBindings[0].workStats);
         Bind(_selectFinalizeDescriptorSet, "_selectionArguments0"_h, work.GetSelectionArguments(0),
@@ -201,8 +197,6 @@ namespace ModelPipeline
         Bind(_expandDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _expandBindings.frames[0].workStats);
         Bind(_expandDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _expandBindings.frames[1].chunkQueue);
         Bind(_expandDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _expandBindings.frames[1].workStats);
-        Bind(_historyClearDescriptorSet, "_clearInstanceVisibility0"_h, work.GetInstanceVisibility(0), _historyClearInstanceVisibility[0]);
-        Bind(_historyClearDescriptorSet, "_clearInstanceVisibility1"_h, work.GetInstanceVisibility(1), _historyClearInstanceVisibility[1]);
         Bind(_historyClearDescriptorSet, "_clearMeshletHistory0"_h, work.GetMeshletHistory(0), _historyClearMeshletHistory[0]);
         Bind(_historyClearDescriptorSet, "_clearMeshletHistory1"_h, work.GetMeshletHistory(1), _historyClearMeshletHistory[1]);
 
@@ -297,21 +291,9 @@ namespace ModelPipeline
     void ModelViewWorkPass::AddHistoryClearPass(Renderer::RenderGraph* renderGraph, const RenderScenes::RenderView& view,
                                                 ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work)
     {
-        std::vector<u32> instanceSlots(viewState.GetPendingInstanceClears().begin(), viewState.GetPendingInstanceClears().end());
         std::vector<ModelScene::MeshletHistoryRange> meshletRanges(viewState.GetPendingMeshletClears().begin(), viewState.GetPendingMeshletClears().end());
-        if (instanceSlots.empty() && meshletRanges.empty())
+        if (meshletRanges.empty())
             return;
-
-        std::sort(instanceSlots.begin(), instanceSlots.end());
-        std::vector<RenderScenes::StableRange> instanceRanges;
-        instanceRanges.reserve(instanceSlots.size());
-        for (const u32 slot : instanceSlots)
-        {
-            if (!instanceRanges.empty() && instanceRanges.back().offset + instanceRanges.back().count == slot)
-                ++instanceRanges.back().count;
-            else if (instanceRanges.empty() || instanceRanges.back().offset != slot)
-                instanceRanges.push_back({slot, 1});
-        }
 
         std::sort(meshletRanges.begin(), meshletRanges.end(),
                   [](const ModelScene::MeshletHistoryRange& left,
@@ -337,7 +319,6 @@ namespace ModelPipeline
 
         struct Data
         {
-            Renderer::BufferMutableResource instanceVisibility[ModelView::MODEL_VIEW_FRAME_COUNT];
             Renderer::BufferMutableResource meshletHistory[ModelView::MODEL_VIEW_FRAME_COUNT];
             Renderer::DescriptorSetResource descriptorSet;
         };
@@ -347,36 +328,28 @@ namespace ModelPipeline
                 using Usage = Renderer::BufferPassUsage;
                 for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
                 {
-                    data.instanceVisibility[frame] = builder.Write(work.GetInstanceVisibility(frame), Usage::COMPUTE);
                     data.meshletHistory[frame] = builder.Write(work.GetMeshletHistory(frame), Usage::COMPUTE);
                 }
                 data.descriptorSet = builder.Use(_historyClearDescriptorSet);
                 return true;
             },
-            [this, instanceRanges, meshletRanges](Data& data, Renderer::RenderGraphResources& graphResources,
+            [this, meshletRanges](Data& data, Renderer::RenderGraphResources& graphResources,
                                                  Renderer::CommandList& commandList) {
                 struct Constants
                 {
-                    u32 mode;
                     u32 offset;
                     u32 count;
+                    u32 reserved;
                 };
 
                 commandList.BeginPipeline(_historyClearPipeline);
                 commandList.BindDescriptorSet(data.descriptorSet, 0);
-                for (const RenderScenes::StableRange range : instanceRanges)
-                {
-                    Constants* constants = graphResources.FrameNew<Constants>();
-                    *constants = {0, range.offset, range.count};
-                    commandList.PushConstant(constants, 0, sizeof(Constants));
-                    commandList.Dispatch((range.count + 63u) / 64u, 1, 1);
-                }
                 for (const ModelScene::MeshletHistoryRange range : meshletRanges)
                 {
                     if (range.wordCount == 0)
                         continue;
                     Constants* constants = graphResources.FrameNew<Constants>();
-                    *constants = {1, range.wordOffset, range.wordCount};
+                    *constants = {range.wordOffset, range.wordCount, 0};
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.Dispatch((range.wordCount + 63u) / 64u, 1, 1);
                 }
@@ -396,8 +369,8 @@ namespace ModelPipeline
     {
         const u32 inputCount = viewState.GetDispatchInputCount();
         const i32 configuredQueueLimit = CVAR_ModelMeshletQueueLimit.Get();
-        const u32 configuredQueueCapacity =
-            static_cast<u32>(std::max(CVAR_ModelMeshletQueueCapacity.Get(), 1));
+        const u32 configuredQueueCapacity = static_cast<u32>(std::clamp(CVAR_ModelMeshletQueueCapacity.Get(), 1,
+            static_cast<i32>(ModelView::TYPED_VISIBILITY_RECORD_CAPACITY)));
         u32 queueCapacity = std::min(work.GetQueueCapacity(), configuredQueueCapacity);
         const u32 selectionCapacity = work.GetSelectionCapacity();
         if (configuredQueueLimit > 0)
@@ -407,7 +380,6 @@ namespace ModelPipeline
         {
             Renderer::ImageResource depthPyramid;
             Renderer::BufferMutableResource history;
-            Renderer::BufferMutableResource instanceVisibility;
             Renderer::BufferMutableResource meshletHistory;
             Renderer::BufferMutableResource inactiveMeshletHistory;
             Renderer::BufferMutableResource selectionQueue;
@@ -441,7 +413,6 @@ namespace ModelPipeline
                     builder.Read(resources.cameras.GetBuffer(), Usage::COMPUTE);
                     builder.Read(viewState.GetInputs().GetBuffer(), Usage::COMPUTE);
                     data.history = builder.Write(viewState.GetLODHistory().GetBuffer(), Usage::COMPUTE);
-                    data.instanceVisibility = builder.Write(work.GetInstanceVisibility(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                     data.meshletHistory =
                         builder.Write(work.GetMeshletHistory(frameIndex), Usage::COMPUTE | Usage::TRANSFER);
                     data.inactiveMeshletHistory =
@@ -450,7 +421,6 @@ namespace ModelPipeline
                     data.selectionArguments = builder.Write(work.GetSelectionArguments(frameIndex), Usage::COMPUTE);
                     builder.Write(work.GetSelectionQueue(inactiveFrameIndex), Usage::COMPUTE);
                     builder.Write(work.GetSelectionArguments(inactiveFrameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetInstanceVisibility(inactiveFrameIndex), Usage::COMPUTE);
                     builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), Usage::COMPUTE);
                     builder.Read(geometry.GetRecords().GetBuffer(), Usage::COMPUTE);
                     builder.Read(geometry.GetMeshes().GetBuffer(), Usage::COMPUTE);
@@ -507,7 +477,6 @@ namespace ModelPipeline
                 commandList.FillBuffer(data.stats, 0, sizeof(ModelView::WorkStats), 0);
                 if (inputCount > 0)
                 {
-                    commandList.FillBuffer(data.instanceVisibility, 0, sizeof(u32) * work.GetInstanceVisibilityWords(), 0);
                     commandList.FillBuffer(data.meshletHistory, 0, sizeof(u32) * work.GetMeshletHistoryWords(), 0);
                     if (resetHistory)
                         commandList.FillBuffer(data.inactiveMeshletHistory, 0,
@@ -516,7 +485,6 @@ namespace ModelPipeline
                 commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::TRANSFER);
                 if (inputCount > 0)
                 {
-                    commandList.BufferBarrier(data.instanceVisibility, Renderer::BufferPassUsage::TRANSFER);
                     commandList.BufferBarrier(data.meshletHistory, Renderer::BufferPassUsage::TRANSFER);
                     if (resetHistory)
                         commandList.BufferBarrier(data.inactiveMeshletHistory, Renderer::BufferPassUsage::TRANSFER);
@@ -656,7 +624,8 @@ namespace ModelPipeline
                 commandList.CopyBuffer(data.readback, sizeof(ModelView::WorkStats), data.arguments, 0,
                                        sizeof(u32) * ModelView::MODEL_RASTER_CLASS_COUNT *
                                            ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
-            });
+                work.MarkSubmitted(frameIndex);
+            }, Renderer::RenderPassFlags::SideEffect);
     }
 
 } // namespace ModelPipeline

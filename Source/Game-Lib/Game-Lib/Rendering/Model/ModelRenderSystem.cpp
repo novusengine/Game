@@ -115,8 +115,17 @@ namespace ModelRendering
             {
                 for (auto& [viewID, view] : _views)
                 {
-                    if (view->GetView().GetScene() == scene)
-                        view->GetState().QueueTemporalClears(clears.instanceSlots, clears.meshletHistoryRanges);
+                    if (view->GetView().GetScene() != scene)
+                        continue;
+                    if (view->GetView().ShouldRender())
+                    {
+                        view->GetState().QueueTemporalClears(clears.meshletHistoryRanges);
+                    }
+                    else
+                    {
+                        view->GetState().AcknowledgeTemporalClears();
+                        view->GetView().RequestTemporalReset();
+                    }
                 }
                 scene->AcknowledgeClearsAndPublish();
             }
@@ -324,12 +333,8 @@ namespace ModelRendering
     ModelPerformanceStats ModelRenderSystem::GetPerformanceStats() const
     {
         ModelPerformanceStats result;
-        result.work = _mainView->GetWork().GetStats();
+        result.work = GetDiagnosticStats();
         result.transparentWork = _mainView->GetTransparentWork().GetStats();
-        result.loadedLOD0Meshlets = _mainView->GetState().GetLoadedLOD0Meshlets();
-        result.loadedLOD0Triangles = _mainView->GetState().GetLoadedLOD0Triangles();
-        result.loadedLOD0TransparentMeshlets = _mainView->GetState().GetLoadedLOD0TransparentMeshlets();
-        result.loadedLOD0TransparentTriangles = _mainView->GetState().GetLoadedLOD0TransparentTriangles();
         result.historyBytes = _mainView->GetWork().GetMeshletHistoryWords() * sizeof(u32) * ModelView::MODEL_VIEW_FRAME_COUNT;
         const ModelScene::MeshletHistoryAllocatorStats history = _mainScene->GetStats().meshletHistory;
         result.liveHistoryBytes = history.liveWords * sizeof(u32) * ModelView::MODEL_VIEW_FRAME_COUNT;
@@ -337,6 +342,15 @@ namespace ModelRendering
         result.retiredHistoryBytes = history.retiredWords * sizeof(u32) * ModelView::MODEL_VIEW_FRAME_COUNT;
         result.historyFreeRanges = history.freeRanges;
         return result;
+    }
+
+    ModelView::WorkStats ModelRenderSystem::GetDiagnosticStats() const
+    {
+        ModelView::WorkStats stats = _mainView->GetWork().GetStats();
+        stats.phase1ReplayedMeshlets = stats.survivorCount - std::min(stats.phase2AddedMeshlets, stats.survivorCount);
+        stats.phase1ReplayedTriangles = stats.committedTriangles -
+            std::min(stats.phase2AddedTriangles, stats.committedTriangles);
+        return stats;
     }
 
     RenderScenes::ModelInstanceHandle ModelRenderSystem::SetDiagnosticModel(RenderAssets::ModelHandle model,

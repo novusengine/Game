@@ -23,7 +23,6 @@ namespace ModelView
             _statsReadbacks[frame] = Renderer::BufferID::Invalid();
             _visibilityRecords[frame] = Renderer::BufferID::Invalid();
             _cullReasons[frame] = Renderer::BufferID::Invalid();
-            _instanceVisibility[frame] = Renderer::BufferID::Invalid();
             _meshletHistory[frame] = Renderer::BufferID::Invalid();
             for (Renderer::BufferID& queue : _queues[frame])
                 queue = Renderer::BufferID::Invalid();
@@ -104,8 +103,6 @@ namespace ModelView
                 _renderer->QueueDestroyBuffer(_cullReasons[frame]);
             if (_chunkQueues[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_chunkQueues[frame]);
-            if (_instanceVisibility[frame] != Renderer::BufferID::Invalid())
-                _renderer->QueueDestroyBuffer(_instanceVisibility[frame]);
             if (_meshletHistory[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_meshletHistory[frame]);
             if (_selectionQueues[frame] != Renderer::BufferID::Invalid())
@@ -192,22 +189,16 @@ namespace ModelView
 
     bool ModelViewWorkResources::EnsureHistoryCapacity(u32 instanceCount, u32 meshletHistoryWords)
     {
-        const u32 instanceWords = std::bit_ceil(std::max((instanceCount + 31u) / 32u, 1u));
+        (void)instanceCount;
         const u32 historyWords = std::bit_ceil(std::max(meshletHistoryWords, 1u));
-        if (instanceWords <= _instanceVisibilityWords && historyWords <= _meshletHistoryWords)
+        if (historyWords <= _meshletHistoryWords)
             return false;
 
-        _instanceVisibilityWords = std::max(_instanceVisibilityWords, instanceWords);
         _meshletHistoryWords = std::max(_meshletHistoryWords, historyWords);
         Renderer::BufferDesc desc;
         desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
         for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
         {
-            desc.name = "Model View Instance Visibility " + std::to_string(frame);
-            desc.size = sizeof(u32) * _instanceVisibilityWords;
-            _instanceVisibility[frame] = _renderer->CreateAndFillBuffer(_instanceVisibility[frame], desc,
-                [](void* memory, size_t size) { std::memset(memory, 0, size); });
-
             desc.name = "Model View Meshlet History " + std::to_string(frame);
             desc.size = sizeof(u32) * _meshletHistoryWords;
             _meshletHistory[frame] = _renderer->CreateAndFillBuffer(_meshletHistory[frame], desc,

@@ -167,11 +167,8 @@ namespace ShadowRendering
                 Bind(_cullSet, QUEUES[frame][queue], work.GetQueue(queue, frame));
         }
 
-        if (changed)
-            _cullDescriptorWarmupFrames = _renderer->GetFrameIndexCount();
-        else if (_cullDescriptorWarmupFrames > 0)
-            --_cullDescriptorWarmupFrames;
-        return _cullDescriptorWarmupFrames == 0;
+        return !_expandSet.HasPendingBufferWrites() && !_expandFinalizeSet.HasPendingBufferWrites() &&
+               !_cullSet.HasPendingBufferWrites() && !_finalizeSet.HasPendingBufferWrites();
     }
 
     void ModelShadowPass::AddCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -298,8 +295,8 @@ namespace ShadowRendering
                 commandList.Dispatch(1, 1, 1);
                 commandList.EndPipeline(_finalizePipeline);
                 commandList.CopyBuffer(data.readback, 0, data.stats, 0, sizeof(ModelShadowStats));
-            });
-        work.MarkSubmitted(frameIndex);
+                work.MarkSubmitted(frameIndex);
+            }, Renderer::RenderPassFlags::SideEffect);
     }
 
     void ModelShadowPass::BindRasterShared(Renderer::DescriptorSet& set, u32 setIndex, bool alphaTest,
@@ -358,11 +355,8 @@ namespace ShadowRendering
         BindRasterShared(_staticAlphaSet, 1, true, work, geometry, scene, svsmData, staticPageTable, changed);
         BindRasterShared(_dynamicSolidSet, 2, false, work, geometry, scene, svsmData, dynamicPageTable, changed);
         BindRasterShared(_dynamicAlphaSet, 3, true, work, geometry, scene, svsmData, dynamicPageTable, changed);
-        if (changed)
-            _rasterDescriptorWarmupFrames = _renderer->GetFrameIndexCount();
-        else if (_rasterDescriptorWarmupFrames > 0)
-            --_rasterDescriptorWarmupFrames;
-        return _rasterDescriptorWarmupFrames == 0;
+        return !_staticSolidSet.HasPendingBufferWrites() && !_staticAlphaSet.HasPendingBufferWrites() &&
+               !_dynamicSolidSet.HasPendingBufferWrites() && !_dynamicAlphaSet.HasPendingBufferWrites();
     }
 
     bool ModelShadowPass::Upload(const ModelShadowWorkResources& work,
@@ -370,30 +364,6 @@ namespace ShadowRendering
                                  const RenderScenes::RenderScene& scene, Renderer::BufferID svsmData,
                                  Renderer::BufferID staticPageTable, Renderer::BufferID dynamicPageTable)
     {
-        const std::array<Renderer::BufferID, 16> uploadBindings = {
-            scene.GetModelInstances().GetRecords().GetBuffer(),
-            scene.GetModelInstances().GetShadowCasters().GetBuffer(),
-            geometry.GetRecords().GetBuffer(),
-            geometry.GetMeshes().GetBuffer(),
-            geometry.GetMeshLODs().GetBuffer(),
-            geometry.GetSubmeshes().GetBuffer(),
-            geometry.GetMeshlets().GetBuffer(),
-            scene.GetGeometryGroupMasks().GetMasks().GetBuffer(),
-            scene.GetModelMaterialTables().GetEntries().GetBuffer(),
-            svsmData,
-            geometry.GetPositions().GetBuffer(),
-            geometry.GetMeshletVertexIndices().GetBuffer(),
-            geometry.GetMeshletTriangles().GetBuffer(),
-            geometry.GetVertexAttributes().GetBuffer(),
-            staticPageTable,
-            dynamicPageTable};
-        if (_uploadBindingsValid && _generation == work.GetGeneration() &&
-            _cullDescriptorWarmupFrames == 0 && _rasterDescriptorWarmupFrames == 0 &&
-            _uploadBindings == uploadBindings)
-        {
-            return true;
-        }
-
         if (_generation != work.GetGeneration())
         {
             _generation = work.GetGeneration();
@@ -403,8 +373,6 @@ namespace ShadowRendering
         const bool cullReady = UploadCullBindings(work, geometry, scene, svsmData);
         const bool rasterReady = UploadRasterBindings(work, geometry, scene, svsmData, staticPageTable,
                                                       dynamicPageTable);
-        _uploadBindings = uploadBindings;
-        _uploadBindingsValid = true;
         return cullReady && rasterReady;
     }
 

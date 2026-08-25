@@ -43,7 +43,8 @@ TEST_CASE("Embedded instances survive geometry growth and switch doodad sets by 
 
     ModelScene::EmbeddedInstanceSpawner spawner(
         &geometry, &scene,
-        [&](FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle) {
+        [&](FileFormat::AssetID assetID, bool acquireReference, RenderAssets::ModelHandle& outHandle) {
+            CHECK(acquireReference == (assetID != FileFormat::INVALID_ASSET_ID));
             if (assetID == FileFormat::INVALID_ASSET_ID)
                 return ModelLoading::EmbeddedModelLoadStatus::InvalidReference;
             if (assetID == 103)
@@ -56,7 +57,8 @@ TEST_CASE("Embedded instances survive geometry growth and switch doodad sets by 
 
             REQUIRE(geometry.Append(ModelLoading::GetFallbackModelAssetView(), materialTableOffset, 1, outHandle));
             return ModelLoading::EmbeddedModelLoadStatus::Loaded;
-        });
+        },
+        [](FileFormat::AssetID) {});
 
     mat4x4 parentWorld(1.0f);
     parentWorld[3].x = 10.0f;

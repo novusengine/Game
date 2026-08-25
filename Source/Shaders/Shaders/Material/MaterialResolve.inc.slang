@@ -10,10 +10,6 @@
 #include "Material/MaterialEvaluation.inc.slang"
 #include "Generated/MaterialResolveGroups.inc.slang"
 
-#ifndef MATERIAL_RESOLVE_UNIFIED
-#define MATERIAL_RESOLVE_UNIFIED 0
-#endif
-
 struct Constants
 {
     float4 renderInfo;
@@ -56,11 +52,6 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
     if (!IsModelVisibility(visibility))
         return;
     TypedVisibilityPayload payload = UnpackTypedVisibility(visibility);
-#if !MATERIAL_RESOLVE_UNIFIED
-    uint resolveGroup = MaterialResolveGroup(MATERIAL_COOK_GROUP);
-    if (ModelVisibilityResolveClass(payload.geometryTypeID) != (resolveGroup & 1u))
-        return;
-#endif
 
     ReconstructedModelPixel pixel;
     if (!ReconstructModelPixel(payload, float2(pixelPos) + 0.5f, _constants.renderInfo.xy,
@@ -69,10 +60,6 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
     MaterialInstanceRecord instance = _materialInstances[pixel.materialInstanceIndex];
     MaterialRecord material = _materials[instance.materialIndex];
     uint executionGroup = MaterialExecutionGroup(instance);
-#if !MATERIAL_RESOLVE_UNIFIED
-    if (MaterialResolveGroup(executionGroup) != resolveGroup)
-        return;
-#endif
 
     float3 normal = pixel.worldNormal;
     if ((instance.flags & MATERIAL_TWO_SIDED) != 0u && !pixel.frontFacing)

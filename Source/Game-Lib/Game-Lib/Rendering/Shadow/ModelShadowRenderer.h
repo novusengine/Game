@@ -21,7 +21,7 @@ namespace ShadowRendering
                             RenderAssets::RenderAssetResources* assets, RenderScenes::RenderScene* scene);
 
         void Update(u32 numClipmaps);
-        void Upload(Renderer::BufferID svsmData, Renderer::BufferID staticPageTable,
+        bool Upload(Renderer::BufferID svsmData, Renderer::BufferID staticPageTable,
                     Renderer::BufferID dynamicPageTable);
         void AddPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                        Renderer::BufferID svsmData, Renderer::BufferID staticPageTable,

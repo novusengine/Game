@@ -304,6 +304,7 @@ public:
     void Update(f32 deltaTime);
     void Upload();
     void Clear();
+    void Shutdown();
 
     void Reserve(const ReserveInfo& reserveInfo);
 

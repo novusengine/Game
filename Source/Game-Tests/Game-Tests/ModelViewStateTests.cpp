@@ -54,8 +54,7 @@ TEST_CASE("Model View inputs retain stable Scene slots and LOD history", "[Rende
     REQUIRE(view.GetLODHistory().Count() == 1);
     CHECK(view.GetLODHistory()[0] == ModelView::INVALID_LOD_HISTORY);
     CHECK(view.GetQueueCapacity() == 2);
-    CHECK(view.GetLoadedLOD0Meshlets() == 1);
-    CHECK(view.GetLoadedLOD0Triangles() > 0);
+    CHECK(view.GetDispatchInputCount() == 1);
     CHECK_FALSE(view.IsWorkDirty());
 }
 
@@ -74,8 +73,6 @@ TEST_CASE("Model View input preparation skips retired Scene instances", "[Render
     CHECK(view.GetDispatchInputCount() == 0);
     CHECK(view.GetLODHistory().IsEmpty());
     CHECK(view.GetQueueCapacity() == 1);
-    CHECK(view.GetLoadedLOD0Meshlets() == 0);
-    CHECK(view.GetLoadedLOD0Triangles() == 0);
 }
 
 TEST_CASE("Model View diagnostic selection replaces the previous instance", "[Rendering][ModelView]")
@@ -109,8 +106,7 @@ TEST_CASE("Model View prepares every active Scene instance without a diagnostic 
     CHECK(view.GetActiveInputCount() == 2);
     CHECK(view.GetInputs()[0].instanceIndex == RenderScenes::GetModelInstanceSlot(first));
     CHECK(view.GetInputs()[1].instanceIndex == RenderScenes::GetModelInstanceSlot(second));
-    CHECK(view.GetLoadedLOD0Meshlets() == 2);
-    CHECK(view.GetLoadedLOD0Triangles() > 0);
+    CHECK(view.GetDispatchInputCount() == 2);
     CHECK(view.GetPreparedSceneRevision() == fixture.scene.GetModelInstances().GetMembershipRevision());
 }
 
@@ -147,20 +143,17 @@ TEST_CASE("Model View membership churn preserves unrelated slot and LOD history 
 TEST_CASE("Model View retains targeted clear requests until graph consumption", "[Rendering][ModelView]")
 {
     ModelView::ModelViewState view;
-    const std::array slots = {2u, 9u};
     const std::array ranges = {ModelScene::MeshletHistoryRange{4, 3}, ModelScene::MeshletHistoryRange{20, 2}};
-    view.QueueTemporalClears(slots, ranges);
+    view.QueueTemporalClears(ranges);
 
-    REQUIRE(view.GetPendingInstanceClears().size() == slots.size());
     REQUIRE(view.GetPendingMeshletClears().size() == ranges.size());
     CHECK(view.GetPendingMeshletClears()[1].wordOffset == 20);
 
     view.AcknowledgeTemporalClears();
-    CHECK(view.GetPendingInstanceClears().empty());
     CHECK(view.GetPendingMeshletClears().empty());
 }
 
-TEST_CASE("Model View counts loaded transparent LOD 0 meshlets", "[Rendering][ModelView]")
+TEST_CASE("Model View discovers transparent work without LOD 0 counters", "[Rendering][ModelView]")
 {
     ViewFixture fixture;
     const RenderScenes::ModelInstanceHandle opaque = fixture.AddInstance();
@@ -171,15 +164,13 @@ TEST_CASE("Model View counts loaded transparent LOD 0 meshlets", "[Rendering][Mo
     view.PrepareInputs(fixture.scene, fixture.geometry);
     view.PrepareTransparentStats(fixture.scene, fixture.geometry, fixture.materials);
 
-    CHECK(view.GetLoadedLOD0TransparentMeshlets() == 1);
-    CHECK(view.GetLoadedLOD0TransparentTriangles() == view.GetLoadedLOD0Triangles() / 2u);
+    CHECK(view.HasTransparentWork());
     CHECK(view.GetPreparedTransparentRoutingRevision() == fixture.scene.GetTransparentRoutingRevision());
 
     REQUIRE(fixture.scene.SetModelOpacity(faded, 1.0f));
     CHECK(view.GetPreparedTransparentRoutingRevision() != fixture.scene.GetTransparentRoutingRevision());
     view.PrepareTransparentStats(fixture.scene, fixture.geometry, fixture.materials);
-    CHECK(view.GetLoadedLOD0TransparentMeshlets() == 0);
-    CHECK(view.GetLoadedLOD0TransparentTriangles() == 0);
+    CHECK_FALSE(view.HasTransparentWork());
     CHECK(fixture.scene.IsAlive(opaque));
 }
 

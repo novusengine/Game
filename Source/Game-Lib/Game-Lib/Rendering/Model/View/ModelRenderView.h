@@ -53,7 +53,7 @@ namespace ModelRendering
         RenderScenes::RenderView& GetView() { return _view; }
         const RenderScenes::RenderView& GetView() const { return _view; }
         bool IsReadyThisFrame() const { return _readyThisFrame; }
-        bool HasTransparentWork() const { return _state.GetLoadedLOD0TransparentMeshlets() != 0; }
+        bool HasTransparentWork() const { return _state.HasTransparentWork(); }
         const ModelView::ModelViewWorkResources& GetWork() const { return _work; }
         const ModelView::ModelTransparentWorkResources& GetTransparentWork() const { return _transparentWork; }
         ModelView::ModelViewState& GetState() { return _state; }
@@ -96,6 +96,5 @@ namespace ModelRendering
         bool _reportedQueueOverflow = false;
         bool _reportedVisibilityRecordOverflow = false;
         bool _reportedVisibilityRecordPackingFailure = false;
-        bool _reportedSurvivorQueueOverflow = false;
     };
 } // namespace ModelRendering

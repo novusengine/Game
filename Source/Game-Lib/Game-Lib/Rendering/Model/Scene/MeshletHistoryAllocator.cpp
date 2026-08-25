@@ -57,6 +57,7 @@ namespace ModelScene
     void MeshletHistoryAllocator::ReleaseRetired(u64 completedValue)
     {
         size_t writeIndex = 0;
+        bool released = false;
         for (const RetiredRange& retired : _retiredRanges)
         {
             if (retired.retireValue > completedValue)
@@ -67,9 +68,12 @@ namespace ModelScene
 
             _retiredWords -= retired.range.wordCount;
             AddFreeRange(retired.range);
+            released = true;
         }
         _retiredRanges.resize(writeIndex);
 
+        if (!released)
+            return;
         CoalesceFreeRanges();
         TrimFreeTail();
     }
@@ -102,6 +106,9 @@ namespace ModelScene
 
     void MeshletHistoryAllocator::CoalesceFreeRanges()
     {
+        if (_freeRanges.size() < 2)
+            return;
+
         std::sort(_freeRanges.begin(), _freeRanges.end(), [](const MeshletHistoryRange& left, const MeshletHistoryRange& right) {
             return left.wordOffset < right.wordOffset;
         });

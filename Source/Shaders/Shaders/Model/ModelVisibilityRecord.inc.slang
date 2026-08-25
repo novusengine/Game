@@ -11,7 +11,6 @@ struct ModelVisibilityRecord
 {
     uint packedInstanceAndMesh;
     uint packedLODSubmeshAndMeshlet;
-    uint instanceGeneration;
     uint replayRevision;
 };
 
@@ -59,7 +58,6 @@ ModelVisibilityRecord PackModelVisibilityRecord(uint instanceIndex, uint meshInd
     result.packedInstanceAndMesh = PackModelInstanceAndMesh(instanceIndex, meshIndex);
     result.packedLODSubmeshAndMeshlet = lodIndex | (submeshIndex << MODEL_VISIBILITY_LOD_BITS) |
         (meshletIndex << (MODEL_VISIBILITY_LOD_BITS + MODEL_VISIBILITY_SUBMESH_BITS));
-    result.instanceGeneration = 0u;
     result.replayRevision = 0u;
     return result;
 }

@@ -142,13 +142,10 @@ namespace ModelView
         slot.handle = handle;
         slot.lodHistory = history;
         slot.meshlets = modelRecord.numMeshlets;
-        slot.lod0Meshlets = modelRecord.lod0Meshlets;
-        slot.lod0Triangles = modelRecord.lod0Triangles;
         slot.active = true;
         ++_activeInputCount;
+        _dispatchInputCount = std::max(_dispatchInputCount, slotIndex + 1u);
         _queueCapacity += slot.meshlets;
-        _loadedLOD0Meshlets += slot.lod0Meshlets;
-        _loadedLOD0Triangles += slot.lod0Triangles;
         _inputs[slotIndex] = {slotIndex, history.offset};
         _inputs.SetDirtyElement(slotIndex);
     }
@@ -158,15 +155,16 @@ namespace ModelView
         InputSlot& slot = _inputSlots[slotIndex];
         _queueCapacity -= slot.meshlets;
         --_activeInputCount;
-        _loadedLOD0Meshlets -= slot.lod0Meshlets;
-        _loadedLOD0Triangles -= slot.lod0Triangles;
-        _loadedLOD0TransparentMeshlets -= slot.transparentMeshlets;
-        _loadedLOD0TransparentTriangles -= slot.transparentTriangles;
         SetTransparentEligible(slotIndex, false);
         _lodHistoryAllocator.Free(slot.lodHistory);
         slot = {};
         _inputs[slotIndex] = {RenderScenes::INVALID_SCENE_INDEX, 0};
         _inputs.SetDirtyElement(slotIndex);
+        if (slotIndex + 1u == _dispatchInputCount)
+        {
+            while (_dispatchInputCount != 0u && !_inputSlots[_dispatchInputCount - 1u].active)
+                --_dispatchInputCount;
+        }
     }
 
     void ModelViewState::ResetLODHistory()
@@ -176,15 +174,13 @@ namespace ModelView
         _lodHistory.SetDirty();
     }
 
-    void ModelViewState::QueueTemporalClears(std::span<const u32> instanceSlots, std::span<const ModelScene::MeshletHistoryRange> meshletRanges)
+    void ModelViewState::QueueTemporalClears(std::span<const ModelScene::MeshletHistoryRange> meshletRanges)
     {
-        _pendingInstanceClears.insert(_pendingInstanceClears.end(), instanceSlots.begin(), instanceSlots.end());
         _pendingMeshletClears.insert(_pendingMeshletClears.end(), meshletRanges.begin(), meshletRanges.end());
     }
 
     void ModelViewState::AcknowledgeTemporalClears()
     {
-        _pendingInstanceClears.clear();
         _pendingMeshletClears.clear();
     }
 
@@ -192,13 +188,6 @@ namespace ModelView
                                                  const ModelLoading::ModelGeometryStorage& geometry,
                                                  const MaterialLoading::MaterialStorage& materials)
     {
-        _loadedLOD0TransparentMeshlets = 0;
-        _loadedLOD0TransparentTriangles = 0;
-        for (InputSlot& slot : _inputSlots)
-        {
-            slot.transparentMeshlets = 0;
-            slot.transparentTriangles = 0;
-        }
         for (u32 slotIndex = 0; slotIndex < _inputSlots.size(); ++slotIndex)
             RefreshTransparentStats(slotIndex, scene, geometry, materials);
         _preparedTransparentRoutingRevision = scene.GetTransparentRoutingRevision();
@@ -217,10 +206,6 @@ namespace ModelView
                                                  const MaterialLoading::MaterialStorage& materials)
     {
         InputSlot& slotState = _inputSlots[slotIndex];
-        _loadedLOD0TransparentMeshlets -= slotState.transparentMeshlets;
-        _loadedLOD0TransparentTriangles -= slotState.transparentTriangles;
-        slotState.transparentMeshlets = 0;
-        slotState.transparentTriangles = 0;
         SetTransparentEligible(slotIndex, false);
         if (!slotState.active)
             return;
@@ -251,38 +236,19 @@ namespace ModelView
         }
         SetTransparentEligible(slotIndex, transparentEligible);
 
-        const ModelLoading::ModelGPURecord& modelRecord = geometry.GetRecord(model);
-        for (u32 meshIndex = 0; meshIndex < modelRecord.numMeshes; ++meshIndex)
-        {
-            const FileFormat::Model::Mesh& mesh = geometry.GetMeshes()[modelRecord.meshBase + meshIndex];
-            if (mesh.numLODs == 0)
-                continue;
-            const FileFormat::Model::MeshLOD& lod = geometry.GetMeshLODs()[modelRecord.meshLODBase + mesh.lodOffset];
-            for (u32 submeshIndex = 0; submeshIndex < lod.numSubmeshes; ++submeshIndex)
-            {
-                const FileFormat::Model::Submesh& submesh = geometry.GetSubmeshes()[modelRecord.submeshBase + lod.submeshOffset + submeshIndex];
-                const u32 materialSlot = mesh.materialSlotOffset + submesh.materialSlotIndex;
-                if (materialSlot >= instance->materialTableCount)
-                    continue;
-                const u32 materialInstanceIndex = materialTable[instance->materialTableOffset + materialSlot];
-                if (materialInstanceIndex >= materials.GetMaterialInstances().Count())
-                    continue;
-                const auto& materialInstance = materials.GetMaterialInstances()[materialInstanceIndex];
-                const u32 executionGroupClass = (materialInstance.packedClassification >> 16u) % FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
-                const bool transparent = executionGroupClass / 2u == static_cast<u32>(FileFormat::Material::RasterClass::Transparent);
-                if (!forceTransparent && !transparent)
-                    continue;
-                slotState.transparentMeshlets += submesh.numMeshlets;
-                for (u32 meshletIndex = 0; meshletIndex < submesh.numMeshlets; ++meshletIndex)
-                    slotState.transparentTriangles += geometry.GetMeshlets()[modelRecord.meshletBase + submesh.meshletOffset + meshletIndex].triangleCount;
-            }
-        }
-        _loadedLOD0TransparentMeshlets += slotState.transparentMeshlets;
-        _loadedLOD0TransparentTriangles += slotState.transparentTriangles;
     }
 
     void ModelViewState::SetTransparentEligible(u32 slotIndex, bool eligible)
     {
+        InputSlot& slot = _inputSlots[slotIndex];
+        if (slot.transparentEligible != eligible)
+        {
+            if (eligible)
+                ++_transparentEligibleInstances;
+            else
+                --_transparentEligibleInstances;
+            slot.transparentEligible = eligible;
+        }
         const u32 wordIndex = slotIndex >> 5u;
         if (wordIndex >= _transparentEligibility.Count())
             return;

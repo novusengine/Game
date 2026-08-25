@@ -95,7 +95,6 @@ namespace Editor
                 ImGui::Spacing();
                 ImGui::Text("Model View: %u phase 1 | %u phase 2 | %u survivors | %u HiZ rejects", model.work.phase1ReplayedMeshlets, model.work.phase2AddedMeshlets, model.work.survivorCount, model.work.rejectedOcclusionMeshlets);
                 ImGui::Text("Model History: %u KB allocated | %u KB live | %u KB free | %u KB retired | %u free ranges", model.historyBytes / 1024u, model.liveHistoryBytes / 1024u, model.freeHistoryBytes / 1024u, model.retiredHistoryBytes / 1024u, model.historyFreeRanges);
-                ImGui::Text("Model Temporal Skips: %u stale generation | %u LOD mismatch", model.work.staleGenerationSkips, model.work.lodMismatchSkips);
 
                 const ImVec4 errorColor(1.0f, 0.2f, 0.2f, 1.0f);
                 if (model.work.queueOverflows > 0)
@@ -104,8 +103,6 @@ namespace Editor
                     ImGui::TextColored(errorColor, "ERROR: Model expansion queue overflow (%u dropped)", model.work.chunkQueueOverflows);
                 if (model.work.visibilityRecordOverflows > 0)
                     ImGui::TextColored(errorColor, "ERROR: Model visibility arena overflow (%u dropped)", model.work.visibilityRecordOverflows);
-                if (model.work.survivorQueueOverflows > 0)
-                    ImGui::TextColored(errorColor, "ERROR: Model survivor queue overflow (%u dropped)", model.work.survivorQueueOverflows);
             }
 
             if (LightRenderer* lightRenderer = gameRenderer->GetLightRenderer())
@@ -224,9 +221,9 @@ namespace Editor
                                 modelShadowSurvivors, modelShadow.testedMeshlets,
                                 modelShadow.committedTriangles, modelShadow.testedTriangles,
                                 modelShadow.queueOverflows + modelShadow.recordOverflows + modelShadow.chunkQueueOverflows);
-                    ImGui::Text("  Rejected: %u frustum, %u page, %u cone, %u group, %u material, %u transparent",
+                    ImGui::Text("  Rejected: %u frustum, %u page, %u bounds, %u group, %u material, %u transparent",
                                 modelShadow.rejectedFrustumMeshlets, modelShadow.rejectedPageMeshlets,
-                                modelShadow.rejectedConeMeshlets, modelShadow.rejectedGeometryGroupMeshlets,
+                                modelShadow.rejectedBoundsMeshlets, modelShadow.rejectedGeometryGroupMeshlets,
                                 modelShadow.rejectedMaterialMeshlets, modelShadow.rejectedTransparentMeshlets);
 
                     // Per-clipmap surviving dynamic instances of the SVSM dynamic fills, one
@@ -873,15 +870,17 @@ namespace Editor
         if (viewID == 0 && modelRenderSystem)
         {
             const ModelRendering::ModelPerformanceStats stats = modelRenderSystem->GetPerformanceStats();
-            DrawCullingStatsEntry("Model Meshlets Occluders", stats.loadedLOD0Meshlets, stats.work.phase1ReplayedMeshlets);
-            DrawCullingStatsEntry("Model Meshlets Geometry", stats.loadedLOD0Meshlets, stats.work.phase2AddedMeshlets);
+            DrawCullingStatsEntry("Model Meshlets Occluders", stats.work.phase1ReplayedMeshlets,
+                                  stats.work.phase1ReplayedMeshlets);
+            DrawCullingStatsEntry("Model Meshlets Geometry", stats.work.phase2AddedMeshlets,
+                                  stats.work.phase2AddedMeshlets);
             u32 transparentMeshlets = 0;
             for (u32 count : stats.transparentWork.queueCounts)
                 transparentMeshlets += count;
-            DrawCullingStatsEntry("Model Meshlets Transparent", stats.loadedLOD0TransparentMeshlets, transparentMeshlets);
-            viewDrawCalls += stats.loadedLOD0Meshlets * 2u;
+            DrawCullingStatsEntry("Model Meshlets Transparent", transparentMeshlets, transparentMeshlets);
+            viewDrawCalls += stats.work.phase1ReplayedMeshlets + stats.work.phase2AddedMeshlets;
             viewDrawCallsSurvived += stats.work.phase1ReplayedMeshlets + stats.work.phase2AddedMeshlets;
-            viewDrawCalls += stats.loadedLOD0TransparentMeshlets;
+            viewDrawCalls += transparentMeshlets;
             viewDrawCallsSurvived += transparentMeshlets;
         }
 
@@ -998,10 +997,14 @@ namespace Editor
         if (viewID == 0 && modelRenderSystem)
         {
             const ModelRendering::ModelPerformanceStats stats = modelRenderSystem->GetPerformanceStats();
-            DrawCullingStatsEntry("Model Triangles Occluders", stats.loadedLOD0Triangles, stats.work.phase1ReplayedTriangles);
-            DrawCullingStatsEntry("Model Triangles Geometry", stats.loadedLOD0Triangles, stats.work.phase2AddedTriangles);
-            DrawCullingStatsEntry("Model Triangles Transparent", stats.loadedLOD0TransparentTriangles, stats.transparentWork.committedTriangles);
-            viewTriangles += stats.loadedLOD0Triangles * 2u + stats.loadedLOD0TransparentTriangles;
+            DrawCullingStatsEntry("Model Triangles Occluders", stats.work.phase1ReplayedTriangles,
+                                  stats.work.phase1ReplayedTriangles);
+            DrawCullingStatsEntry("Model Triangles Geometry", stats.work.phase2AddedTriangles,
+                                  stats.work.phase2AddedTriangles);
+            DrawCullingStatsEntry("Model Triangles Transparent", stats.transparentWork.committedTriangles,
+                                  stats.transparentWork.committedTriangles);
+            viewTriangles += stats.work.phase1ReplayedTriangles + stats.work.phase2AddedTriangles +
+                             stats.transparentWork.committedTriangles;
             viewTrianglesSurvived += stats.work.phase1ReplayedTriangles + stats.work.phase2AddedTriangles + stats.transparentWork.committedTriangles;
         }
 

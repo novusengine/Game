@@ -38,6 +38,7 @@ public:
 
     virtual bool SyncToGPU(bool forceRecount);
     virtual void Clear();
+    void Shutdown();
 
     virtual u32 GetDrawCallCount() = 0;
     virtual bool IsIndexed() = 0;

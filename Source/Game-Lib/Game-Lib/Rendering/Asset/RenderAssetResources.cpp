@@ -27,6 +27,7 @@ namespace RenderAssets
 
     void RenderAssetResources::Update(f32 deltaTime)
     {
+        _modelRegistry.Update();
         _materialAnimator.Update(deltaTime);
     }
 

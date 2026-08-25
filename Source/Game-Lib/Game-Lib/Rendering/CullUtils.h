@@ -21,6 +21,7 @@ class DepthPyramidUtils
 {
 public:
     static void Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
+    static void Shutdown();
     static void AddBuildPass(Renderer::RenderGraph* renderGraph, const std::string& name,
                              Renderer::DepthImageID depth, Renderer::ImageID depthPyramid, u8 frameIndex);
 

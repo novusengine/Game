@@ -45,6 +45,11 @@ void AddStat(uint index, uint value, out uint previous)
     else InterlockedAdd(_workStats1[index], value, previous);
 }
 
+uint LoadStat(uint index)
+{
+    return _constants.resourceIndex == 0u ? _workStats0[index] : _workStats1[index];
+}
+
 void StoreChunk(uint index, ModelMeshletChunk chunk)
 {
     if (_constants.resourceIndex == 0u) _chunkQueue0[index] = chunk;
@@ -115,7 +120,15 @@ groupshared uint _selectedLODValid;
 [numthreads(16, 1, 1)]
 void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    uint inputIndex = groupID.x;
+    uint selectedCapacity;
+    uint selectedStride;
+    if (_constants.resourceIndex == 0u) _selectedInputs0.GetDimensions(selectedCapacity, selectedStride);
+    else _selectedInputs1.GetDimensions(selectedCapacity, selectedStride);
+    uint selectedCount = min(LoadStat(MODEL_WORK_STAT_SELECTED_INSTANCES), selectedCapacity);
+    uint groupsX = selectedCount <= MODEL_COMPUTE_DISPATCH_LINEAR_THRESHOLD ? max(selectedCount, 1u) : MODEL_COMPUTE_DISPATCH_MAX_GROUPS_X;
+    uint inputIndex = groupID.x + groupID.y * groupsX;
+    if (inputIndex >= selectedCount)
+        return;
     uint lane = groupThreadID.x;
     ViewInstanceInput input = _constants.resourceIndex == 0u ? _selectedInputs0[inputIndex] :
                                                                 _selectedInputs1[inputIndex];

@@ -15,6 +15,16 @@ namespace ModelView
     inline constexpr u32 MODEL_LOD_SELECTION_COUNT = 8;
     inline constexpr u32 INVALID_LOD_HISTORY = 0xFFFFFFFFu;
 
+    // Mirrors Include/TypedVisibility.inc.slang. The R32_UINT visibility target remains packed as
+    // geometry type (3 bits), record ID (22 bits), and meshlet triangle ID (7 bits).
+    inline constexpr u32 TYPED_VISIBILITY_GEOMETRY_BITS = 3;
+    inline constexpr u32 TYPED_VISIBILITY_RECORD_BITS = 22;
+    inline constexpr u32 TYPED_VISIBILITY_TRIANGLE_BITS = 7;
+    inline constexpr u32 TYPED_VISIBILITY_RECORD_CAPACITY = 1u << TYPED_VISIBILITY_RECORD_BITS;
+    static_assert(TYPED_VISIBILITY_GEOMETRY_BITS + TYPED_VISIBILITY_RECORD_BITS +
+                      TYPED_VISIBILITY_TRIANGLE_BITS ==
+                  32);
+
     inline constexpr u32 MODEL_VISIBILITY_INSTANCE_BITS = 22;
     inline constexpr u32 MODEL_VISIBILITY_MESH_BITS = 10;
     inline constexpr u32 MODEL_VISIBILITY_LOD_BITS = 3;
@@ -27,10 +37,9 @@ namespace ModelView
     {
         u32 packedInstanceAndMesh = 0;
         u32 packedLODSubmeshAndMeshlet = 0;
-        u32 instanceGeneration = 0;
         u32 replayRevision = 0;
     };
-    static_assert(sizeof(VisibilityRecord) == 16);
+    static_assert(sizeof(VisibilityRecord) == 12);
 
     struct DecodedVisibilityRecord
     {
@@ -110,10 +119,10 @@ namespace ModelView
         u32 survivorCount = 0;
         u32 phase1ReplayedMeshlets = 0;
         u32 phase2AddedMeshlets = 0;
-        u32 staleGenerationSkips = 0;
-        u32 lodMismatchSkips = 0;
+        u32 reserved0 = 0;
+        u32 reserved1 = 0;
         u32 rejectedOcclusionMeshlets = 0;
-        u32 survivorQueueOverflows = 0;
+        u32 reserved2 = 0;
         u32 chunkQueueOverflows = 0;
         u32 testedTriangles = 0;
         u32 committedTriangles = 0;
