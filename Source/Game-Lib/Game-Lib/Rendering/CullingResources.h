@@ -13,7 +13,7 @@ struct InstanceRef
 {
     u32 instanceID;
     u32 drawID;
-    u32 extraID; // For example ModelRenderer uses this for TextureData
+    u32 extraID;
     u32 padding;
 };
 
@@ -371,6 +371,7 @@ public:
             _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _createIndirectAfterCullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer(), true);
             gotRecreated = true;
         }

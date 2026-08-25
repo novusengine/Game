@@ -12,7 +12,6 @@ struct Constants
     float lodHysteresis;
     uint resetHistory;
     uint resourceIndex;
-    uint showCullReasons;
 };
 [[vk::push_constant]] Constants _constants;
 

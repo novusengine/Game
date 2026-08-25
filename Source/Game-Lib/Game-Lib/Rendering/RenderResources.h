@@ -17,7 +17,6 @@ public:
         , globalDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL)
         , lightDescriptorSet(Renderer::DescriptorSetSlot::LIGHT)
         , terrainDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN)
-        , modelDescriptorSet(Renderer::DescriptorSetSlot::MODEL)
         , materialDescriptorSet(Renderer::DescriptorSetSlot::MATERIAL)
     {
 
@@ -28,7 +27,6 @@ public:
     Renderer::DescriptorSet globalDescriptorSet;
     Renderer::DescriptorSet lightDescriptorSet;
     Renderer::DescriptorSet terrainDescriptorSet;
-    Renderer::DescriptorSet modelDescriptorSet;
     Renderer::DescriptorSet materialDescriptorSet;
 
     // Permanent resources

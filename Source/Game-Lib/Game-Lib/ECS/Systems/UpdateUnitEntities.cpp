@@ -26,7 +26,6 @@
 #include "Game-Lib/Gameplay/Database/Unit.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
-#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/AttachmentUtil.h"
@@ -172,11 +171,8 @@ namespace ECS::Systems
                             }
                         }
 
-                        if (unitCustomization->flags.useCustomSkin || ModelRendering::UseMeshletModelRenderer())
-                        {
-                            unitCustomization->flags.forceRefresh = true;
-                            registry.emplace_or_replace<ECS::Components::UnitRebuildSkinTexture>(entity);
-                        }
+                        unitCustomization->flags.forceRefresh = true;
+                        registry.emplace_or_replace<ECS::Components::UnitRebuildSkinTexture>(entity);
                     }
 
                     if (auto* modelQueuedGeometryGroups = registry.try_get<Components::ModelQueuedGeometryGroups>(entity))

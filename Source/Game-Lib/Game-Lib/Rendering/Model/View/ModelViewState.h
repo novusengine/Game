@@ -39,8 +39,6 @@ namespace ModelView
       public:
         explicit ModelViewState(bool validateTransfers = false);
 
-        void SetDiagnosticSelection(RenderScenes::ModelInstanceHandle instance);
-        void ClearDiagnosticSelection();
         void PrepareInputs(const RenderScenes::RenderScene& scene, const ModelLoading::ModelGeometryStorage& geometry);
         void PrepareChangedInputs(const RenderScenes::RenderScene& scene, const ModelLoading::ModelGeometryStorage& geometry, std::span<const u32> changedSlots);
         void PrepareTransparentStats(const RenderScenes::RenderScene& scene,
@@ -56,7 +54,6 @@ namespace ModelView
         bool IsWorkDirty() const { return _workDirty; }
         void MarkWorkDirty() { _workDirty = true; }
         void MarkWorkBuilt() { _workDirty = false; }
-        std::span<const RenderScenes::ModelInstanceHandle> GetDiagnosticSelection() const { return _diagnosticSelection; }
         const Renderer::GPUVector<ViewInstanceInput>& GetInputs() const { return _inputs; }
         const Renderer::GPUVector<u32>& GetTransparentEligibility() const { return _transparentEligibility; }
         u32 GetDispatchInputCount() const { return _dispatchInputCount; }
@@ -89,7 +86,6 @@ namespace ModelView
         void RefreshTransparentStats(u32 slotIndex, const RenderScenes::RenderScene& scene, const ModelLoading::ModelGeometryStorage& geometry,
                                      const MaterialLoading::MaterialStorage& materials);
 
-        std::vector<RenderScenes::ModelInstanceHandle> _diagnosticSelection;
         std::vector<RenderScenes::ModelInstanceHandle> _sceneSelection;
         std::vector<InputSlot> _inputSlots;
         RenderScenes::StableRangeAllocator _lodHistoryAllocator;

@@ -1,8 +1,5 @@
 #include "ModelLoader.h"
-#include "ModelBuilder.h"
-#include "ModelRenderer.h"
 #include "ModelPlacementLoader.h"
-#include "ModelRendererMode.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
@@ -93,12 +90,11 @@ namespace
 AutoCVar_Int CVAR_ModelAsyncPrepare(CVarCategory::Client | CVarCategory::Rendering, "modelAsyncPrepare", "prepare model CPU data on EnkiTS workers", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelAsyncMaxInFlight(CVarCategory::Client | CVarCategory::Rendering, "modelAsyncMaxInFlight", "maximum in-flight model preparation jobs", 8, CVarFlags::None);
 AutoCVar_Int CVAR_ModelAsyncMaxCommitsPerFrame(CVarCategory::Client | CVarCategory::Rendering, "modelAsyncMaxCommitsPerFrame", "maximum prepared models committed per frame", 8, CVarFlags::None);
-AutoCVar_Int CVAR_ModelAsyncCommitBudgetMB(CVarCategory::Client | CVarCategory::Rendering, "modelAsyncCommitBudgetMB", "estimated prepared model bytes committed per frame", 32, CVarFlags::None);
 
 struct ActiveModelPrepareJob : enki::ITaskSet
 {
 public:
-    ActiveModelPrepareJob(u64 epoch, u64 modelHash, PACT::PactStorage* pactStorage, moodycamel::ConcurrentQueue<ModelLoading::PreparedModelResult>* completionQueue)
+    ActiveModelPrepareJob(u64 epoch, u64 modelHash, PACT::PactStorage* pactStorage, moodycamel::ConcurrentQueue<ModelLoading::LoadedModelResult>* completionQueue)
         : enki::ITaskSet(1)
         , _epoch(epoch)
         , _modelHash(modelHash)
@@ -115,7 +111,7 @@ public:
 
         ZoneScopedN("Prepare Model Task");
 
-        ModelLoading::PreparedModelResult result;
+        ModelLoading::LoadedModelResult result;
         result.epoch = _epoch;
         result.modelHash = _modelHash;
         result.debugName = std::to_string(_modelHash);
@@ -158,20 +154,6 @@ public:
             result.model = std::move(model);
         }
 
-        {
-            ZoneScopedN("Build Prepared Render Model");
-
-            ModelLoading::ModelBuildResult buildResult = ModelLoading::BuildPreparedModel(result.debugName, *result.model);
-            if (!buildResult)
-            {
-                result.error = std::move(buildResult.error);
-                _completionQueue->enqueue(std::move(result));
-                return;
-            }
-
-            result.preparedModel = std::move(buildResult.preparedModel);
-        }
-
         _completionQueue->enqueue(std::move(result));
     }
 
@@ -179,12 +161,11 @@ private:
     u64 _epoch = 0;
     u64 _modelHash = std::numeric_limits<u64>().max();
     PACT::PactStorage* _pactStorage = nullptr;
-    moodycamel::ConcurrentQueue<ModelLoading::PreparedModelResult>* _completionQueue = nullptr;
+    moodycamel::ConcurrentQueue<ModelLoading::LoadedModelResult>* _completionQueue = nullptr;
 };
 
-ModelLoader::ModelLoader(ModelRenderer* modelRenderer, LightRenderer* lightRenderer)
+ModelLoader::ModelLoader(LightRenderer* lightRenderer)
     : _terrainLoader(nullptr)
-    , _modelRenderer(modelRenderer)
     , _lightRenderer(lightRenderer)
     , _pendingLoadRequests(MAX_MAP_LOADS_PER_FRAME)
     , _internalLoadRequests(MAX_MAP_LOADS_PER_FRAME)
@@ -296,7 +277,6 @@ void ModelLoader::Clear()
 
     _numTerrainModelsToLoad = 0;
     _numTerrainModelsLoaded = 0;
-    _modelRenderer->Clear();
     _lightRenderer->Clear();
 
     auto& tSystem = ECS::TransformSystem::Get(*registry);
@@ -317,16 +297,16 @@ void ModelLoader::Update(f32 deltaTime)
     TracyPlot("Model Instance Requests Pending", static_cast<i64>(_internalLoadRequests.size_approx()));
     TracyPlot("Model Unload Requests Pending", static_cast<i64>(_unloadRequests.size_approx()));
     TracyPlot("Model Load Results Pending", static_cast<i64>(_loadRequestResults.size_approx()));
-    TracyPlot("Model Prepare Results Pending", static_cast<i64>(_preparedModelResults.size_approx()));
+    TracyPlot("Model Prepare Results Pending", static_cast<i64>(_loadedModelResults.size_approx()));
 
     ReapCompletedPrepareJobs();
-    ConsumePreparedModels();
+    ConsumeLoadedModels();
 
     TracyPlot("Model Prepare In Flight", static_cast<i64>(_activeModelPrepareJobs.size()));
-    TracyPlot("Model Prepare Commit Backlog", static_cast<i64>(_pendingPreparedModelCommits.size() + _preparedModelResults.size_approx()));
+    TracyPlot("Model Prepare Commit Backlog", static_cast<i64>(_pendingLoadedModelCommits.size() + _loadedModelResults.size_approx()));
 
     const bool asyncPrepareEnabled = CVAR_ModelAsyncPrepare.Get() != 0;
-    const bool drainingDisabledAsyncWork = !asyncPrepareEnabled && (!_activeModelPrepareJobs.empty() || !_pendingPreparedModelCommits.empty());
+    const bool drainingDisabledAsyncWork = !asyncPrepareEnabled && (!_activeModelPrepareJobs.empty() || !_pendingLoadedModelCommits.empty());
     u32 numTerrainLoadRequests = static_cast<u32>(_pendingTerrainLoadRequests.size_approx());
     moodycamel::ConcurrentQueue<LoadRequestInternal>* workQueue = numTerrainLoadRequests > 0 ? &_pendingTerrainLoadRequests : &_pendingLoadRequests;
     const u32 maxLoadsThisFrame = _terrainLoading ? MAX_MAP_LOADS_PER_FRAME : MAX_GAMEPLAY_LOADS_PER_FRAME;
@@ -343,92 +323,61 @@ void ModelLoader::Update(f32 deltaTime)
             _numTerrainModelsLoaded += numDequeuedLoadRequests;
 
         ZoneScopedN("Pending Load Model Requests");
-        ModelRenderer::ReserveInfo reserveInfo;
-
+        for (u32 i = 0; i < numDequeuedLoadRequests; i++)
         {
-            ZoneScopedN("Calculate Model Reserve Info");
-
-            for (u32 i = 0; i < numDequeuedLoadRequests; i++)
+            const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
+            if (!_modelHashToDiscoveredModel.contains(loadRequest.modelHash))
             {
-                const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
-                if (!_modelHashToDiscoveredModel.contains(loadRequest.modelHash))
+                auto* pactStorage = ServiceLocator::GetPactStorage();
+
+                PACT::PactFileHandle fileHandle;
+                if (pactStorage->ReadFile(loadRequest.modelHash, fileHandle) != PACT::PactReadResult::Success)
+                    continue;
+
+                const std::string* modelPath = pactStorage->GetFilePath(loadRequest.modelHash);
+
+                size_t fileSize = fileHandle.GetSize();
+                constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
+
+                if (fileSize < HEADER_SIZE)
                 {
-                    auto* pactStorage = ServiceLocator::GetPactStorage();
+                    NC_LOG_ERROR("ModelLoader : Tried to open model file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", *modelPath);
 
-                    PACT::PactFileHandle fileHandle;
-                    if (pactStorage->ReadFile(loadRequest.modelHash, fileHandle) != PACT::PactReadResult::Success)
-                        continue;
+                    _modelAssets[loadRequest.modelHash].loadState = LoadState::Failed;
 
-                    const std::string* modelPath = pactStorage->GetFilePath(loadRequest.modelHash);
+                    continue;
+                }
 
-                    size_t fileSize = fileHandle.GetSize();
-                    constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
+                DiscoveredModel newDiscoveredModel =
+                {
+                    .name = *modelPath,
+                    .modelHash = loadRequest.modelHash,
+                    .hasShape = false,
+                    .model = nullptr
+                };
 
-                    if (fileSize < HEADER_SIZE)
+                {
+                    ZoneScopedN("Read Model");
+
+                    Model::ComplexModel* model = new Model::ComplexModel();
+                    std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
+                    buffer->writtenData = fileHandle.GetSize();
+
+                    if (!Model::ComplexModel::Read(buffer, *model))
                     {
-                        NC_LOG_ERROR("ModelLoader : Tried to open model file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", *modelPath);
+                        NC_LOG_ERROR("ModelLoader : Failed to read the Model for file ({0})", newDiscoveredModel.name);
+                        delete model;
 
                         _modelAssets[loadRequest.modelHash].loadState = LoadState::Failed;
 
                         continue;
                     }
 
-                    DiscoveredModel newDiscoveredModel =
-                    {
-                        .name = *modelPath,
-                        .modelHash = loadRequest.modelHash,
-                        .hasShape = false,
-                        .model = nullptr
-                    };
-
-                    {
-                        ZoneScopedN("Read Model");
-
-                        Model::ComplexModel* model = new Model::ComplexModel();
-                        std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
-                        buffer->writtenData = fileHandle.GetSize();
-
-                        if (!Model::ComplexModel::Read(buffer, *model))
-                        {
-                            NC_LOG_ERROR("ModelLoader : Failed to read the Model for file ({0})", newDiscoveredModel.name);
-                            delete model;
-
-                            _modelAssets[loadRequest.modelHash].loadState = LoadState::Failed;
-
-                            continue;
-                        }
-
-                        newDiscoveredModel.model = model;
-                        _modelAssets[newDiscoveredModel.modelHash].loadState = LoadState::NotLoaded;
-                        _modelHashToDiscoveredModel[newDiscoveredModel.modelHash] = std::move(newDiscoveredModel);
-                    }
-
-                    DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
-                    bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
-
-                    reserveInfo.numModels += 1 * isSupported;
-                    reserveInfo.numVertices += discoveredModel.model->modelHeader.numVertices * isSupported;
-                    reserveInfo.numIndices += discoveredModel.model->modelHeader.numIndices * isSupported;
-                    reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * isSupported;
-                    reserveInfo.numDecorationSets += discoveredModel.model->modelHeader.numDecorationSets * isSupported;
-                    reserveInfo.numDecorations += discoveredModel.model->modelHeader.numDecorations * isSupported;
-
-                    reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
-                    reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
+                    newDiscoveredModel.model = model;
+                    _modelAssets[newDiscoveredModel.modelHash].loadState = LoadState::NotLoaded;
+                    _modelHashToDiscoveredModel[newDiscoveredModel.modelHash] = std::move(newDiscoveredModel);
                 }
             }
-        }
-
-        {
-            ZoneScopedN("Model Reserve");
-
-            _modelHashToModelID.reserve(_modelHashToModelID.size() + reserveInfo.numModels);
-            _modelIDToModelHash.reserve(_modelIDToModelHash.size() + reserveInfo.numModels);
-            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
-            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
-            _modelAssets.reserve(_modelAssets.size() + reserveInfo.numModels);
-
-            _modelRenderer->Reserve(reserveInfo);
         }
 
         //enki::TaskSet loadModelsTask(numDequeuedLoadRequests, [&](enki::TaskSetPartition range, uint32_t threadNum)
@@ -486,34 +435,9 @@ void ModelLoader::Update(f32 deltaTime)
     {
         ZoneScopedN("Pending Load Instance Requests");
 
-        ModelRenderer::ReserveInfo reserveInfo;
+        const u32 numSupportedInstances = numDequeuedInternalRequests;
 
-        {
-            ZoneScopedN("Calculate Instance Reserve Info");
-
-            for (u32 i = 0; i < numDequeuedInternalRequests; i++)
-            {
-                ZoneScopedN("Reserve Info Work");
-                const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
-
-                u64 modelHash = loadRequest.modelHash;
-                const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[modelHash];
-                bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
-                bool hasDisplayID = loadRequest.type == LoadRequestType::DisplayID;
-
-                // Only increment Instance Count & Drawcall Count if the model have vertices
-                {
-                    reserveInfo.numInstances += 1 * isSupported;
-                    reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
-                    reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
-                    reserveInfo.numBones += discoveredModel.model->modelHeader.numBones * isSupported;
-                    reserveInfo.numTextureTransforms += discoveredModel.model->modelHeader.numTextureTransforms * isSupported;
-                    reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * hasDisplayID * isSupported;
-                }
-            }
-        }
-
-        if (reserveInfo.numInstances > 0)
+        if (numSupportedInstances > 0)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             size_t createdEntitiesOffset = _createdEntities.size();
@@ -522,7 +446,7 @@ void ModelLoader::Update(f32 deltaTime)
                 ZoneScopedN("Instance Reserve");
 
                 // Create entt entities
-                _createdEntities.resize(createdEntitiesOffset + reserveInfo.numInstances);
+                _createdEntities.resize(createdEntitiesOffset + numSupportedInstances);
                 auto begin = _createdEntities.begin() + createdEntitiesOffset;
 
                 registry->create(begin, _createdEntities.end());
@@ -535,7 +459,6 @@ void ModelLoader::Update(f32 deltaTime)
                 registry->insert<ECS::Components::Transform>(begin, _createdEntities.end());
                 registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
 
-                _modelRenderer->Reserve(reserveInfo);
             }
 
             std::atomic<u32> numCreatedInstances = 0;
@@ -552,8 +475,7 @@ void ModelLoader::Update(f32 deltaTime)
                     ZoneScopedN("Load Instance Work");
                     LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
 
-                    const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
-                    bool isSupported = (loadRequest.entity == entt::null || registry->valid(loadRequest.entity)) && discoveredModel.model->modelHeader.numVertices > 0;
+                    bool isSupported = loadRequest.entity == entt::null || registry->valid(loadRequest.entity);
                     if (!IsCurrentEntityRequest(loadRequest))
                         continue;
 
@@ -660,7 +582,6 @@ void ModelLoader::Update(f32 deltaTime)
             if (_instanceIDToEntityID.contains(unloadRequest.instanceID))
                 _instanceIDToEntityID.erase(unloadRequest.instanceID);
 
-            _modelRenderer->RemoveInstance(unloadRequest.instanceID);
         }
     }
     TracyPlot("Model Unloads Processed", static_cast<i64>(numUnloadsProcessed));
@@ -710,12 +631,11 @@ void ModelLoader::Update(f32 deltaTime)
     }
 
 
-    const bool modelPreparationIdle = _activeModelPrepareJobs.empty() && _preparedModelResults.size_approx() == 0 && _pendingPreparedModelCommits.empty();
+    const bool modelPreparationIdle = _activeModelPrepareJobs.empty() && _loadedModelResults.size_approx() == 0 && _pendingLoadedModelCommits.empty();
     const bool terrainRequestQueuesIdle = _pendingTerrainLoadRequests.size_approx() == 0 && _internalLoadRequests.size_approx() == 0;
     GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
     const bool terrainIdle = !gameRenderer->GetTerrainLoader()->IsLoading();
-    const bool placementLoadingIdle = !ModelRendering::UseMeshletModelRenderer() ||
-                                      !gameRenderer->GetModelPlacementLoader()->IsLoading();
+    const bool placementLoadingIdle = !gameRenderer->GetModelPlacementLoader()->IsLoading();
     if (_terrainLoading && terrainIdle && placementLoadingIdle &&
         _numTerrainModelsLoaded == _numTerrainModelsToLoad && modelPreparationIdle && terrainRequestQueuesIdle)
     {
@@ -779,27 +699,6 @@ void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
     u64 doodadSet = (placement.doodadSet * isDoodadSetPresent) + (std::numeric_limits<u64>().max() * !isDoodadSetPresent);
     loadRequest.extraData2 = doodadSet;
     loadRequest.extraData3 = placement.uniqueID;
-
-    _numTerrainModelsToLoad++;
-    _pendingTerrainLoadRequests.enqueue(loadRequest);
-}
-
-void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration)
-{
-    ZoneScopedN("ModelLoader::LoadDecoration");
-
-    LoadRequestInternal loadRequest =
-    {
-        .requestID = GetNextLoadRequestID(),
-        .type = LoadRequestType::Decoration,
-        .entity = entt::null,
-        .modelHash = decoration.nameID,
-        .spawnPosition = decoration.position,
-        .spawnRotation = decoration.rotation,
-        .scale = decoration.scale,
-        .extraData1 = instanceID,
-        .extraData2 = decoration.color,
-    };
 
     _numTerrainModelsToLoad++;
     _pendingTerrainLoadRequests.enqueue(loadRequest);
@@ -961,8 +860,6 @@ void ModelLoader::SetModelVisible(const ECS::Components::Model& model, bool visi
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeVisibility(model.instanceID, visible);
-
     entt::entity entity = entt::null;
     if (GetEntityIDFromInstanceID(model.instanceID, entity))
         ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetVisible(entity, visible);
@@ -976,7 +873,6 @@ void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent, f3
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     SetModelTransparent(modelComponent, transparent, opacity);
-    ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetOpacity(entity, opacity, transparent);
 }
 
 void ModelLoader::SetModelTransparent(const ECS::Components::Model& model, bool transparent, f32 opacity)
@@ -986,7 +882,9 @@ void ModelLoader::SetModelTransparent(const ECS::Components::Model& model, bool 
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeTransparency(model.instanceID, transparent, opacity);
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
+        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetOpacity(entity, opacity, transparent);
 }
 
 void ModelLoader::SetEntityHighlight(entt::entity entity, f32 highlightIntensity)
@@ -1006,8 +904,6 @@ void ModelLoader::SetModelHighlight(const ECS::Components::Model& model, f32 hig
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeHighlight(model.instanceID, highlightIntensity);
-
     entt::entity entity = entt::null;
     if (GetEntityIDFromInstanceID(model.instanceID, entity))
         ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetHighlight(entity, highlightIntensity);
@@ -1021,8 +917,6 @@ void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     EnableGroupForModel(modelComponent, groupID);
-    if (ModelRendering::UseMeshletModelRenderer())
-        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetGeometryGroupEnabled(entity, groupID, true);
 }
 
 void ModelLoader::EnableGroupForModel(const ECS::Components::Model& model, u32 groupID)
@@ -1032,7 +926,9 @@ void ModelLoader::EnableGroupForModel(const ECS::Components::Model& model, u32 g
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeGroup(model.instanceID, groupID, 0, true);
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
+        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetGeometryGroupEnabled(entity, groupID, true);
 }
 
 void ModelLoader::DisableGroupForEntity(entt::entity entity, u32 groupID)
@@ -1043,8 +939,6 @@ void ModelLoader::DisableGroupForEntity(entt::entity entity, u32 groupID)
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     DisableGroupForModel(modelComponent, groupID);
-    if (ModelRendering::UseMeshletModelRenderer())
-        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetGeometryGroupEnabled(entity, groupID, false);
 }
 
 void ModelLoader::DisableGroupForModel(const ECS::Components::Model& model, u32 groupID)
@@ -1054,7 +948,9 @@ void ModelLoader::DisableGroupForModel(const ECS::Components::Model& model, u32 
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeGroup(model.instanceID, groupID, 0, false);
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
+        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetGeometryGroupEnabled(entity, groupID, false);
 }
 
 void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, u32 groupIDEnd)
@@ -1065,7 +961,17 @@ void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, 
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     DisableGroupsForModel(modelComponent, groupIDStart, groupIDEnd);
-    if (ModelRendering::UseMeshletModelRenderer())
+}
+
+void ModelLoader::DisableGroupsForModel(const ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd)
+{
+    ZoneScopedN("ModelLoader::DisableGroupsForModel");
+
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
     {
         ModelScene::ModelSceneBridge* bridge = ServiceLocator::GetGameRenderer()->GetModelSceneBridge();
         const u32 lastGroupID = groupIDEnd == 0 ? groupIDStart : groupIDEnd;
@@ -1078,16 +984,6 @@ void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, 
     }
 }
 
-void ModelLoader::DisableGroupsForModel(const ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd)
-{
-    ZoneScopedN("ModelLoader::DisableGroupsForModel");
-
-    if (model.instanceID == std::numeric_limits<u32>().max())
-        return;
-
-    _modelRenderer->RequestChangeGroup(model.instanceID, groupIDStart, groupIDEnd, false);
-}
-
 void ModelLoader::DisableAllGroupsForEntity(entt::entity entity)
 {
     ZoneScopedN("ModelLoader::DisableAllGroupsForEntity");
@@ -1096,12 +992,6 @@ void ModelLoader::DisableAllGroupsForEntity(entt::entity entity)
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     DisableAllGroupsForModel(modelComponent);
-    if (ModelRendering::UseMeshletModelRenderer())
-    {
-        ModelScene::ModelSceneBridge* bridge = ServiceLocator::GetGameRenderer()->GetModelSceneBridge();
-        bridge->SetAllGeometryGroups(entity, false);
-        bridge->SetGeometryGroupEnabled(entity, 0, true);
-    }
 }
 
 void ModelLoader::DisableAllGroupsForModel(const ECS::Components::Model& model)
@@ -1111,7 +1001,13 @@ void ModelLoader::DisableAllGroupsForModel(const ECS::Components::Model& model)
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeGroup(model.instanceID, 1, std::numeric_limits<u32>().max(), false);
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
+    {
+        ModelScene::ModelSceneBridge* bridge = ServiceLocator::GetGameRenderer()->GetModelSceneBridge();
+        bridge->SetAllGeometryGroups(entity, false);
+        bridge->SetGeometryGroupEnabled(entity, 0, true);
+    }
 }
 
 void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
@@ -1121,7 +1017,17 @@ void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::Texture
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
     SetSkinTextureForModel(modelComponent, textureID);
-    if (ModelRendering::UseMeshletModelRenderer())
+}
+
+void ModelLoader::SetSkinTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
+{
+    ZoneScopedN("ModelLoader::SetSkinTextureForModel");
+
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
@@ -1133,16 +1039,6 @@ void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::Texture
     }
 }
 
-void ModelLoader::SetSkinTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
-{
-    ZoneScopedN("ModelLoader::SetSkinTextureForModel");
-
-    if (model.instanceID == std::numeric_limits<u32>().max())
-        return;
-
-    _modelRenderer->RequestChangeSkinTexture(model.instanceID, textureID);
-}
-
 void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
 {
     ZoneScopedN("ModelLoader::SetHairTextureForEntity");
@@ -1150,16 +1046,6 @@ void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::Texture
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
     SetHairTextureForModel(modelComponent, textureID);
-    if (ModelRendering::UseMeshletModelRenderer())
-    {
-        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
-        RenderScenes::RenderScene* scene = bridge->GetScene(entity);
-        const RenderScenes::ModelInstanceHandle instance = bridge->Get(entity);
-        const ModelScene::ModelInstanceGPURecord* record = scene ? scene->GetModelInstance(instance) : nullptr;
-        if (record)
-            gameRenderer->GetModelParameterOverrides()->SetTexture(*scene, instance, RenderAssets::ModelHandle(record->modelIndex), ModelParameterNameHash("CharacterHair"), textureID);
-    }
 }
 
 void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
@@ -1169,7 +1055,17 @@ void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Re
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeHairTexture(model.instanceID, textureID);
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
+    {
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
+        RenderScenes::RenderScene* scene = bridge->GetScene(entity);
+        const RenderScenes::ModelInstanceHandle instance = bridge->Get(entity);
+        const ModelScene::ModelInstanceGPURecord* record = scene ? scene->GetModelInstance(instance) : nullptr;
+        if (record)
+            gameRenderer->GetModelParameterOverrides()->SetTexture(*scene, instance, RenderAssets::ModelHandle(record->modelIndex), ModelParameterNameHash("CharacterHair"), textureID);
+    }
 }
 
 const Model::ComplexModel* ModelLoader::GetModelInfo(u64 modelHash)
@@ -1259,138 +1155,58 @@ ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 mod
     return _modelHashToDiscoveredModel[modelHash];
 }
 
-void ModelLoader::ConsumePreparedModels()
+void ModelLoader::ConsumeLoadedModels()
 {
-    ZoneScopedN("ModelLoader::ConsumePreparedModels");
+    ZoneScopedN("ModelLoader::ConsumeLoadedModels");
 
-    u32 numResultsConsumed = 0;
-    u32 numStaleResultsDiscarded = 0;
-    ModelLoading::PreparedModelResult result;
+    ModelLoading::LoadedModelResult result;
+    while (_loadedModelResults.try_dequeue(result))
     {
-        ZoneScopedN("Drain Prepared Model Results");
-        while (_preparedModelResults.try_dequeue(result))
-        {
-            if (result.epoch != _loaderEpoch)
-            {
-                numStaleResultsDiscarded++;
-                continue;
-            }
-
-            numResultsConsumed++;
-            _pendingPreparedModelCommits.push_back(std::move(result));
-        }
+        if (result.epoch == _loaderEpoch)
+            _pendingLoadedModelCommits.push_back(std::move(result));
     }
-    TracyPlot("Model Prepare Results Consumed", static_cast<i64>(numResultsConsumed));
-    TracyPlot("Model Prepare Stale Results", static_cast<i64>(numStaleResultsDiscarded));
 
     const u32 maxCommits = static_cast<u32>(std::max(1, CVAR_ModelAsyncMaxCommitsPerFrame.Get()));
-    const u64 commitBudgetBytes = static_cast<u64>(std::max(1, CVAR_ModelAsyncCommitBudgetMB.Get())) * 1024ull * 1024ull;
-
-    std::vector<ModelLoading::PreparedModelResult> commitBatch;
-    commitBatch.reserve(maxCommits);
-
-    u64 selectedCommitBytes = 0;
+    u32 numCommitted = 0;
+    while (!_pendingLoadedModelCommits.empty() && numCommitted < maxCommits)
     {
-        ZoneScopedN("Select Prepared Model Commit Batch");
-        while (!_pendingPreparedModelCommits.empty() && commitBatch.size() < maxCommits)
-        {
-            ModelLoading::PreparedModelResult& pendingResult = _pendingPreparedModelCommits.front();
+        ModelLoading::LoadedModelResult loadedResult = std::move(_pendingLoadedModelCommits.front());
+        _pendingLoadedModelCommits.pop_front();
 
-            auto assetItr = _modelAssets.find(pendingResult.modelHash);
-            if (assetItr == _modelAssets.end() || assetItr->second.loadState != LoadState::Requested)
-            {
-                _pendingPreparedModelCommits.pop_front();
-                continue;
-            }
-
-            if (!pendingResult)
-            {
-                NC_LOG_ERROR("ModelLoader : Failed to prepare model ({0}): {1}", pendingResult.debugName, pendingResult.error);
-
-                ModelAssetRecord& asset = assetItr->second;
-                asset.loadState = LoadState::Failed;
-                for (const LoadRequestInternal& request : asset.waitingRequests)
-                    CompletePreparedRequest(request, false);
-                asset.waitingRequests.clear();
-
-                _pendingPreparedModelCommits.pop_front();
-                continue;
-            }
-
-            const u64 nextCommitBytes = pendingResult.preparedModel.estimatedCommitBytes;
-            if (!commitBatch.empty() && selectedCommitBytes + nextCommitBytes > commitBudgetBytes)
-                break;
-
-            selectedCommitBytes += nextCommitBytes;
-            commitBatch.push_back(std::move(pendingResult));
-            _pendingPreparedModelCommits.pop_front();
-        }
-    }
-
-    if (commitBatch.empty())
-    {
-        TracyPlot("Model Prepare Models Committed", static_cast<i64>(0));
-        TracyPlot("Model Prepare Committed Bytes", static_cast<i64>(0));
-        return;
-    }
-
-    TracyPlot("Model Prepare Models Committed", static_cast<i64>(commitBatch.size()));
-    TracyPlot("Model Prepare Committed Bytes", static_cast<i64>(selectedCommitBytes));
-
-    ModelRenderer::ReserveInfo reserveInfo;
-    {
-        ZoneScopedN("Aggregate Prepared Model Reserve");
-        for (const ModelLoading::PreparedModelResult& preparedResult : commitBatch)
-        {
-            reserveInfo.numModels += preparedResult.preparedModel.reserveInfo.numModels;
-            reserveInfo.numOpaqueDrawcalls += preparedResult.preparedModel.reserveInfo.numOpaqueDrawCalls;
-            reserveInfo.numTransparentDrawcalls += preparedResult.preparedModel.reserveInfo.numTransparentDrawCalls;
-            reserveInfo.numVertices += preparedResult.preparedModel.reserveInfo.numVertices;
-            reserveInfo.numIndices += preparedResult.preparedModel.reserveInfo.numIndices;
-            reserveInfo.numTextureUnits += preparedResult.preparedModel.reserveInfo.numTextureUnits;
-            reserveInfo.numBones += preparedResult.preparedModel.reserveInfo.numBones;
-            reserveInfo.numTextureTransforms += preparedResult.preparedModel.reserveInfo.numTextureTransforms;
-            reserveInfo.numDecorationSets += preparedResult.preparedModel.reserveInfo.numDecorationSets;
-            reserveInfo.numDecorations += preparedResult.preparedModel.reserveInfo.numDecorations;
-        }
-    }
-
-    {
-        ZoneScopedN("Reserve Prepared Model Commit");
-        _modelHashToModelID.reserve(_modelHashToModelID.size() + commitBatch.size());
-        _modelIDToModelHash.reserve(_modelIDToModelHash.size() + commitBatch.size());
-        _modelIDToAABB.reserve(_modelIDToAABB.size() + commitBatch.size());
-        _modelRenderer->Reserve(reserveInfo);
-    }
-
-    for (ModelLoading::PreparedModelResult& preparedResult : commitBatch)
-    {
-        ZoneScopedN("Commit Prepared Model Result");
-        auto assetItr = _modelAssets.find(preparedResult.modelHash);
+        auto assetItr = _modelAssets.find(loadedResult.modelHash);
         if (assetItr == _modelAssets.end() || assetItr->second.loadState != LoadState::Requested)
             continue;
 
         ModelAssetRecord& asset = assetItr->second;
-
-        if (_modelHashToDiscoveredModel.contains(preparedResult.modelHash))
-            delete _modelHashToDiscoveredModel[preparedResult.modelHash].model;
-
-        DiscoveredModel discoveredModel =
+        bool success = static_cast<bool>(loadedResult);
+        if (!success)
         {
-            .name = std::move(preparedResult.debugName),
-            .modelHash = preparedResult.modelHash,
-            .hasShape = false,
-            .model = preparedResult.model.release()
-        };
+            NC_LOG_ERROR("ModelLoader : Failed to load semantic model ({0}): {1}", loadedResult.debugName, loadedResult.error);
+        }
+        else
+        {
+            if (_modelHashToDiscoveredModel.contains(loadedResult.modelHash))
+                delete _modelHashToDiscoveredModel[loadedResult.modelHash].model;
 
-        _modelHashToDiscoveredModel[preparedResult.modelHash] = std::move(discoveredModel);
-        const bool success = CommitPreparedModel(_modelHashToDiscoveredModel[preparedResult.modelHash], preparedResult.preparedModel);
+            DiscoveredModel discoveredModel =
+            {
+                .name = std::move(loadedResult.debugName),
+                .modelHash = loadedResult.modelHash,
+                .hasShape = false,
+                .model = loadedResult.model.release()
+            };
+            _modelHashToDiscoveredModel[loadedResult.modelHash] = std::move(discoveredModel);
+            success = CommitLoadedModel(_modelHashToDiscoveredModel[loadedResult.modelHash]);
+        }
 
         asset.loadState = success ? LoadState::Loaded : LoadState::Failed;
         for (const LoadRequestInternal& request : asset.waitingRequests)
             CompletePreparedRequest(request, success);
         asset.waitingRequests.clear();
+        numCommitted++;
     }
+
+    TracyPlot("Model Prepare Models Committed", static_cast<i64>(numCommitted));
 }
 
 void ModelLoader::ReapCompletedPrepareJobs()
@@ -1437,7 +1253,7 @@ void ModelLoader::DispatchAsyncLoadRequests(moodycamel::ConcurrentQueue<LoadRequ
             continue;
         }
 
-        const size_t numOutstandingPrepares = _activeModelPrepareJobs.size() + _pendingPreparedModelCommits.size() + _preparedModelResults.size_approx();
+        const size_t numOutstandingPrepares = _activeModelPrepareJobs.size() + _pendingLoadedModelCommits.size() + _loadedModelResults.size_approx();
         if (numOutstandingPrepares >= maxInFlight)
         {
             workQueue.enqueue(request);
@@ -1448,7 +1264,7 @@ void ModelLoader::DispatchAsyncLoadRequests(moodycamel::ConcurrentQueue<LoadRequ
         asset.loadState = LoadState::Requested;
         asset.waitingRequests.push_back(request);
 
-        auto job = std::make_unique<ActiveModelPrepareJob>(_loaderEpoch, request.modelHash, pactStorage, &_preparedModelResults);
+        auto job = std::make_unique<ActiveModelPrepareJob>(_loaderEpoch, request.modelHash, pactStorage, &_loadedModelResults);
         taskScheduler->AddTaskSetToPipe(job.get());
         _activeModelPrepareJobs.push_back(std::move(job));
         numJobsDispatched++;
@@ -1471,13 +1287,13 @@ void ModelLoader::CancelAndDrainPrepareJobs()
         _activeModelPrepareJobs.clear();
     }
 
-    ModelLoading::PreparedModelResult result;
-    while (_preparedModelResults.try_dequeue(result))
+    ModelLoading::LoadedModelResult result;
+    while (_loadedModelResults.try_dequeue(result))
     {
         // Discard results invalidated by Clear or destruction.
     }
 
-    _pendingPreparedModelCommits.clear();
+    _pendingLoadedModelCommits.clear();
 }
 
 void ModelLoader::CompletePreparedRequest(const LoadRequestInternal& request, bool success)
@@ -1531,27 +1347,14 @@ bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
         return false;
     }
 
-    if (discoveredModel.model->modelHeader.numVertices == 0)
-    {
-        NC_LOG_ERROR("ModelLoader : Tried to load model ({0}) without any vertices", discoveredModel.name);
-        return false;
-    }
-
-    ModelLoading::ModelBuildResult buildResult = ModelLoading::BuildPreparedModel(discoveredModel.name, *discoveredModel.model);
-    if (!buildResult)
-    {
-        NC_LOG_ERROR("ModelLoader : Failed to prepare model ({0}): {1}", discoveredModel.name, buildResult.error);
-        return false;
-    }
-
-    return CommitPreparedModel(discoveredModel, buildResult.preparedModel);
+    return CommitLoadedModel(discoveredModel);
 }
 
-bool ModelLoader::CommitPreparedModel(DiscoveredModel& discoveredModel, const ModelLoading::PreparedRenderModel& preparedModel)
+bool ModelLoader::CommitLoadedModel(DiscoveredModel& discoveredModel)
 {
-    ZoneScopedN("ModelLoader::CommitPreparedModel");
+    ZoneScopedN("ModelLoader::CommitLoadedModel");
 
-    u32 modelID = _modelRenderer->CommitPreparedModel(preparedModel);
+    const u32 modelID = _nextModelID++;
     _modelHashToModelID[discoveredModel.modelHash] = modelID;
     _modelIDToModelHash[modelID] = discoveredModel.modelHash;
 
@@ -1604,11 +1407,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
     u32 modelID = _modelHashToModelID[request.modelHash];
     u32 doodadSet = request.type == LoadRequestType::Placement ? static_cast<u32>(request.extraData2) : std::numeric_limits<u32>().max();
-    u32 instanceID;
-    {
-        ZoneScopedN("Commit Static Renderer Instance");
-        instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, request.modelHash, nullptr, request.spawnPosition, request.spawnRotation, request.scale, doodadSet, request.type == LoadRequestType::Placement);
-    }
+    const u32 instanceID = _nextInstanceID++;
 
     auto& model = registry->get<ECS::Components::Model>(entityID);
     model.flags.loaded = true;
@@ -1714,20 +1513,11 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     transformSystem.SetLocalScale(entityID, vec3(model.scale));
 
     if (instanceID == std::numeric_limits<u32>().max())
-    {
-        ZoneScopedN("Commit New Dynamic Renderer Instance");
-        instanceID = _modelRenderer->AddInstance(entityID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData1);
-    }
-    else
-    {
-        ZoneScopedN("Commit Modified Dynamic Renderer Instance");
-        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData1);
-    }
+        instanceID = _nextInstanceID++;
 
     model.modelID = modelID;
     model.instanceID = instanceID;
 
-    if (ModelRendering::UseMeshletModelRenderer())
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         RenderAssets::RenderAssetResources* assets = gameRenderer->GetRenderAssetResources();
@@ -1855,9 +1645,4 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         animationInitData.flags.isDynamic = true;
     }
 
-    if (_modelRenderer)
-    {
-        ZoneScopedN("Initialize Dynamic Model Animation");
-        _modelRenderer->AddAnimationInstance(instanceID);
-    }
 }

@@ -6,7 +6,6 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
-#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -91,9 +90,7 @@ namespace Scripting::Map
             return 1;
         }
         f32 terrainProgress = gameRenderer->GetTerrainLoader()->GetLoadingProgress();
-        const f32 modelProgress = ModelRendering::UseMeshletModelRenderer()
-                                      ? gameRenderer->GetModelPlacementLoader()->GetLoadingProgress()
-                                      : gameRenderer->GetModelLoader()->GetLoadingProgress();
+        const f32 modelProgress = gameRenderer->GetModelPlacementLoader()->GetLoadingProgress();
         zenith->Push((terrainProgress + modelProgress) * 0.5f);
         return 1;
     }

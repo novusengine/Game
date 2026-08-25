@@ -312,197 +312,33 @@ namespace Scripting::Asset
         zenith->AddTableField("embeddedInvalidReferenceSkips", placementStats.embedded.invalidReferenceSkips);
         zenith->AddTableField("embeddedMissingGeometrySkips", placementStats.embedded.missingGeometrySkips);
         zenith->AddTableField("embeddedDependencyFailures", placementStats.embedded.unexpectedDependencyFailures);
-        const ModelView::WorkStats& diagnosticStats =
-            ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->GetDiagnosticStats();
-        zenith->AddTableField("diagnosticSelectedInstances", diagnosticStats.selectedInstances);
-        zenith->AddTableField("diagnosticOneSidedMeshlets", diagnosticStats.oneSidedMeshlets);
-        zenith->AddTableField("diagnosticTwoSidedMeshlets", diagnosticStats.twoSidedMeshlets);
-        zenith->AddTableField("diagnosticSkippedSkinnedLODs", diagnosticStats.skippedSkinnedLODs);
-        zenith->AddTableField("modelTestedInstances", diagnosticStats.testedInstances);
-        zenith->AddTableField("modelRejectedInstances", diagnosticStats.rejectedInstances);
-        zenith->AddTableField("modelExpandedChunks", diagnosticStats.expandedChunks);
-        zenith->AddTableField("modelTestedChunks", diagnosticStats.testedChunks);
-        zenith->AddTableField("modelTestedMeshlets", diagnosticStats.testedMeshlets);
-        zenith->AddTableField("modelFrustumRejectedMeshlets", diagnosticStats.rejectedFrustumMeshlets);
-        zenith->AddTableField("modelConeRejectedMeshlets", diagnosticStats.rejectedConeMeshlets);
-        zenith->AddTableField("modelTestedTriangles", diagnosticStats.testedTriangles);
-        zenith->AddTableField("modelCommittedTriangles", diagnosticStats.committedTriangles);
-        zenith->AddTableField("modelQueueOverflows", diagnosticStats.queueOverflows);
-        zenith->AddTableField("modelChunkQueueOverflows", diagnosticStats.chunkQueueOverflows);
-        zenith->AddTableField("modelVisibilityRecordOverflows", diagnosticStats.visibilityRecordOverflows);
-        zenith->AddTableField("modelSurvivors", diagnosticStats.survivorCount);
-        zenith->AddTableField("modelPhase1ReplayedMeshlets", diagnosticStats.phase1ReplayedMeshlets);
-        zenith->AddTableField("modelPhase2AddedMeshlets", diagnosticStats.phase2AddedMeshlets);
-        zenith->AddTableField("modelOcclusionRejectedMeshlets", diagnosticStats.rejectedOcclusionMeshlets);
+        const ModelView::WorkStats& modelStats =
+            ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->GetMainViewStats();
+        zenith->AddTableField("modelSelectedInstances", modelStats.selectedInstances);
+        zenith->AddTableField("modelOneSidedMeshlets", modelStats.oneSidedMeshlets);
+        zenith->AddTableField("modelTwoSidedMeshlets", modelStats.twoSidedMeshlets);
+        zenith->AddTableField("modelSkippedSkinnedLODs", modelStats.skippedSkinnedLODs);
+        zenith->AddTableField("modelTestedInstances", modelStats.testedInstances);
+        zenith->AddTableField("modelRejectedInstances", modelStats.rejectedInstances);
+        zenith->AddTableField("modelExpandedChunks", modelStats.expandedChunks);
+        zenith->AddTableField("modelTestedChunks", modelStats.testedChunks);
+        zenith->AddTableField("modelTestedMeshlets", modelStats.testedMeshlets);
+        zenith->AddTableField("modelFrustumRejectedMeshlets", modelStats.rejectedFrustumMeshlets);
+        zenith->AddTableField("modelConeRejectedMeshlets", modelStats.rejectedConeMeshlets);
+        zenith->AddTableField("modelTestedTriangles", modelStats.testedTriangles);
+        zenith->AddTableField("modelCommittedTriangles", modelStats.committedTriangles);
+        zenith->AddTableField("modelQueueOverflows", modelStats.queueOverflows);
+        zenith->AddTableField("modelChunkQueueOverflows", modelStats.chunkQueueOverflows);
+        zenith->AddTableField("modelVisibilityRecordOverflows", modelStats.visibilityRecordOverflows);
+        zenith->AddTableField("modelSurvivors", modelStats.survivorCount);
+        zenith->AddTableField("modelPhase1ReplayedMeshlets", modelStats.phase1ReplayedMeshlets);
+        zenith->AddTableField("modelPhase2AddedMeshlets", modelStats.phase2AddedMeshlets);
+        zenith->AddTableField("modelOcclusionRejectedMeshlets", modelStats.rejectedOcclusionMeshlets);
         for (u32 lod = 0; lod < 8; ++lod)
         {
             const std::string field = "modelLOD" + std::to_string(lod);
-            zenith->AddTableField(field.c_str(), diagnosticStats.lodSelections[lod]);
+            zenith->AddTableField(field.c_str(), modelStats.lodSelections[lod]);
         }
-        return 1;
-    }
-
-    i32 AssetHandler::ShowRenderModel(Zenith* zenith)
-    {
-        const RenderAssets::ModelHandle model(zenith->CheckVal<u32>(1));
-        const vec3 worldBoundsCenter = zenith->CheckVal<vec3>(2);
-        const f32 worldBoundsRadius = zenith->CheckVal<f32>(3);
-        // TODO: Remove this optional geometry-group state with the temporary diagnostic model hook.
-        const bool geometryGroupsEnabled = zenith->GetTop() < 4 || zenith->CheckVal<bool>(4);
-        const bool teleported = zenith->GetTop() >= 5 && zenith->CheckVal<bool>(5);
-        const RenderScenes::ModelInstanceHandle instance =
-            ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->SetDiagnosticModel(
-                model, worldBoundsCenter, worldBoundsRadius, geometryGroupsEnabled, teleported);
-        zenith->Push(static_cast<RenderScenes::ModelInstanceHandle::type>(instance));
-        return 1;
-    }
-
-    i32 AssetHandler::LoadDiagnosticSkybox(Zenith* zenith)
-    {
-        const std::string path = zenith->CheckVal<const char*>(1);
-        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        RenderAssets::RenderAssetResources* assets = gameRenderer->GetRenderAssetResources();
-        const RenderAssets::ModelHandle model = assets->LoadModel(Util::AssetPath::Hash(path));
-        RenderScenes::ModelInstanceDesc desc;
-        desc.model = model;
-        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
-        const auto& activeCamera = registry.ctx().get<ECS::Singletons::ActiveCamera>();
-        const auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
-        desc.worldTransform[3] = vec4(cameraTransform.GetWorldPosition(), 1.0f);
-        const RenderScenes::ModelInstanceHandle instance = gameRenderer->GetSkyboxModelScene()->CreateModelInstance(desc);
-        zenith->Push(model != assets->GetFallbackModel() && instance != RenderScenes::ModelInstanceHandle::Invalid());
-        return 1;
-    }
-
-    i32 AssetHandler::QueryRenderModelPixel(Zenith* zenith)
-    {
-        const u32 x = zenith->CheckVal<u32>(1);
-        const u32 y = zenith->CheckVal<u32>(2);
-        const u32 token = ServiceLocator::GetGameRenderer()->GetPixelQuery()->PerformDiagnosticQuery(uvec2(x, y));
-        zenith->Push(token);
-        return 1;
-    }
-
-    i32 AssetHandler::StressRenderSceneLifecycle(Zenith* zenith)
-    {
-        constexpr u32 MAX_INSTANCES = 4096;
-        constexpr u32 MAX_ITERATIONS = 256;
-
-        const RenderAssets::ModelHandle model(zenith->CheckVal<u32>(1));
-        const u32 instanceCount = zenith->CheckVal<u32>(2);
-        const u32 iterationCount = zenith->CheckVal<u32>(3);
-        if (instanceCount == 0 || instanceCount > MAX_INSTANCES || iterationCount == 0 || iterationCount > MAX_ITERATIONS)
-        {
-            NC_LOG_ERROR("RENDER_SCENE lifecycle_stress_invalid instances={} iterations={}", instanceCount, iterationCount);
-            zenith->Push(false);
-            return 1;
-        }
-
-        RenderScenes::RenderScene* scene = ServiceLocator::GetGameRenderer()->GetWorldRenderScene();
-        const RenderScenes::RenderSceneStats baseline = scene->GetStats();
-        std::vector<RenderScenes::ModelInstanceHandle> handles(instanceCount);
-        bool succeeded = true;
-        u64 totalMicroseconds = 0;
-        u64 maximumMicroseconds = 0;
-
-        for (u32 iteration = 0; iteration < iterationCount && succeeded; ++iteration)
-        {
-            const auto iterationStart = std::chrono::steady_clock::now();
-            for (u32 instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex)
-            {
-                RenderScenes::ModelInstanceDesc desc;
-                desc.model = model;
-                desc.worldTransform[3] = vec4(static_cast<f32>(instanceIndex % 64), 0.0f,
-                                              static_cast<f32>(instanceIndex / 64), 1.0f);
-                handles[instanceIndex] = scene->CreateModelInstance(desc);
-                succeeded &= scene->IsPending(handles[instanceIndex]);
-            }
-
-            const RenderScenes::SceneClearRequests clearRequests = scene->GetPendingClearRequests();
-            succeeded &= clearRequests.instanceSlots.size() >= instanceCount;
-            succeeded &= clearRequests.meshletHistoryRanges.size() >= instanceCount;
-            scene->AcknowledgeClearsAndPublish();
-
-            for (u32 instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex)
-            {
-                const RenderScenes::ModelInstanceHandle handle = handles[instanceIndex];
-                succeeded &= scene->IsAlive(handle);
-
-                if ((instanceIndex & 1u) == 0)
-                {
-                    mat4x4 transform(1.0f);
-                    transform[3] = vec4(static_cast<f32>(instanceIndex % 64), 1.0f,
-                                        static_cast<f32>(instanceIndex / 64), 1.0f);
-                    succeeded &= scene->SetModelTransform(handle, transform, true);
-                }
-                else
-                {
-                    succeeded &= scene->SetModelVisible(handle, false);
-                    succeeded &= scene->SetModelVisible(handle, true);
-                }
-            }
-
-            scene->AcknowledgeClearsAndPublish();
-            for (const RenderScenes::ModelInstanceHandle handle : handles)
-            {
-                scene->SetHistoryRetireValue(iteration + 1u);
-                succeeded &= scene->DestroyModelInstance(handle);
-            }
-
-            scene->ReleaseRetiredHistory(iteration);
-            succeeded &= scene->GetStats().meshletHistory.retiredWords != 0;
-            scene->ReleaseRetiredHistory(iteration + 1u);
-            const u64 elapsed = static_cast<u64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - iterationStart).count());
-            totalMicroseconds += elapsed;
-            maximumMicroseconds = std::max(maximumMicroseconds, elapsed);
-        }
-
-        const RenderScenes::RenderSceneStats stats = scene->GetStats();
-        succeeded &= stats.instances.liveInstances == baseline.instances.liveInstances;
-        succeeded &= stats.instances.pendingInstances == baseline.instances.pendingInstances;
-        succeeded &= stats.meshletHistory.liveWords == baseline.meshletHistory.liveWords;
-        succeeded &= stats.meshletHistory.retiredWords == baseline.meshletHistory.retiredWords;
-        succeeded &= stats.meshletHistory.addressSpaceWords == baseline.meshletHistory.addressSpaceWords;
-
-        NC_LOG_INFO("RENDER_SCENE lifecycle_stress_complete success={} instances={} iterations={} slots={} staleRejects={} historyHighWater={} totalUs={} averageUs={} maxUs={}",
-                    succeeded, instanceCount, iterationCount, stats.instances.slotCapacity,
-                    stats.instances.staleHandleRejects, stats.meshletHistory.highWaterWords,
-                    totalMicroseconds, iterationCount != 0 ? totalMicroseconds / iterationCount : 0,
-                    maximumMicroseconds);
-        zenith->Push(succeeded);
-        return 1;
-    }
-
-    i32 AssetHandler::StressRenderViewLifecycle(Zenith* zenith)
-    {
-        constexpr u32 ITERATIONS = 256;
-        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        RenderScenes::RenderView* mainView = gameRenderer->GetModelRenderSystem()->GetView(1);
-        bool succeeded = mainView != nullptr;
-        u32 completed = 0;
-        for (; completed < ITERATIONS && succeeded; ++completed)
-        {
-            RenderScenes::RenderViewDesc desc;
-            desc.debugName = "Descriptor Reclamation Probe";
-            desc.scene = mainView->GetScene();
-            desc.cameraIndex = mainView->GetCameraIndex();
-            desc.dimensions = mainView->GetDimensions();
-            desc.dimensionType = mainView->GetDimensionType();
-            desc.visibilityTarget = mainView->GetVisibilityTarget();
-            desc.normalTarget = mainView->GetNormalTarget();
-            desc.motionTarget = mainView->GetMotionTarget();
-            desc.colorTarget = mainView->GetColorTarget();
-            desc.transparencyAccumulationTarget = mainView->GetTransparencyAccumulationTarget();
-            desc.transparencyRevealageTarget = mainView->GetTransparencyRevealageTarget();
-            desc.depthPyramidTarget = mainView->GetDepthPyramidTarget();
-            desc.depthTarget = mainView->GetDepthTarget();
-            desc.lifetime = RenderScenes::RenderViewLifetime::Transient;
-            desc.refresh = RenderScenes::RenderViewRefresh::Retained;
-            RenderScenes::RenderView* probe = gameRenderer->CreateRenderView(std::move(desc));
-            succeeded = probe && gameRenderer->DestroyRenderView(probe->GetID());
-        }
-        NC_LOG_INFO("RENDER_VIEW lifecycle_stress_complete success={} completed={} requested={}", succeeded, completed, ITERATIONS);
-        zenith->Push(succeeded);
         return 1;
     }
 }

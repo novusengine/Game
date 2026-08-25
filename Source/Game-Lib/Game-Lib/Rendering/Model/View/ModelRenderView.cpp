@@ -70,8 +70,7 @@ namespace ModelRendering
         UpdateSelectionTarget();
 
         const bool sceneMembershipChanged = _state.GetPreparedSceneRevision() != scene->GetModelInstances().GetMembershipRevision();
-        if (_state.IsWorkDirty() ||
-            (sceneMembershipChanged && !_state.GetDiagnosticSelection().empty()))
+        if (_state.IsWorkDirty())
         {
             _state.PrepareInputs(*scene, _assets->GetModelGeometryStorage());
             _state.PrepareTransparentStats(*scene, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage());
@@ -106,12 +105,10 @@ namespace ModelRendering
             _transparentWork.EnsureCapacity(_state.GetQueueCapacity());
 
             const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
-            const std::array<Renderer::BufferID, 17> uploadBindings = {
+            const std::array<Renderer::BufferID, 15> uploadBindings = {
                 _state.GetInputs().GetBuffer(),
                 _state.GetTransparentEligibility().GetBuffer(),
                 _state.GetLODHistory().GetBuffer(),
-                _work.GetCullReasons(0),
-                _work.GetCullReasons(1),
                 scene->GetModelInstances().GetRecords().GetBuffer(),
                 geometry.GetRecords().GetBuffer(),
                 geometry.GetMeshes().GetBuffer(),
@@ -385,14 +382,4 @@ namespace ModelRendering
                                                  _transparentSelectionDepth, frameIndex);
     }
 
-    void ModelRenderView::AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
-                                                    u8 frameIndex)
-    {
-        if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
-            return;
-        RenderScenes::RenderScene& scene = *_view.GetScene();
-        _visibilityResolvePass->AddDiagnosticPass(renderGraph, resources, _view, _work,
-                                                 _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(),
-                                                 scene, frameIndex);
-    }
 } // namespace ModelRendering

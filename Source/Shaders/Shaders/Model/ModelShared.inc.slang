@@ -40,12 +40,6 @@ struct InstanceRef
     uint padding;
 };
 
-struct LegacyModelVisibilityRecord
-{
-    uint instanceRefID;
-    uint triangleBase;
-};
-
 TextureData LoadModelTextureData(StructuredBuffer<PackedTextureData> packedModelTextureDatas, uint textureDataID)
 {
     PackedTextureData packedTextureData = packedModelTextureDatas[textureDataID];

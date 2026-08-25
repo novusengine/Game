@@ -45,7 +45,6 @@ TEST_CASE("Model View inputs retain stable Scene slots and LOD history", "[Rende
     const RenderScenes::ModelInstanceHandle instance = fixture.AddInstance();
 
     ModelView::ModelViewState view;
-    view.SetDiagnosticSelection(instance);
     view.PrepareInputs(fixture.scene, fixture.geometry);
 
     REQUIRE(view.GetInputs().Count() == 1);
@@ -66,7 +65,6 @@ TEST_CASE("Model View input preparation skips retired Scene instances", "[Render
     fixture.scene.ReleaseRetiredHistory(0);
 
     ModelView::ModelViewState view;
-    view.SetDiagnosticSelection(instance);
     view.PrepareInputs(fixture.scene, fixture.geometry);
 
     CHECK(view.GetActiveInputCount() == 0);
@@ -75,24 +73,7 @@ TEST_CASE("Model View input preparation skips retired Scene instances", "[Render
     CHECK(view.GetQueueCapacity() == 1);
 }
 
-TEST_CASE("Model View diagnostic selection replaces the previous instance", "[Rendering][ModelView]")
-{
-    ViewFixture fixture;
-    const RenderScenes::ModelInstanceHandle first = fixture.AddInstance();
-    const RenderScenes::ModelInstanceHandle second = fixture.AddInstance();
-
-    ModelView::ModelViewState view;
-    view.SetDiagnosticSelection(first);
-    view.SetDiagnosticSelection(second);
-    view.PrepareInputs(fixture.scene, fixture.geometry);
-
-    REQUIRE(view.GetActiveInputCount() == 1);
-    const u32 secondSlot = RenderScenes::GetModelInstanceSlot(second);
-    REQUIRE(view.GetInputs().Count() > secondSlot);
-    CHECK(view.GetInputs()[secondSlot].instanceIndex == secondSlot);
-}
-
-TEST_CASE("Model View prepares every active Scene instance without a diagnostic override", "[Rendering][ModelView]")
+TEST_CASE("Model View prepares every active Scene instance", "[Rendering][ModelView]")
 {
     ViewFixture fixture;
     const RenderScenes::ModelInstanceHandle first = fixture.AddInstance();

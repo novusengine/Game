@@ -224,6 +224,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             DrawParams drawParams;
             drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
             drawParams.viewIndex = 0;
+            drawParams.cullingResources = params.cullingResources;
             drawParams.rt0 = params.rt0;
             drawParams.rt1 = params.rt1;
             drawParams.depth = params.depth;
@@ -315,6 +316,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             DrawParams drawParams;
             drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
             drawParams.viewIndex = 0;
+            drawParams.cullingResources = params.cullingResources;
             drawParams.rt0 = params.rt0;
             drawParams.rt1 = params.rt1;
             drawParams.depth = params.depth;

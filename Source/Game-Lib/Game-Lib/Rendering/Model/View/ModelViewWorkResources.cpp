@@ -22,7 +22,6 @@ namespace ModelView
             _statsBuffers[frame] = Renderer::BufferID::Invalid();
             _statsReadbacks[frame] = Renderer::BufferID::Invalid();
             _visibilityRecords[frame] = Renderer::BufferID::Invalid();
-            _cullReasons[frame] = Renderer::BufferID::Invalid();
             _meshletHistory[frame] = Renderer::BufferID::Invalid();
             for (Renderer::BufferID& queue : _queues[frame])
                 queue = Renderer::BufferID::Invalid();
@@ -84,7 +83,6 @@ namespace ModelView
         }
         EnsureQueueCapacity(1);
         EnsureSelectionCapacity(1);
-        EnsureCullReasonCapacity(1);
     }
 
     ModelViewWorkResources::~ModelViewWorkResources()
@@ -99,8 +97,6 @@ namespace ModelView
                     _renderer->QueueDestroyBuffer(queue);
             if (_visibilityRecords[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_visibilityRecords[frame]);
-            if (_cullReasons[frame] != Renderer::BufferID::Invalid())
-                _renderer->QueueDestroyBuffer(_cullReasons[frame]);
             if (_chunkQueues[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_chunkQueues[frame]);
             if (_meshletHistory[frame] != Renderer::BufferID::Invalid())
@@ -166,24 +162,6 @@ namespace ModelView
             }
         }
         ++_queueGeneration;
-        return true;
-    }
-
-    bool ModelViewWorkResources::EnsureCullReasonCapacity(u32 meshletCount)
-    {
-        const u32 capacity = std::bit_ceil(std::max(meshletCount, 1u));
-        if (capacity == _cullReasonCapacity)
-            return false;
-
-        _cullReasonCapacity = capacity;
-        Renderer::BufferDesc desc;
-        desc.size = sizeof(u32) * _cullReasonCapacity;
-        desc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
-        for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
-        {
-            desc.name = "Model Cull Reasons " + std::to_string(frame);
-            _cullReasons[frame] = _renderer->CreateBuffer(_cullReasons[frame], desc);
-        }
         return true;
     }
 

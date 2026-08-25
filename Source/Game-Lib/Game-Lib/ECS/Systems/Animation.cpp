@@ -14,7 +14,6 @@
 #include "Game-Lib/Gameplay/Animation/Defines.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
-#include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -669,7 +668,8 @@ namespace ECS::Systems
         }
     }
 
-    void SetupStaticAnimationInstance(entt::registry& registry, entt::entity entity, Singletons::AnimationSingleton& animationSingleton, const Components::Model& model, const Model::ComplexModel* modelInfo, ModelRenderer* modelRenderer)
+    void SetupStaticAnimationInstance(entt::registry& registry, Singletons::AnimationSingleton& animationSingleton,
+                                      const Components::Model& model, const Model::ComplexModel* modelInfo)
     {
         entt::entity dynamicEntity = entt::null;
         if (!animationSingleton.staticModelIDToEntity.contains(model.modelID))
@@ -683,25 +683,12 @@ namespace ECS::Systems
             dynamicModel.instanceID = std::numeric_limits<u32>().max();
             dynamicModel.modelHash = model.modelHash;
 
-            if (modelRenderer)
-            {
-                bool result = modelRenderer->AddUninstancedAnimationData(dynamicModel.modelID, animationStaticInstance.boneMatrixOffset, animationStaticInstance.textureMatrixOffset);
-                NC_ASSERT(result, "Failed to add uninstanced animation data.");
-            }
-
             SetupDynamicAnimationInstance(registry, dynamicEntity, model, modelInfo);
             animationSingleton.staticModelIDToEntity[model.modelID] = dynamicEntity;
         }
         else
         {
             dynamicEntity = animationSingleton.staticModelIDToEntity[model.modelID];
-        }
-
-        if (modelRenderer)
-        {
-            auto& animationStaticInstance = registry.get<Components::AnimationStaticInstance>(dynamicEntity);
-            bool result = modelRenderer->SetInstanceAnimationData(model.instanceID, animationStaticInstance.boneMatrixOffset, animationStaticInstance.textureMatrixOffset);
-            NC_ASSERT(result, "Failed to set instance animation data.");
         }
     }
 
@@ -731,7 +718,6 @@ namespace ECS::Systems
 
     void Animation::HandleAnimationDataInit(entt::registry& registry, f32 deltaTime)
     {
-        ModelRenderer* modelRenderer = ServiceLocator::GetGameRenderer()->GetModelRenderer();
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
         auto& animationSingleton = registry.ctx().get<Singletons::AnimationSingleton>();
@@ -770,16 +756,11 @@ namespace ECS::Systems
 
             if (isDynamic)
             {
-                if (wasStatic)
-                {
-                    modelRenderer->AddAnimationInstance(model.instanceID);
-                }
-
                 SetupDynamicAnimationInstance(registry, entity, model, modelInfo);
             }
             else
             {
-                SetupStaticAnimationInstance(registry, entity, animationSingleton, model, modelInfo, modelRenderer);
+                SetupStaticAnimationInstance(registry, animationSingleton, model, modelInfo);
             }
         });
 
@@ -789,7 +770,6 @@ namespace ECS::Systems
     void Animation::HandleSimulation(entt::registry& registry, f32 deltaTime)
     {
         enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
-        ModelRenderer* modelRenderer = ServiceLocator::GetGameRenderer()->GetModelRenderer();
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
         entt::registry::context& ctx = registry.ctx();
@@ -808,8 +788,7 @@ namespace ECS::Systems
         const mat4x4* viewMatrix = &camera.worldToView;
 
         const auto& begin = viewHandle->begin();
-        moodycamel::ConcurrentQueue<entt::entity> dirtyEntities(numEntitiesToHandle);
-        enki::TaskSet simulateEntitiesTask(numEntitiesToHandle, [&registry, &simulationView, &begin, &modelLoader, &dirtyEntities, viewMatrix, deltaTime](enki::TaskSetPartition range, uint32_t threadNum)
+        enki::TaskSet simulateEntitiesTask(numEntitiesToHandle, [&registry, &simulationView, &begin, &modelLoader, viewMatrix, deltaTime](enki::TaskSetPartition range, uint32_t threadNum)
         {
             mat4x4 identityMatrix = mat4x4(1.0f);
             for (u32 i = range.start; i < range.end; i++)
@@ -1140,11 +1119,6 @@ namespace ECS::Systems
                             }
                         }
 
-                        ModelRenderer* modelRenderer = ServiceLocator::GetGameRenderer()->GetModelRenderer();
-                        if (modelRenderer)
-                        {
-                            dirtyEntities.enqueue(entity);
-                        }
                     }
                 }
             }
@@ -1153,43 +1127,6 @@ namespace ECS::Systems
         taskScheduler->AddTaskSetToPipe(&simulateEntitiesTask);
         taskScheduler->WaitforTask(&simulateEntitiesTask);
 
-        entt::entity dirtyEntity = entt::null;
-
-        while (dirtyEntities.try_dequeue(dirtyEntity))
-        {
-            const auto& model = registry.get<Components::Model>(dirtyEntity);
-            const auto& animationData = registry.get<Components::AnimationData>(dirtyEntity);
-
-            u32 numBoneTransforms = static_cast<u32>(animationData.boneTransforms.size());
-            u32 numTextureTransforms = static_cast<u32>(animationData.textureTransforms.size());
-
-            if (model.instanceID == std::numeric_limits<u32>().max())
-            {
-                auto& animationStaticInstance = registry.get<Components::AnimationStaticInstance>(dirtyEntity);
-
-                if (numBoneTransforms > 0)
-                {
-                    modelRenderer->SetUninstancedBoneMatricesAsDirty(model.modelID, animationStaticInstance.boneMatrixOffset, 0, numBoneTransforms, animationData.boneTransforms.data());
-                }
-
-                if (numTextureTransforms > 0)
-                {
-                    modelRenderer->SetUninstancedTextureTransformMatricesAsDirty(model.modelID, animationStaticInstance.textureMatrixOffset, 0, numTextureTransforms, animationData.textureTransforms.data());
-                }
-            }
-            else
-            {
-                if (numBoneTransforms > 0)
-                {
-                    modelRenderer->SetBoneMatricesAsDirty(model.instanceID, 0, numBoneTransforms, animationData.boneTransforms.data());
-                }
-
-                if (numTextureTransforms > 0)
-                {
-                    modelRenderer->SetTextureTransformMatricesAsDirty(model.instanceID, 0, numTextureTransforms, animationData.textureTransforms.data());
-                }
-            }
-        }
 #else
         simulationView.each([&](entt::entity entity, Components::Model& model, Components::AnimationData& animationData)
         {
@@ -1489,36 +1426,6 @@ namespace ECS::Systems
                         }
                     }
 
-                    ModelRenderer* modelRenderer = ServiceLocator::GetGameRenderer()->GetModelRenderer();
-                    if (modelRenderer)
-                    {
-                        if (model.instanceID == std::numeric_limits<u32>().max())
-                        {
-                            auto& animationStaticInstance = registry.get<Components::AnimationStaticInstance>(entity);
-
-                            if (numBoneInstances > 0)
-                            {
-                                modelRenderer->SetUninstancedBoneMatricesAsDirty(model.modelID, animationStaticInstance.boneMatrixOffset, 0, numBoneInstances, animationData.boneTransforms.data());
-                            }
-
-                            if (numTextureTransforms > 0)
-                            {
-                                modelRenderer->SetUninstancedTextureTransformMatricesAsDirty(model.modelID, animationStaticInstance.textureMatrixOffset, 0, numTextureTransforms, animationData.textureTransforms.data());
-                            }
-                        }
-                        else
-                        {
-                            if (numBoneInstances > 0)
-                            {
-                                modelRenderer->SetBoneMatricesAsDirty(model.instanceID, 0, numBoneInstances, animationData.boneTransforms.data());
-                            }
-
-                            if (numTextureTransforms > 0)
-                            {
-                                modelRenderer->SetTextureTransformMatricesAsDirty(model.instanceID, 0, numTextureTransforms, animationData.textureTransforms.data());
-                            }
-                        }
-                    }
                 }
 
                 if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))

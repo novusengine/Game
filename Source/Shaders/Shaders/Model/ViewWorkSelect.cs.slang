@@ -7,7 +7,6 @@ struct Constants
     uint inputCount;
     uint selectionCapacity;
     uint resourceIndex;
-    uint showCullReasons;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -75,7 +74,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     ModelRecord model = _modelRecords[instance.modelIndex];
     Camera camera = _cameras[_constants.viewIndex];
     float4 worldBounds = TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld);
-    if (_constants.showCullReasons == 0u && !ModelSphereInsideFrustum(camera, worldBounds))
+    if (!ModelSphereInsideFrustum(camera, worldBounds))
     {
         AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
         return;

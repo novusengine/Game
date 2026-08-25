@@ -3,7 +3,6 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
-#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
@@ -64,18 +63,10 @@ namespace ModelPipeline
         desc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
         _alphaTestTwoSidedPipeline = renderer->CreatePipeline(desc);
 
-        desc.debugName = "Model Cull Reason Debug";
-        desc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(solidMeshShader)};
-        desc.states.pixelShader = renderer->LoadShader(solidPixelShader);
-        desc.states.depthStencilState.depthEnable = false;
-        desc.states.depthStencilState.depthWriteEnable = false;
-        _cullReasonDebugPipeline = renderer->CreatePipeline(desc);
-
         _descriptorSet.RegisterPipeline(renderer, _oneSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _twoSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _alphaTestOneSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _alphaTestTwoSidedPipeline);
-        _descriptorSet.RegisterPipeline(renderer, _cullReasonDebugPipeline);
         _descriptorSet.Init(renderer);
     }
 
@@ -143,9 +134,6 @@ namespace ModelPipeline
                                       const MaterialLoading::MaterialStorage& materials,
                                       const RenderScenes::RenderScene& scene, u8 frameIndex, u8 phase)
     {
-        if (!ModelRendering::UseMeshletModelRenderer())
-            return;
-
         const u8 resourceIndex = phase == 1 ? (frameIndex + 1u) % ModelView::MODEL_VIEW_FRAME_COUNT : frameIndex;
         const bool geometryQueue = phase == 2;
 
@@ -235,17 +223,10 @@ namespace ModelPipeline
                                                                           ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(pipeline);
                 };
-                if (ModelRendering::ShowModelCullReasons())
-                {
-                    Draw(_cullReasonDebugPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
-                }
-                else
-                {
-                    Draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED, false);
-                    Draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
-                    Draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED, true);
-                    Draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED, true);
-                }
+                Draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED, false);
+                Draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
+                Draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED, true);
+                Draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED, true);
                 commandList.EndRenderPass(pass);
             });
     }

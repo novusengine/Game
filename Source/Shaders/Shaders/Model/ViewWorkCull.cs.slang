@@ -12,7 +12,6 @@ struct Constants
     uint viewportWidth;
     uint viewportHeight;
     uint enableTemporal;
-    uint showCullReasons;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -38,8 +37,6 @@ struct Constants
 [[vk::binding(19, PER_PASS)]] RWStructuredBuffer<uint> _meshletHistory1;
 [[vk::binding(22, PER_PASS)]] Texture2D<float> _depthPyramid;
 [[vk::binding(23, PER_PASS)]] SamplerState _depthSampler;
-[[vk::binding(24, PER_PASS)]] RWStructuredBuffer<uint> _cullReasons0;
-[[vk::binding(25, PER_PASS)]] RWStructuredBuffer<uint> _cullReasons1;
 [[vk::binding(26, PER_PASS)]] RWStructuredBuffer<uint> _geometryOneSidedQueue0;
 [[vk::binding(27, PER_PASS)]] RWStructuredBuffer<uint> _geometryTwoSidedQueue0;
 [[vk::binding(28, PER_PASS)]] RWStructuredBuffer<uint> _geometryAlphaTestOneSidedQueue0;
@@ -108,12 +105,6 @@ void StoreVisibilityRecord(uint index, ModelVisibilityRecord record)
     else _visibilityRecords1[index] = record;
 }
 
-void StoreCullReason(uint index, uint reason)
-{
-    if (_constants.resourceIndex == 0u) _cullReasons0[index] = reason;
-    else _cullReasons1[index] = reason;
-}
-
 bool PreviousHistoryVisible(uint bitIndex)
 {
     uint wordIndex = bitIndex >> 5u;
@@ -155,7 +146,6 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
     uint rasterClass =
         (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_RASTER_CLASS_SHIFT) & MODEL_CHUNK_RASTER_CLASS_MASK;
     uint resolveClass = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_RESOLVE_CLASS_SHIFT) & 1u;
-    uint outputRasterClass = _constants.showCullReasons != 0u ? MODEL_RASTER_SOLID_TWO_SIDED : rasterClass;
     ModelRecord model = _modelRecords[instance.modelIndex];
     uint boundMeshletCount;
     uint boundMeshletStride;
@@ -202,8 +192,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
                     cullReason = MODEL_CULL_REASON_OCCLUSION;
                 }
             }
-            visible = _constants.showCullReasons != 0u ? cullReason != MODEL_CULL_REASON_VISIBLE :
-                                                         cullReason == MODEL_CULL_REASON_VISIBLE;
+            visible = cullReason == MODEL_CULL_REASON_VISIBLE;
         }
 
         uint testedTriangles = WaveActiveSum(tested ? triangleCount : 0u);
@@ -223,7 +212,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
         uint recordOffset = 0u;
         uint recordCommitted = 0u;
         uint committedCount = 0u;
-        uint countIndex = MODEL_WORK_STAT_RASTER_MESHLETS_BASE + outputRasterClass;
+        uint countIndex = MODEL_WORK_STAT_RASTER_MESHLETS_BASE + rasterClass;
         if (WaveIsFirstLane() && visibleCount > 0u)
         {
             AddStat(MODEL_WORK_STAT_VISIBILITY_RECORDS, visibleCount, recordOffset);
@@ -255,7 +244,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
         uint geometryCommitted = 0u;
         if (WaveIsFirstLane() && geometryCount > 0u)
         {
-            AddStat(MODEL_WORK_STAT_GEOMETRY_MESHLETS_BASE + outputRasterClass, geometryCount, geometryOffset);
+            AddStat(MODEL_WORK_STAT_GEOMETRY_MESHLETS_BASE + rasterClass, geometryCount, geometryOffset);
             geometryCommitted = min(geometryCount,
                 _constants.queueCapacity - min(geometryOffset, _constants.queueCapacity));
             if (geometryCommitted < geometryCount)
@@ -282,9 +271,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
                                                                          submeshIndex, localMeshletIndex);
             visibility.replayRevision = instance.replayRevision;
             StoreVisibilityRecord(recordID, visibility);
-            if (_constants.showCullReasons != 0u)
-                StoreCullReason(recordID, cullReason);
-            StoreWork(outputRasterClass, waveOffset + waveIndex, PackModelRasterQueueEntry(recordID, resolveClass));
+            StoreWork(rasterClass, waveOffset + waveIndex, PackModelRasterQueueEntry(recordID, resolveClass));
             if (_constants.enableTemporal != 0u)
             {
                 MarkCurrentHistoryVisible(historyBit);
@@ -293,7 +280,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
         if (geometryCommittedLane)
         {
             uint recordID = recordOffset + waveIndex;
-            StoreGeometryWork(outputRasterClass, geometryOffset + geometryIndex,
+            StoreGeometryWork(rasterClass, geometryOffset + geometryIndex,
                               PackModelRasterQueueEntry(recordID, resolveClass));
         }
     }

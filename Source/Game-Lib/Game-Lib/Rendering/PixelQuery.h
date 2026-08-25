@@ -37,7 +37,6 @@ public:
     void AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
     u32 PerformQuery(uvec2 pixelCoords);
-    u32 PerformDiagnosticQuery(uvec2 pixelCoords);
     bool GetQueryResult(u32 token, PixelQuery::PixelData& pixelData);
     bool FreeToken(u32 token);
 
@@ -65,7 +64,6 @@ private:
 
     std::vector<QueryRequest> _requests[2];
     std::set<u32> _requestTokens[2];
-    std::set<u32> _diagnosticTokens;
 
     robin_hood::unordered_map<u32, PixelData> _results;
 

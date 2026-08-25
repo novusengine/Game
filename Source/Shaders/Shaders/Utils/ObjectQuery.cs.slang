@@ -1,6 +1,4 @@
 
-#include "DescriptorSet/Model.inc.slang"
-
 #include "Include/VisibilityBuffers.inc.slang"
 #include "Include/TypedVisibility.inc.slang"
 #include "Model/ModelVisibility.inc.slang"
@@ -65,12 +63,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             InstanceData instanceData = _instanceDatas[vBuffer.instanceID];
             objectID = instanceData.packedChunkCellID;
         }
-        else if (vBuffer.typeID == ObjectType::ModelOpaque)
-        {
-            InstanceRef instanceRef = _opaqueInstanceRefTable[vBuffer.instanceID];
-            objectID = instanceRef.instanceID;
-        }
-
         _result[i].value = objectID;
     }
 }

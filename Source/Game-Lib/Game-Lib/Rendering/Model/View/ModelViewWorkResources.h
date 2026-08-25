@@ -22,7 +22,6 @@ namespace ModelView
 
         bool EnsureQueueCapacity(u32 meshletCount);
         bool EnsureSelectionCapacity(u32 instanceCount);
-        bool EnsureCullReasonCapacity(u32 meshletCount);
         bool EnsureHistoryCapacity(u32 instanceCount, u32 meshletHistoryWords);
         void ReadbackStats(u8 frameIndex);
         void MarkSubmitted(u8 frameIndex) { _hasReadback[frameIndex] = true; }
@@ -30,7 +29,6 @@ namespace ModelView
         Renderer::BufferID GetQueue(u32 rasterClass, u8 frameIndex) const { return _queues[frameIndex][rasterClass]; }
         Renderer::BufferID GetGeometryQueue(u32 rasterClass, u8 frameIndex) const { return _geometryQueues[frameIndex][rasterClass]; }
         Renderer::BufferID GetVisibilityRecords(u8 frameIndex) const { return _visibilityRecords[frameIndex]; }
-        Renderer::BufferID GetCullReasons(u8 frameIndex) const { return _cullReasons[frameIndex]; }
         Renderer::BufferID GetChunkQueue(u8 frameIndex) const { return _chunkQueues[frameIndex]; }
         Renderer::BufferID GetChunkArguments(u8 frameIndex) const { return _chunkArguments[frameIndex]; }
         Renderer::BufferID GetSelectionQueue(u8 frameIndex) const { return _selectionQueues[frameIndex]; }
@@ -54,7 +52,6 @@ namespace ModelView
         Renderer::BufferID _queues[FRAME_COUNT][MODEL_RASTER_CLASS_COUNT] = {};
         Renderer::BufferID _geometryQueues[FRAME_COUNT][MODEL_RASTER_CLASS_COUNT] = {};
         Renderer::BufferID _visibilityRecords[FRAME_COUNT] = {};
-        Renderer::BufferID _cullReasons[FRAME_COUNT] = {};
         Renderer::BufferID _chunkQueues[FRAME_COUNT] = {};
         Renderer::BufferID _chunkArguments[FRAME_COUNT] = {};
         Renderer::BufferID _selectionQueues[FRAME_COUNT] = {};
@@ -67,7 +64,6 @@ namespace ModelView
         WorkStats _stats;
         u32 _argumentSnapshot[MODEL_RASTER_CLASS_COUNT * MODEL_DISPATCH_ARGUMENT_COUNT] = {};
         u32 _queueCapacity = 0;
-        u32 _cullReasonCapacity = 0;
         u32 _queueGeneration = 0;
         u32 _selectionGeneration = 0;
         u32 _selectionCapacity = 0;

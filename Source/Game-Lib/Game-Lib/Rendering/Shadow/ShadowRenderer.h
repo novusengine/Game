@@ -22,7 +22,6 @@ namespace Renderer
 
 struct RenderResources;
 class GameRenderer;
-class ModelRenderer;
 class TerrainRenderer;
 namespace RenderScenes { class RenderScene; }
 namespace ShadowRendering { class ModelShadowRenderer; struct ModelShadowStats; }
@@ -30,7 +29,8 @@ namespace ShadowRendering { class ModelShadowRenderer; struct ModelShadowStats; 
 class ShadowRenderer
 {
 public:
-    ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderScenes::RenderScene* scene, RenderResources& resources);
+    ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer,
+                   RenderScenes::RenderScene* scene, RenderResources& resources);
     ~ShadowRenderer();
 
     void Update(f32 deltaTime, RenderResources& resources);
@@ -78,8 +78,7 @@ public:
     // geometry passes gate on (freeze deliberately excluded, frozen frames keep recording draws)
     bool IsSVSMActive() const;
 
-    // CPU-side caster classification counts, rebuilt each Update from the ModelRenderer's
-    // classifier: live set size, this frame's enter/leave transitions, and static-spilled casters
+    // CPU-side caster classification counts rebuilt each Update from the Scene.
     void GetSVSMCasterStats(u32& outDynamicCasters, u32& outTransitionsIn, u32& outTransitionsOut, u32& outDroppedAABBs) const
     {
         outDynamicCasters = _svsmNumDynamicCasters;
@@ -112,8 +111,7 @@ public:
     static constexpr u32 SVSM_MAX_CLIPMAPS = 8;
     static_assert(SVSM_MAX_CLIPMAPS == Renderer::Settings::MAX_SHADOW_CASCADES, "SVSM clipmap cap must match the Engine shadow view cap, both size the camera buffer and bitmask slices");
 
-    // Dynamic AABB buffer capacity; the ModelRenderer's classifier caps its emission against this
-    // and spills the excess to the static path (never excluded from both pools)
+    // Dynamic AABB buffer capacity. The Scene caps publication against this limit.
     static constexpr u32 SVSM_MAX_DYNAMIC_AABBS = 4096;
 
     // Scalar layout size of SVSMData in Shadows/SVSM.inc.slang. The .cpp mirrors the struct
@@ -137,7 +135,6 @@ private:
     Renderer::Renderer* _renderer = nullptr;
     GameRenderer* _gameRenderer = nullptr;
     TerrainRenderer* _terrainRenderer = nullptr;
-    ModelRenderer* _modelRenderer = nullptr;
     RenderScenes::RenderScene* _scene = nullptr;
     ShadowRendering::ModelShadowRenderer* _modelShadowRenderer = nullptr;
 

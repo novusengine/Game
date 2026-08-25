@@ -42,7 +42,7 @@ protected:
         u32 svsmRectIndex = 0xFFFFFFFFu; // Clip rect this draw renders (0-2), SVSM_CLIP_RECT_DISABLED = no clipping
         u32 viewIndex = 0;
 
-        CullingResourcesBase* cullingResources;
+        CullingResourcesBase* cullingResources = nullptr;
 
         Renderer::ImageMutableResource rt0;
         Renderer::ImageMutableResource rt1;
@@ -119,7 +119,7 @@ protected:
         builder.Write(cullingResources->GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
 
         data.occluderFillSet = builder.Use(cullingResources->GetOccluderFillDescriptorSet());
-        data.createIndirectDescriptorSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+        data.createIndirectDescriptorSet = builder.Use(cullingResources->GetCreateIndirectAfterCullDescriptorSet());
         data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
     }
 
@@ -200,6 +200,7 @@ protected:
         builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::COMPUTE);
 
         data.cullingSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+        data.createIndirectAfterCullSet = builder.Use(cullingResources->GetCreateIndirectAfterCullDescriptorSet());
     }
 
     struct CullingPassParams : public PassParams

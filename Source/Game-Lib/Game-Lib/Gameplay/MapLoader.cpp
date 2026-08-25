@@ -11,8 +11,6 @@
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
-#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
-#include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/AssetPath.h"
@@ -129,10 +127,7 @@ void MapLoader::Update(f32 deltaTime)
             ServiceLocator::GetGameRenderer()->ReserveModelResources(mapHeader.modelAllocationHints);
             ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<ECS::Singletons::JoltState>().ResetPhysicsTelemetry(mapInternalName);
             _modelLoader->SetTerrainLoading(true);
-            if (ModelRendering::UseMeshletModelRenderer())
-                _modelPlacementLoader->QueuePlacement(mapHeader.placement);
-            else
-                _modelLoader->LoadPlacement(mapHeader.placement);
+            _modelPlacementLoader->QueuePlacement(mapHeader.placement);
         }
         else
         {

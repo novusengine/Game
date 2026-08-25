@@ -84,7 +84,6 @@ namespace ModelPipeline
             Renderer::BufferID geometryQueues[ModelView::MODEL_RASTER_CLASS_COUNT] = {};
             Renderer::BufferID workStats = Renderer::BufferID::Invalid();
             Renderer::BufferID visibilityRecords = Renderer::BufferID::Invalid();
-            Renderer::BufferID cullReasons = Renderer::BufferID::Invalid();
             Renderer::BufferID meshletHistory = Renderer::BufferID::Invalid();
         };
 

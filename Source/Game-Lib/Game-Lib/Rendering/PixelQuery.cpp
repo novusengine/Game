@@ -1,7 +1,6 @@
 #include "PixelQuery.h"
 #include "GameRenderer.h"
 #include "Terrain/TerrainRenderer.h"
-#include "Model/ModelRenderer.h"
 #include "Model/ModelRenderSystem.h"
 #include "../Util/ServiceLocator.h"
 
@@ -68,17 +67,7 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
         {
             const PixelData& pixelData = results[i];
 
-            // Store Result & Remove Token from _requestTokens
-            if (_diagnosticTokens.erase(*tokenItr) > 0)
-            {
-                // TODO: Remove this bring-up trace after RenderScene model picking is integrated with editor selection.
-                NC_LOG_INFO("MODEL_VISIBILITY pick type={} value={} generation={}", pixelData.type,
-                            pixelData.value, pixelData.generation);
-            }
-            else
-            {
-                _results[*tokenItr] = pixelData;
-            }
+            _results[*tokenItr] = pixelData;
             tokenItr = _requestTokens[_frameIndex].erase(tokenItr);
         }
 
@@ -95,7 +84,6 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             Renderer::DescriptorSetResource querySet;
             Renderer::DescriptorSetResource terrainSet;
-            Renderer::DescriptorSetResource modelSet;
         };
 
         renderGraph->AddPass<PixelQueryPassData>("Query Pass",
@@ -108,14 +96,11 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                 data.pixelResultBuffer = builder.Write(_pixelResultBuffer, Renderer::BufferPassUsage::COMPUTE);
 
                 TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
-                ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
 
                 data.querySet = builder.Use(_queryDescriptorSet);
                 data.terrainSet = builder.Use(resources.terrainDescriptorSet);
-                data.modelSet = builder.Use(resources.modelDescriptorSet);
 
                 terrainRenderer->RegisterMaterialPassBufferUsage(builder);
-                modelRenderer->RegisterMaterialPassBufferUsage(builder);
                 gameRenderer->GetModelRenderSystem()->RegisterPixelQueryResources(builder);
                 gameRenderer->GetModelRenderSystem()->BindPixelQueryResources(_queryDescriptorSet);
 
@@ -154,7 +139,6 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                     commandList.BindDescriptorSet(data.querySet, frameIndex);
                     commandList.BindDescriptorSet(data.terrainSet, _frameIndex);
-                    commandList.BindDescriptorSet(data.modelSet, _frameIndex);
 
                     commandList.Dispatch(1, 1, 1);
 
@@ -213,13 +197,6 @@ u32 PixelQuery::PerformQuery(uvec2 pixelCoords)
     }
     _requestMutex.unlock();
 
-    return token;
-}
-
-u32 PixelQuery::PerformDiagnosticQuery(uvec2 pixelCoords)
-{
-    const u32 token = PerformQuery(pixelCoords);
-    _diagnosticTokens.insert(token);
     return token;
 }
 

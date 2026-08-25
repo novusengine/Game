@@ -29,7 +29,6 @@ namespace ECS::Components
 
 class TerrainLoader;
 class LightRenderer;
-class ModelRenderer;
 struct ActiveModelPrepareJob;
 class ModelLoader
 {
@@ -114,7 +113,7 @@ private:
     };
 
 public:
-    ModelLoader(ModelRenderer* modelRenderer, LightRenderer* lightRenderer);
+    explicit ModelLoader(LightRenderer* lightRenderer);
 
     void Init();
     void Shutdown();
@@ -131,7 +130,6 @@ public: // Load Request Helpers
     f32 GetLoadingProgress() const;
 
     void LoadPlacement(const Terrain::Placement& placement);
-    void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
     bool LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u64 modelNameHash);
     bool LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, Database::Unit::DisplayInfoType displayInfoType, u32 displayID, u64 modelHash = std::numeric_limits<u64>().max(), u8 modelVariant = 0);
     void UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model);
@@ -178,8 +176,8 @@ public:
 
 private:
     bool LoadRequest(DiscoveredModel& discoveredModel);
-    bool CommitPreparedModel(DiscoveredModel& discoveredModel, const ModelLoading::PreparedRenderModel& preparedModel);
-    void ConsumePreparedModels();
+    bool CommitLoadedModel(DiscoveredModel& discoveredModel);
+    void ConsumeLoadedModels();
     void ReapCompletedPrepareJobs();
     void DispatchAsyncLoadRequests(moodycamel::ConcurrentQueue<LoadRequestInternal>& workQueue, u32 numRequests);
     void CancelAndDrainPrepareJobs();
@@ -192,7 +190,6 @@ private:
 
 private:
     TerrainLoader* _terrainLoader = nullptr;
-    ModelRenderer* _modelRenderer = nullptr;
     LightRenderer* _lightRenderer = nullptr;
 
     bool _terrainLoading = false;
@@ -202,8 +199,8 @@ private:
     moodycamel::ConcurrentQueue<WorkRequest> _discoveredModelPendingWorkRequests;
 
     moodycamel::ConcurrentQueue<LoadRequestResultInternal> _loadRequestResults; // Results carry stable IDs and owned request snapshots.
-    moodycamel::ConcurrentQueue<ModelLoading::PreparedModelResult> _preparedModelResults; // Worker-produced, game-thread-consumed.
-    std::deque<ModelLoading::PreparedModelResult> _pendingPreparedModelCommits; // Game-thread-only commit backlog.
+    moodycamel::ConcurrentQueue<ModelLoading::LoadedModelResult> _loadedModelResults; // Worker-produced, game-thread-consumed.
+    std::deque<ModelLoading::LoadedModelResult> _pendingLoadedModelCommits; // Game-thread-only commit backlog.
     std::vector<LoadRequestInternal> _pendingLoadRequestsVector;
     moodycamel::ConcurrentQueue<LoadRequestInternal> _pendingTerrainLoadRequests;
     moodycamel::ConcurrentQueue<LoadRequestInternal> _pendingLoadRequests;
@@ -234,5 +231,7 @@ private:
     std::vector<entt::entity> _createdEntities;
     std::vector<std::unique_ptr<ActiveModelPrepareJob>> _activeModelPrepareJobs; // Game-thread-owned task lifetimes.
     std::atomic<ModelLoading::ModelLoadRequestID> _nextLoadRequestID = 1;
+    u32 _nextModelID = 0;
+    u32 _nextInstanceID = 0;
     u64 _loaderEpoch = 1;
 };

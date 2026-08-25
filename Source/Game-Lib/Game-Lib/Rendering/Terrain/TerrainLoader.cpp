@@ -18,7 +18,6 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
-#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Scripting/Handlers/MapHandler.h"
@@ -358,10 +357,7 @@ void TerrainLoader::Update(f32 deltaTime)
                         for (u32 placementIndex = 0; placementIndex < numPlacements; placementIndex++)
                         {
                             auto* placement = chunk->placementHeader.GetPlacement(workRequest.buffer, placementIndex);
-                            if (ModelRendering::UseMeshletModelRenderer())
-                                _modelPlacementLoader->QueuePlacement(*placement);
-                            else
-                                _modelLoader->LoadPlacement(*placement);
+                            _modelPlacementLoader->QueuePlacement(*placement);
                         }
                     }
 
@@ -478,10 +474,7 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
         {
             u64 placementDataOffset = chunk->placementHeader.dataOffset + (placementIndex * sizeof(Terrain::Placement));
             const auto* placement = reinterpret_cast<const Terrain::Placement*>(static_cast<const u8*>(partialChunk.file.GetData()) + placementDataOffset);
-            if (ModelRendering::UseMeshletModelRenderer())
-                _modelPlacementLoader->QueuePlacement(*placement);
-            else
-                _modelLoader->LoadPlacement(*placement);
+            _modelPlacementLoader->QueuePlacement(*placement);
         }
     }
 }

@@ -79,17 +79,11 @@ namespace ModelRendering
         void AddTransparentSelectionOutlinePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                 u8 frameIndex);
         void AddRetainedOutputPasses(Renderer::RenderGraph* renderGraph);
-        void AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void RegisterPixelQueryResources(Renderer::RenderGraphBuilder& builder) const;
         void BindPixelQueryResources(Renderer::DescriptorSet& descriptorSet);
         void RequestMainViewCameraCut();
 
-        // TODO: Remove this development-only selection hook after GPU work expansion
-        // replaces diagnostic work.
-        RenderScenes::ModelInstanceHandle SetDiagnosticModel(RenderAssets::ModelHandle model,
-                                                             const vec3& worldBoundsCenter, f32 worldBoundsRadius,
-                                                             bool geometryGroupsEnabled = true, bool teleported = false);
-        ModelView::WorkStats GetDiagnosticStats() const;
+        ModelView::WorkStats GetMainViewStats() const;
         ModelPerformanceStats GetPerformanceStats() const;
 
       private:
@@ -108,7 +102,6 @@ namespace ModelRendering
         robin_hood::unordered_flat_map<u64, std::unique_ptr<ModelRenderView>> _views;
         std::vector<RenderScenes::RenderScene*> _scenes;
         ModelRenderView* _mainView = nullptr;
-        RenderScenes::ModelInstanceHandle _diagnosticInstance = RenderScenes::InvalidModelInstanceHandle();
         i32 _lastForcedLOD = -1;
         bool _validateTransfers = false;
         PixelQueryBindings _pixelQueryBindings;

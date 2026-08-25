@@ -2,10 +2,7 @@
 #define VISIBILITYBUFFERS_INCLUDED
 
 #include "DescriptorSet/Global.inc.slang"
-#include "DescriptorSet/Model.inc.slang"
-
 #include "Include/TypedVisibility.inc.slang"
-#include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
 
 // Choose barycentric reconstruction method method (default = plane). For ray, define RECONSTRUCT_BARY_RAY.
@@ -149,15 +146,6 @@ uint PackTerrainVisibility(uint instanceID, uint triangleID)
                                triangleID & TYPED_VISIBILITY_MAX_TRIANGLE_ID);
 }
 
-uint PackLegacyModelVisibility(uint recordBase, uint triangleID)
-{
-    uint recordID = recordBase + (triangleID >> TYPED_VISIBILITY_TRIANGLE_BITS);
-    if (recordBase == 0xFFFFFFFFu || recordID > TYPED_VISIBILITY_MAX_RECORD_ID)
-        return TYPED_VISIBILITY_INVALID;
-    return PackTypedVisibility(TYPED_VISIBILITY_LEGACY_MODEL, recordID,
-                               triangleID & TYPED_VISIBILITY_MAX_TRIANGLE_ID);
-}
-
 uint PackJoltDebugVisibility(float4 color)
 {
     uint packedColor = Float4ToPackedUnorms(float4(color.rgb, 1.0f)) & 0x00FFFFFFu;
@@ -226,19 +214,6 @@ const VisibilityBuffer UnpackVisibilityBuffer(uint data)
         vBuffer.typeID = ObjectType::Terrain;
         vBuffer.instanceID = payload.recordID >> 1u;
         vBuffer.triangleID = payload.triangleID | ((payload.recordID & 1u) << TYPED_VISIBILITY_TRIANGLE_BITS);
-    }
-    else if (payload.geometryTypeID == TYPED_VISIBILITY_LEGACY_MODEL)
-    {
-        uint recordCount;
-        uint recordStride;
-        _legacyModelVisibilityRecords.GetDimensions(recordCount, recordStride);
-        if (payload.recordID < recordCount)
-        {
-            LegacyModelVisibilityRecord record = _legacyModelVisibilityRecords[payload.recordID];
-            vBuffer.typeID = ObjectType::ModelOpaque;
-            vBuffer.instanceID = record.instanceRefID;
-            vBuffer.triangleID = record.triangleBase + payload.triangleID;
-        }
     }
     else if (payload.geometryTypeID == TYPED_VISIBILITY_JOLT_DEBUG)
     {
@@ -460,73 +435,12 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
     return result;
 }
 
-PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBuffer vBuffer, const uint cameraIndex, float2 renderSize)
-{
-    InstanceRef instanceRef = _opaqueInstanceRefTable[vBuffer.instanceID];
-    uint instanceID = instanceRef.instanceID;
-    uint drawID = instanceRef.drawID;
-
-    ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
-    IndexedDraw draw = _opaqueModelDraws[drawID];
-    uint3 vertexIDs = GetVertexIDs(vBuffer.triangleID, draw, _modelIndices);
-
-    ModelVertex vertices[3];
-    [unroll]
-    for (uint i = 0; i < 3; i++)
-    {
-        vertices[i] = LoadModelVertex(_packedModelVertices, vertexIDs[i]);
-        if (instanceData.boneMatrixOffset != 4294967295)
-        {
-            float4x4 boneTransformMatrix = CalcBoneTransformMatrix(_instanceBoneMatrices, instanceData, vertices[i]);
-            vertices[i].position = mul(float4(vertices[i].position, 1.0f), boneTransformMatrix).xyz;
-            vertices[i].normal = mul(vertices[i].normal, (float3x3)boneTransformMatrix);
-        }
-    }
-
-    float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
-    float3 wP0 = mul(float4(vertices[0].position, 1.0f), instanceMatrix).xyz;
-    float3 wP1 = mul(float4(vertices[1].position, 1.0f), instanceMatrix).xyz;
-    float3 wP2 = mul(float4(vertices[2].position, 1.0f), instanceMatrix).xyz;
-
-    Barycentrics bary = ReconstructBarycentrics(pixelPos, renderSize, wP0, wP1, wP2, cameraIndex);
-
-    PixelVertexData result;
-    result.typeID = vBuffer.typeID;
-    result.drawCallID = instanceRef.drawID;
-    result.extraID = instanceRef.extraID;
-
-    result.uv0 = CalcFullBary2(bary, vertices[0].uv01.xy, vertices[1].uv01.xy, vertices[2].uv01.xy);
-    result.uv1 = CalcFullBary2(bary, vertices[0].uv01.zw, vertices[1].uv01.zw, vertices[2].uv01.zw);
-    result.color = float3(1, 1, 1);
-
-    //result.uv0.value = (vertices[0].uv01.xy + vertices[1].uv01.xy + vertices[2].uv01.xy) / 3.0f;
-
-    float3 vertexNormal = normalize(InterpolateVertexAttribute(bary, vertices[0].normal, vertices[1].normal, vertices[2].normal));
-    result.worldNormal = normalize(mul(vertexNormal, (float3x3)instanceMatrix));
-    float3 faceNormal = cross(wP1 - wP0, wP2 - wP0);
-    result.faceNormal = dot(faceNormal, faceNormal) > 1e-12f ? normalize(faceNormal) : result.worldNormal;
-
-    float3 pixelVertexPos = InterpolateVertexAttribute(bary, vertices[0].position, vertices[1].position, vertices[2].position);
-    result.worldPos = mul(float4(pixelVertexPos, 1.0f), instanceMatrix).xyz;
-    result.viewPos = mul(float4(result.worldPos, 1.0f), _cameras[cameraIndex].worldToView);
-    result.pixelPos = pixelPos;
-
-    result.highlightIntensity = instanceData.highlightIntensity;
-
-    return result;
-}
-
 PixelVertexData GetPixelVertexData(const uint2 pixelPos, const VisibilityBuffer vBuffer, uint cameraIndex, float2 renderSize)
 {
     if (vBuffer.typeID == ObjectType::Terrain)
     {
         return GetPixelVertexDataTerrain(pixelPos, vBuffer, cameraIndex, renderSize);
     }
-    else if (vBuffer.typeID == ObjectType::ModelOpaque)
-    {
-        return GetPixelVertexDataModel(pixelPos, vBuffer, cameraIndex, renderSize);
-    }
-
     PixelVertexData result;
     result.typeID = vBuffer.typeID;
     result.drawCallID = 0;

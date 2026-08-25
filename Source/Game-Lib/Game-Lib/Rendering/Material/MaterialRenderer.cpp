@@ -7,7 +7,6 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
-#include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainRenderer.h"
@@ -28,11 +27,11 @@ AutoCVar_VecFloat CVAR_FogColor(CVarCategory::Client | CVarCategory::Rendering, 
 AutoCVar_Float CVAR_FogBeginDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin", "Fog blending start distance", 200.0f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_FogEndDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd", "Fog blending end distance", 600.0f, CVarFlags::EditFloatDrag);
 
-MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, LightRenderer* lightRenderer)
+MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer,
+                                   TerrainRenderer* terrainRenderer, LightRenderer* lightRenderer)
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _terrainRenderer(terrainRenderer)
-    , _modelRenderer(modelRenderer)
     , _lightRenderer(lightRenderer)
     , _preEffectsPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _velocityPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
@@ -76,7 +75,6 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
 
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource terrainSet;
-        Renderer::DescriptorSetResource modelSet;
         Renderer::DescriptorSetResource preEffectsSet;
     };
 
@@ -92,11 +90,9 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.terrainSet = builder.Use(resources.terrainDescriptorSet);
-            data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.preEffectsSet = builder.Use(_preEffectsPassDescriptorSet);
 
             _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
-            _modelRenderer->RegisterMaterialPassBufferUsage(builder);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -112,7 +108,6 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             // Bind descriptorset
             commandList.BindDescriptorSet(data.globalSet, frameIndex);
             commandList.BindDescriptorSet(data.terrainSet, frameIndex);
-            commandList.BindDescriptorSet(data.modelSet, frameIndex);
             commandList.BindDescriptorSet(data.preEffectsSet, frameIndex);
 
             vec2 outputSize = static_cast<vec2>(view.GetDimensions());
@@ -137,7 +132,6 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
         Renderer::ImageMutableResource motionVectors;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource terrainSet;
-        Renderer::DescriptorSetResource modelSet;
         Renderer::DescriptorSetResource velocitySet;
     };
     renderGraph->AddPass<VelocityPassData>("Velocity",
@@ -150,10 +144,8 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.terrainSet = builder.Use(resources.terrainDescriptorSet);
-            data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.velocitySet = builder.Use(_velocityPassDescriptorSet);
             _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
-            _modelRenderer->RegisterMaterialPassBufferUsage(builder);
             return true;
         },
         [this, &view, frameIndex](VelocityPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
@@ -164,7 +156,6 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             data.velocitySet.Bind("_motionVectors", data.motionVectors);
             commandList.BindDescriptorSet(data.globalSet, frameIndex);
             commandList.BindDescriptorSet(data.terrainSet, frameIndex);
-            commandList.BindDescriptorSet(data.modelSet, frameIndex);
             commandList.BindDescriptorSet(data.velocitySet, frameIndex);
             const vec2 size = static_cast<vec2>(view.GetDimensions());
             struct Constants { vec4 renderInfo; mat4x4 previousWorldToClip; u32 cameraIndex; u32 cameraValid; };
@@ -179,19 +170,14 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
         }, Renderer::RenderPassFlags::None);
 }
 
-void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
-{
-    AddMaterialHostPass(renderGraph, resources, nullptr, frameIndex);
-}
-
 void MaterialRenderer::AddCommonResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                             const RenderScenes::RenderView& view, u8 frameIndex)
 {
-    AddMaterialHostPass(renderGraph, resources, &view, frameIndex);
+    AddMaterialHostPass(renderGraph, resources, view, frameIndex);
 }
 
 void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
-                                           const RenderScenes::RenderView* view, u8 frameIndex)
+                                           const RenderScenes::RenderView& view, u8 frameIndex)
 {
     struct MaterialPassData
     {
@@ -208,22 +194,18 @@ void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, R
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource lightSet;
         Renderer::DescriptorSetResource terrainSet;
-        Renderer::DescriptorSetResource modelSet;
         Renderer::DescriptorSetResource assetMaterialSet;
         Renderer::DescriptorSetResource materialSet;
     };
 
     const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 4);
 
-    const bool commonResolve = view != nullptr;
-    renderGraph->AddPass<MaterialPassData>(commonResolve ? "Material Common Resolve" : "Material Pass",
-        [this, &resources, view](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+    renderGraph->AddPass<MaterialPassData>("Material Common Resolve",
+        [this, &resources, &view](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            const Renderer::ImageID visibilityTarget = view ? view->GetVisibilityTarget() : resources.visibilityBuffer;
-            const Renderer::ImageID colorTarget = view ? view->GetColorTarget() : resources.sceneColor;
-            data.visibilityBuffer = builder.Read(visibilityTarget, Renderer::PipelineType::COMPUTE);
+            data.visibilityBuffer = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
             data.skyboxColor = builder.Read(resources.skyboxColor, Renderer::PipelineType::COMPUTE);
-            data.resolvedColor = builder.Write(colorTarget, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+            data.resolvedColor = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
             data.ambientOcclusion = builder.Read(resources.ssaoTarget, Renderer::PipelineType::COMPUTE);
 
@@ -244,17 +226,15 @@ void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, R
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.lightSet = builder.Use(resources.lightDescriptorSet);
             data.terrainSet = builder.Use(resources.terrainDescriptorSet);
-            data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.assetMaterialSet = builder.Use(resources.materialDescriptorSet);
             data.materialSet = builder.Use(_materialPassDescriptorSet);
 
             _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
-            _modelRenderer->RegisterMaterialPassBufferUsage(builder);
             _lightRenderer->RegisterMaterialPassBufferUsage(builder);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, view, frameIndex, visibilityBufferDebugID](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, &view, frameIndex, visibilityBufferDebugID](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, MaterialPass);
 
@@ -283,7 +263,6 @@ void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, R
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
                     commandList.BindDescriptorSet(data.lightSet, frameIndex);
                     commandList.BindDescriptorSet(data.terrainSet, frameIndex);
-                    commandList.BindDescriptorSet(data.modelSet, frameIndex);
                     commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     break;
                 default: // Full shading
@@ -291,7 +270,6 @@ void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, R
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
                     commandList.BindDescriptorSet(data.lightSet, frameIndex);
                     commandList.BindDescriptorSet(data.terrainSet, frameIndex);
-                    commandList.BindDescriptorSet(data.modelSet, frameIndex);
                     commandList.BindDescriptorSet(data.assetMaterialSet, frameIndex);
                     commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     break;
@@ -318,8 +296,7 @@ void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, R
 
                 Constants* constants = graphResources.FrameNew<Constants>();
 
-                const Renderer::ImageID colorTarget = view ? view->GetColorTarget() : resources.sceneColor;
-                vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(colorTarget, 0));
+                vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(view.GetColorTarget(), 0));
                 constants->renderInfo = vec4(outputSize, 1.0f / outputSize);
 
                 CVarSystem* cvarSystem = CVarSystem::Get();
@@ -359,8 +336,7 @@ void MaterialRenderer::AddMaterialHostPass(Renderer::RenderGraph* renderGraph, R
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }
 
-            const Renderer::ImageID colorTarget = view ? view->GetColorTarget() : resources.sceneColor;
-            const uvec2 outputSize = _renderer->GetImageDimensions(colorTarget, 0);
+            const uvec2 outputSize = _renderer->GetImageDimensions(view.GetColorTarget(), 0);
             const uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
 

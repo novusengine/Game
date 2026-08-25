@@ -3,7 +3,6 @@
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
 #include "Debug/JoltDebugRenderer.h"
-#include "Debug/MeshShaderSmoke.h"
 #include "Asset/RenderAssetResources.h"
 #include "Scene/RenderScene.h"
 #include "Scene/RenderView.h"
@@ -11,7 +10,6 @@
 #include "Model/ModelRenderSystem.h"
 #include "Preview/UnitInspectionController.h"
 #include "Model/ModelPlacementLoader.h"
-#include "Model/ModelRendererMode.h"
 #include "Model/DisplayResolver.h"
 #include "Model/ModelParameterOverrides.h"
 #include "Light/LightRenderer.h"
@@ -19,7 +17,6 @@
 #include "Terrain/TerrainLoader.h"
 #include "Terrain/TerrainManipulator.h"
 #include "Texture/TextureRenderer.h"
-#include "Model/ModelRenderer.h"
 #include "Model/ModelLoader.h"
 #include "Liquid/LiquidRenderer.h"
 #include "Liquid/LiquidLoader.h"
@@ -235,7 +232,6 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
     _debugRenderer = new DebugRenderer(_renderer, this);
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, this, _debugRenderer);
-    _meshShaderSmoke = new MeshShaderSmoke(_renderer, this);
 
     _renderAssetResources = new RenderAssets::RenderAssetResources(_renderer, ServiceLocator::GetPactStorage(), &_resources.materialDescriptorSet, CVAR_RenderAssetValidateTransfers.Get() != 0);
     if (!_renderAssetResources->Initialize())
@@ -258,9 +254,8 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
                                                                      CVAR_RenderAssetValidateTransfers.Get() != 0);
     _modelPlacementLoader = new ModelRendering::ModelPlacementLoader(ServiceLocator::GetPactStorage(), _renderAssetResources, _worldRenderScene);
 
-    _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
     _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer);
-    _modelLoader = new ModelLoader(_modelRenderer, _lightRenderer);
+    _modelLoader = new ModelLoader(_lightRenderer);
     _modelLoader->Init();
 
     _liquidRenderer = new LiquidRenderer(_renderer, this, _debugRenderer);
@@ -275,13 +270,13 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
     _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _modelPlacementLoader, _liquidLoader);
     
-    _materialRenderer = new MaterialRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _lightRenderer);
+    _materialRenderer = new MaterialRenderer(_renderer, this, _terrainRenderer, _lightRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, this, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, this, _debugRenderer);
     _canvasRenderer = new CanvasRenderer(_renderer, this, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer, this);
-    _shadowRenderer = new ShadowRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _worldRenderScene, _resources);
+    _shadowRenderer = new ShadowRenderer(_renderer, this, _terrainRenderer, _worldRenderScene, _resources);
     _pixelQuery = new PixelQuery(_renderer, this);
 
     _nameHashToCursor.reserve(128);
@@ -300,13 +295,11 @@ GameRenderer::~GameRenderer()
     delete _worldRenderScene;
     delete _renderAssetResources;
     delete _renderTargetCapture;
-    _modelRenderer->Shutdown();
     DepthPyramidUtils::Shutdown();
     _resources.debugDescriptorSet.Shutdown();
     _resources.globalDescriptorSet.Shutdown();
     _resources.lightDescriptorSet.Shutdown();
     _resources.terrainDescriptorSet.Shutdown();
-    _resources.modelDescriptorSet.Shutdown();
     _resources.materialDescriptorSet.Shutdown();
     delete _renderer;
     delete _renderDocCapture;
@@ -385,9 +378,6 @@ bool GameRenderer::UpdateWindow(f32 deltaTime)
 
 void GameRenderer::ReserveModelResources(const Map::ModelAllocationHints& hints)
 {
-    if (!ModelRendering::UseMeshletModelRenderer())
-        return;
-
     _renderAssetResources->ReserveModelResources(hints.resources);
     _worldRenderScene->ReserveModelResources(hints);
     if (hints.scene.rootPlacements <= std::numeric_limits<u32>::max() && hints.resources.models <= std::numeric_limits<u32>::max())
@@ -417,7 +407,6 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _terrainManipulator->Update(deltaTime);
     _modelPlacementLoader->Update();
     _modelLoader->Update(deltaTime);
-    _modelRenderer->Update(deltaTime);
     _liquidLoader->Update(deltaTime);
     _liquidRenderer->Update(deltaTime);
     _materialRenderer->Update(deltaTime);
@@ -454,7 +443,6 @@ void GameRenderer::UploadRenderers()
     }
 
     _terrainRenderer->Upload();
-    _modelRenderer->Upload();
     _liquidRenderer->Upload();
     _materialRenderer->Upload(_resources);
     _joltDebugRenderer->Upload();
@@ -490,14 +478,6 @@ f32 GameRenderer::Render()
         renderSize.y = glm::clamp(renderSize.y, 1.0f, windowSize.y);
     }
 
-    // Create rendergraph
-    Renderer::RenderGraphDesc renderGraphDesc;
-    renderGraphDesc.allocator = _frameAllocator[_frameIndex]; // We need to give our rendergraph an allocator to use
-    Renderer::RenderGraph& renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
-
-    f32 timeWaited = _renderer->FlipFrame(_frameIndex);
-    _modelRenderSystem->CompleteFrame(_frameIndex);
-
     if (renderSize.x != _lastWindowSize.x || renderSize.y != _lastWindowSize.y)
     {
         _renderer->SetRenderSize(renderSize);
@@ -506,6 +486,14 @@ f32 GameRenderer::Render()
         if (RenderScenes::RenderView* mainView = _modelRenderSystem->GetMainView())
             mainView->SetDimensions(static_cast<uvec2>(renderSize));
     }
+
+    // Create rendergraph
+    Renderer::RenderGraphDesc renderGraphDesc;
+    renderGraphDesc.allocator = _frameAllocator[_frameIndex]; // We need to give our rendergraph an allocator to use
+    Renderer::RenderGraph& renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
+
+    f32 timeWaited = _renderer->FlipFrame(_frameIndex);
+    _modelRenderSystem->CompleteFrame(_frameIndex);
 
     const bool cameraCullingLocked = *CVarSystem::Get()->GetIntCVar(
         CVarCategory::Client | CVarCategory::Rendering, "cameraLockCulling"_h) != 0;
@@ -530,7 +518,6 @@ f32 GameRenderer::Render()
             Renderer::DescriptorSetResource debugSet;
             Renderer::DescriptorSetResource globalSet;
             Renderer::DescriptorSetResource lightSet;
-            Renderer::DescriptorSetResource modelSet;
             Renderer::DescriptorSetResource terrainSet;
         };
 
@@ -551,7 +538,6 @@ f32 GameRenderer::Render()
                 data.debugSet = builder.Use(_resources.debugDescriptorSet);
                 data.globalSet = builder.Use(_resources.globalDescriptorSet);
                 data.lightSet = builder.Use(_resources.lightDescriptorSet);
-                data.modelSet = builder.Use(_resources.modelDescriptorSet);
                 data.terrainSet = builder.Use(_resources.terrainDescriptorSet);
 
                 return true; // Return true from setup to enable this pass, return false to disable it
@@ -578,11 +564,9 @@ f32 GameRenderer::Render()
     _textureRenderer->AddTexturePass(&renderGraph, _resources, _frameIndex);
 
     _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddVisibilityPhase1Passes(&renderGraph, _resources, _frameIndex);
 
@@ -593,9 +577,6 @@ f32 GameRenderer::Render()
     _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
     
-    _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
-
     _joltDebugRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
@@ -606,9 +587,6 @@ f32 GameRenderer::Render()
     else if (!cameraCullingLocked)
         _lockedCullingDepthPyramidValid = false;
     _modelRenderSystem->AddTransparentCullPass(&renderGraph, _resources, _frameIndex);
-
-    _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _liquidRenderer->AddCopyDepthPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
@@ -623,9 +601,7 @@ f32 GameRenderer::Render()
     if (_shadowRenderer->IsSVSMActive())
     {
         _terrainRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
-        _modelRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
         _terrainRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
-        _modelRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
         _shadowRenderer->AddSVSMModelPasses(&renderGraph, _resources, _frameIndex);
     }
 
@@ -641,10 +617,7 @@ f32 GameRenderer::Render()
     _modelRenderSystem->AddTransparencyCompositePasses(&renderGraph, _resources, *_materialRenderer,
         RenderScenes::RenderViewPassFamily::ForwardModels, _frameIndex);
 
-    if (ModelRendering::UseMeshletModelRenderer())
-        _modelRenderSystem->AddCommonMaterialResolvePass(&renderGraph, _resources, *_materialRenderer, _frameIndex);
-    else
-        _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddCommonMaterialResolvePass(&renderGraph, _resources, *_materialRenderer, _frameIndex);
     _modelRenderSystem->AddMaterialResolvePass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddTransparentRasterPass(&renderGraph, _resources,
         RenderScenes::RenderViewPassFamily::Models, _frameIndex);
@@ -652,9 +625,6 @@ f32 GameRenderer::Render()
         RenderScenes::RenderViewPassFamily::Models, _frameIndex);
     _modelRenderSystem->AddTransparentSelectionOutlinePass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddRetainedOutputPasses(&renderGraph);
-    if (ModelRendering::ShowModelCullReasons())
-        _modelRenderSystem->AddDiagnosticResolvePass(&renderGraph, _resources, _frameIndex);
-
     _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 
     _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
@@ -662,7 +632,6 @@ f32 GameRenderer::Render()
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
-    _meshShaderSmoke->AddPass(&renderGraph, _resources);
 
     _lightRenderer->AddDebugPass(&renderGraph, _resources, _frameIndex);
     _shadowRenderer->AddSVSMDebugOverlayPass(&renderGraph, _resources, _frameIndex);
@@ -1059,8 +1028,7 @@ void GameRenderer::InitDescriptorSets()
        &_resources.globalDescriptorSet,
        &_resources.lightDescriptorSet,
        &_resources.terrainDescriptorSet,
-       &_resources.modelDescriptorSet,
-       &_resources.materialDescriptorSet
+        &_resources.materialDescriptorSet
    };
 
    for(Renderer::DescriptorSet* descriptorSet : descriptorSets)

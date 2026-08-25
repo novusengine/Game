@@ -21,27 +21,11 @@ namespace ModelView
         _lodHistory.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
 
-    void ModelViewState::SetDiagnosticSelection(RenderScenes::ModelInstanceHandle instance)
-    {
-        _diagnosticSelection.assign(1, instance);
-        _workDirty = true;
-    }
-
-    void ModelViewState::ClearDiagnosticSelection()
-    {
-        _diagnosticSelection.clear();
-        _workDirty = true;
-    }
-
     void ModelViewState::PrepareInputs(const RenderScenes::RenderScene& scene,
                                        const ModelLoading::ModelGeometryStorage& geometry)
     {
-        const std::span<const RenderScenes::ModelInstanceHandle> selection = [&]() {
-            if (!_diagnosticSelection.empty())
-                return std::span<const RenderScenes::ModelInstanceHandle>(_diagnosticSelection);
-            scene.GetModelInstances().CollectActiveHandles(_sceneSelection);
-            return std::span<const RenderScenes::ModelInstanceHandle>(_sceneSelection);
-        }();
+        scene.GetModelInstances().CollectActiveHandles(_sceneSelection);
+        const std::span<const RenderScenes::ModelInstanceHandle> selection(_sceneSelection);
 
         std::vector<bool> desired(_inputSlots.size(), false);
 

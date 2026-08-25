@@ -12,6 +12,7 @@
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsoleCommandHandler.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include <Renderer/Window.h>
 #include "Game-Lib/Scripting/Database/Item.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/AssetPath.h"
@@ -339,6 +340,23 @@ namespace Scripting
     {
         ServiceLocator::GetApplication()->RequestExit();
         return 0;
+    }
+    i32 GlobalHandler::ResizeWindow(Zenith* zenith)
+    {
+        const u32 width = zenith->CheckVal<u32>(1);
+        const u32 height = zenith->CheckVal<u32>(2);
+        Novus::Window* window = ServiceLocator::GetGameRenderer()->GetWindow();
+        if (width == 0 || height == 0)
+            window->Minimize();
+        else
+            window->SetSize(width, height);
+        return 0;
+    }
+    i32 GlobalHandler::GetWindowSize(Zenith* zenith)
+    {
+        const uvec2 size = ServiceLocator::GetGameRenderer()->GetWindow()->GetSize();
+        zenith->Push(size);
+        return 1;
     }
     i32 GlobalHandler::GetCharacterList(Zenith* zenith)
     {

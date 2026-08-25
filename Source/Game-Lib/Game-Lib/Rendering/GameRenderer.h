@@ -26,7 +26,6 @@ class TerrainRenderer;
 class TerrainLoader;
 class TerrainManipulator;
 class TextureRenderer;
-class ModelRenderer;
 class ModelLoader;
 class MapLoader;
 class MaterialRenderer;
@@ -44,7 +43,6 @@ class EffectRenderer;
 class ShadowRenderer;
 class RenderTargetCapture;
 class RenderDocCapture;
-class MeshShaderSmoke;
 
 namespace RenderAssets
 {
@@ -119,7 +117,6 @@ public:
     LiquidRenderer* GetLiquidRenderer() { return _liquidRenderer; }
     MaterialRenderer* GetMaterialRenderer() { return _materialRenderer; }
     LightRenderer* GetLightRenderer() { return _lightRenderer; }
-    ModelRenderer* GetModelRenderer() { return _modelRenderer; }
     ShadowRenderer* GetShadowRenderer() { return _shadowRenderer; }
     TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
     TextureRenderer* GetTextureRenderer() { return _textureRenderer; }
@@ -211,7 +208,6 @@ private:
 
     TextureRenderer* _textureRenderer = nullptr;
 
-    ModelRenderer* _modelRenderer = nullptr;
     ModelLoader* _modelLoader = nullptr;
 
     LiquidRenderer* _liquidRenderer = nullptr;
@@ -229,7 +225,6 @@ private:
     UIRenderer* _uiRenderer = nullptr;
     EffectRenderer* _effectRenderer = nullptr;
     ShadowRenderer* _shadowRenderer = nullptr;
-    MeshShaderSmoke* _meshShaderSmoke = nullptr;
     RenderAssets::RenderAssetResources* _renderAssetResources = nullptr;
     RenderScenes::RenderScene* _worldRenderScene = nullptr;
     ModelScene::ModelSceneBridge* _modelSceneBridge = nullptr;

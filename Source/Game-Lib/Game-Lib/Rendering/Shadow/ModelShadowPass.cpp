@@ -70,8 +70,8 @@ namespace ShadowRendering
         rasterDesc.debugName = "Model Shadow Solid One Sided";
         rasterDesc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(solidMesh)};
         rasterDesc.states.pixelShader = renderer->LoadShader(solidPixel);
-        // Legacy model shadows rasterized every caster two-sided. Model materials use sidedness
-        // for visible rendering, but existing assets do not guarantee shadow-safe winding.
+        // Existing source assets do not guarantee shadow-safe winding, so model shadow
+        // rasterization remains conservative even though visible rendering honors sidedness.
         rasterDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
         rasterDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
         rasterDesc.states.rasterizerState.depthClampEnabled = true;

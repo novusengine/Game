@@ -13,7 +13,6 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "Light/LightShared.inc.slang"
 #include "Material/Decals.inc.slang"
 #include "Material/MaterialAuthoring.inc.slang"
-#include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
 
 struct Constants
@@ -164,72 +163,6 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     return saturate(color);
 }
 
-float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, uint tileIndex, out float3 outPixelWorldPos)
-{
-    // Get the interpolated vertex data from the visibility buffer
-    PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
-    
-    TextureData textureData = LoadModelTextureData(_packedModelTextureDatas, pixelVertexData.extraID);
-
-    // Shade
-    float4 color = float4(0, 0, 0, 0);
-    float3 specular = float3(0, 0, 0);
-    bool isUnlit = false;
-
-    for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)
-    {
-        ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
-
-        uint isProjectedTexture = textureUnit.data1 & 0x1;
-        uint texture0SamplerIndex = (textureUnit.data1 >> 1) & 0x3;
-        uint texture1SamplerIndex = (textureUnit.data1 >> 3) & 0x3;
-        uint materialFlags = (textureUnit.data1 >> 5) & 0x3F;
-        uint blendingMode = (textureUnit.data1 >> 11) & 0x7;
-
-        uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
-        uint vertexShaderId = materialType & 0xFF;
-        uint pixelShaderId = materialType >> 8;
-        uint rgba = textureUnit.rgba;
-        float4 textureUnitColor = float4((rgba >> 24) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 8) & 0xFF, rgba & 0xFF) / 255.0f;
-
-        if (materialType == 0x8000)
-            continue;
-
-        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_samplers[texture0SamplerIndex], pixelVertexData.uv0.value, pixelVertexData.uv0.ddx, pixelVertexData.uv0.ddy);
-        float4 texture1Color = float4(0, 0, 0, 0);
-
-        if (vertexShaderId >= 2)
-        {
-            // ENV uses generated UVCoords based on camera pos + geometry normal in frame space
-            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_samplers[texture1SamplerIndex], pixelVertexData.uv1.value, pixelVertexData.uv1.ddx, pixelVertexData.uv1.ddy);
-        }
-
-        // We are not sure if these should be applied here, also see DrawTransparent.ps.hlsl
-        texture0Color *= textureUnitColor;
-        texture1Color *= textureUnitColor;
-
-        isUnlit |= (materialFlags & 0x1);
-
-        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular); // It's also possible that textureUnitColor should be applied on this
-        color = BlendModel(blendingMode, color, shadedColor); // Or on this
-    }
-
-    ShadowSettings shadowSettings;
-    shadowSettings.enableShadows = _constants.lightInfo.y == 1;
-    shadowSettings.strength = _constants.shadowSettings.x;
-    shadowSettings.normalOffset = _constants.shadowSettings.y;
-    shadowSettings.svsmConstantBias = _constants.shadowSettings.z;
-
-    // Apply lighting
-    color.rgb = ApplyLighting(color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
-
-    // Apply highlight
-    color.rgb *= pixelVertexData.highlightIntensity;
-
-    outPixelWorldPos = pixelVertexData.worldPos;
-    return saturate(color);
-}
-
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
@@ -242,7 +175,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
 
     uint vBufferData = LoadVisibilityBuffer(pixelPos);
-    // Model visibility is reconstructed by the typed diagnostic resolve until the production material path lands.
     if (IsModelVisibility(vBufferData))
         return;
     const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
@@ -292,10 +224,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     else if (vBuffer.typeID == ObjectType::Terrain)
     {
         color = ShadeTerrain(pixelPos, pixelUV, vBuffer, tileIndex, pixelWorldPos);
-    }
-    else if (vBuffer.typeID == ObjectType::ModelOpaque) // Transparent models are not rendered using visibility buffers
-    {
-        color = ShadeModel(pixelPos, pixelUV, vBuffer, tileIndex, pixelWorldPos);
     }
     else
     {

@@ -19,7 +19,6 @@ namespace Visibility
         Background = 0,
         Model = 1,
         Terrain = 2,
-        LegacyModel = 3,
         JoltDebug = 4
     };
 

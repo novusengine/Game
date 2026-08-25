@@ -1,6 +1,5 @@
 #include "ShadowRenderer.h"
 
-#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "ModelShadowRenderer.h"
 #include <Game-Lib/Application/EnttRegistries.h>
@@ -13,7 +12,6 @@
 #include <Game-Lib/ECS/Systems/UpdateAreaLights.h>
 #include <Game-Lib/Rendering/GameRenderer.h>
 #include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
-#include <Game-Lib/Rendering/Model/ModelRenderer.h>
 #include <Game-Lib/Rendering/RenderResources.h>
 #include <Game-Lib/Rendering/Camera.h>
 #include <Game-Lib/Util/ServiceLocator.h>
@@ -31,6 +29,7 @@
 #include <cstddef>
 
 AutoCVar_Int CVAR_ShadowEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelsCastShadow(CVarCategory::Client | CVarCategory::Rendering, "shadowModelsCastShadow", "should Models cast shadows", 1, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_ShadowStrength(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength", "directional shadow strength, overwritten each frame from the sun elevation", 1.0f, CVarFlags::EditReadOnly);
 AutoCVar_Float CVAR_ShadowNormalOffsetBias(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias", "receiver offset along the surface normal in shadow texels, fights acne on hard angles", 0.5f);
 AutoCVar_Float CVAR_ShadowCasterMargin(CVarCategory::Client | CVarCategory::Rendering, "shadowCasterMargin", "extends clipmap culling toward the sun so far-away casters with long shadows are not culled, depth clamp pancakes them onto the near plane", 2500.0f);
@@ -216,11 +215,12 @@ static SVSMDerivedConfig DeriveSVSMConfig(u32 maxPageTableSize)
     return DeriveSVSMConfig(maxPageTableSize, static_cast<u32>(CVAR_SVSMPoolSize.Get()), static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()));
 }
 
-ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderScenes::RenderScene* scene, RenderResources& resources)
+ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer,
+                               TerrainRenderer* terrainRenderer, RenderScenes::RenderScene* scene,
+                               RenderResources& resources)
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _terrainRenderer(terrainRenderer)
-    , _modelRenderer(modelRenderer)
     , _scene(scene)
     , _svsmPrepareDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _svsmInvalidateAABBsDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
@@ -248,8 +248,7 @@ ShadowRenderer::~ShadowRenderer()
 void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 {
     ZoneScoped;
-    if (ModelRendering::UseMeshletModelRenderer())
-        _modelShadowRenderer->Update(static_cast<u32>(glm::clamp(CVAR_SVSMNumClipmaps.Get(), 1, static_cast<i32>(SVSM_MAX_CLIPMAPS))));
+    _modelShadowRenderer->Update(static_cast<u32>(glm::clamp(CVAR_SVSMNumClipmaps.Get(), 1, static_cast<i32>(SVSM_MAX_CLIPMAPS))));
 
     if (SanitizeSVSMConfigCVars(SVSM_MAX_PAGE_TABLE_SIZE))
     {
@@ -298,7 +297,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
     // shadows persist indefinitely after a toggle
     {
         CVarSystem* cvarSystem = CVarSystem::Get();
-        const bool modelsCastShadow = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowModelsCastShadow"_h) == 1;
+        const bool modelsCastShadow = CVAR_ModelsCastShadow.Get() == 1;
         const bool terrainCastShadow = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTerrainCastShadow"_h) == 1;
         if (modelsCastShadow != _svsmModelsCastShadow || terrainCastShadow != _svsmTerrainCastShadow)
         {
@@ -333,10 +332,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         }
     }
 
-    // SVSM: last frame's page table stats plus this frame's caster bounds. The ModelRenderer's
-    // per-instance classifier owns the dynamic set (moved or bone-pushed within the grace window)
-    // and its transition invalidations; this just copies the results and uploads. With the split
-    // off, the classifier feeds everything through static invalidation like v1
+    // SVSM: last frame's page table stats plus this frame's Scene-owned caster bounds.
     _svsmDirtyAABBs.clear();
     _svsmDynamicAABBs.clear();
     _svsmDirtyAABBOverflow = false;
@@ -452,43 +448,18 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
             CVAR_SVSMValidateDynamic.Set(0);
         }
 
-        // Spawned/despawned/re-modeled instances and the classifier's transition/spill
-        // invalidations always re-bake cached static pages
-        if (_modelRenderer->DrainShadowInvalidations(_svsmDirtyAABBs, SVSM_MAX_DIRTY_AABBS) > SVSM_MAX_DIRTY_AABBS)
-        {
+        if (_scene->DrainShadowInvalidations(_svsmDirtyAABBs, SVSM_MAX_DIRTY_AABBS) > SVSM_MAX_DIRTY_AABBS)
             _svsmDirtyAABBOverflow = true;
-        }
 
-        if (ModelRendering::UseMeshletModelRenderer())
-        {
-            const u32 usedPairs = static_cast<u32>(_svsmDirtyAABBs.size() / 2);
-            const u32 remainingPairs = usedPairs < SVSM_MAX_DIRTY_AABBS ? SVSM_MAX_DIRTY_AABBS - usedPairs : 0;
-            if (_scene->DrainShadowInvalidations(_svsmDirtyAABBs, remainingPairs) > remainingPairs)
-                _svsmDirtyAABBOverflow = true;
-        }
-
-        // Dynamic caster classifiers feed both their AABB lists and matching GPU instance flags.
-        // The merged list is capped here before upload into the transient page mark pass.
-        const std::vector<vec4>& dynamicAABBs = _modelRenderer->GetDynamicCasterAABBs();
-        NC_ASSERT(dynamicAABBs.size() <= SVSM_MAX_DYNAMIC_AABBS * 2, "SVSM: ModelRenderer emitted more dynamic caster AABBs than the buffer holds, the source cap is broken");
-        _svsmDynamicAABBs.assign(dynamicAABBs.begin(), dynamicAABBs.end());
-
-        _svsmNumDynamicCasters = _modelRenderer->GetNumDynamicCasters();
-        _svsmDynamicAABBsDropped = _modelRenderer->GetNumDynamicCastersDropped();
-        _modelRenderer->GetDynamicCasterTransitions(_svsmCasterTransitionsIn, _svsmCasterTransitionsOut);
-
-        if (ModelRendering::UseMeshletModelRenderer())
         {
             const std::span<const vec4> sceneDynamicAABBs = _scene->GetDynamicShadowAABBs();
-            const size_t available = static_cast<size_t>(SVSM_MAX_DYNAMIC_AABBS) * 2 - _svsmDynamicAABBs.size();
-            const size_t copyCount = std::min(sceneDynamicAABBs.size(), available);
-            _svsmDynamicAABBs.insert(_svsmDynamicAABBs.end(), sceneDynamicAABBs.begin(),
-                                     sceneDynamicAABBs.begin() + copyCount);
+            const size_t copyCount = std::min(sceneDynamicAABBs.size(), static_cast<size_t>(SVSM_MAX_DYNAMIC_AABBS) * 2);
+            _svsmDynamicAABBs.assign(sceneDynamicAABBs.begin(), sceneDynamicAABBs.begin() + copyCount);
             const ShadowRendering::SceneShadowStats sceneStats = _scene->GetShadowStats();
-            _svsmNumDynamicCasters += sceneStats.dynamicCasters;
-            _svsmCasterTransitionsIn += sceneStats.transitionsIn;
-            _svsmCasterTransitionsOut += sceneStats.transitionsOut;
-            _svsmDynamicAABBsDropped += static_cast<u32>((sceneDynamicAABBs.size() - copyCount) / 2);
+            _svsmNumDynamicCasters = sceneStats.dynamicCasters;
+            _svsmCasterTransitionsIn = sceneStats.transitionsIn;
+            _svsmCasterTransitionsOut = sceneStats.transitionsOut;
+            _svsmDynamicAABBsDropped = static_cast<u32>((sceneDynamicAABBs.size() - copyCount) / 2);
 
             if (CVAR_SVSMDynamicSplit.Get() == 0)
             {
@@ -524,12 +495,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         // accumulate unboundedly. Discard them (maxPairs 0 appends nothing) and re-bake the whole
         // cache on resume instead — the classifier keeps ticking meanwhile, so its state stays
         // current
-        if (_modelRenderer->DrainShadowInvalidations(_svsmDirtyAABBs, 0) > 0)
-        {
-            _svsmForceInvalidateAll = true;
-        }
-        if (ModelRendering::UseMeshletModelRenderer() &&
-            _scene->DrainShadowInvalidations(_svsmDirtyAABBs, 0) > 0)
+        if (_scene->DrainShadowInvalidations(_svsmDirtyAABBs, 0) > 0)
         {
             _svsmForceInvalidateAll = true;
         }
@@ -539,8 +505,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 void ShadowRenderer::Upload()
 {
     ZoneScoped;
-    if (ModelRendering::UseMeshletModelRenderer() &&
-        _modelShadowRenderer->Upload(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer))
+    if (_modelShadowRenderer->Upload(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer))
     {
         _svsmForceInvalidateAll = true;
     }
@@ -549,7 +514,7 @@ void ShadowRenderer::Upload()
 void ShadowRenderer::AddSVSMModelPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                         u8 frameIndex)
 {
-    if (!ModelRendering::UseMeshletModelRenderer() || _svsmPagePool == Renderer::ImageID::Invalid())
+    if (CVAR_ModelsCastShadow.Get() != 1 || _svsmPagePool == Renderer::ImageID::Invalid())
         return;
     const u32 numClipmaps = static_cast<u32>(glm::clamp(CVAR_SVSMNumClipmaps.Get(), 1,
                                                         static_cast<i32>(SVSM_MAX_CLIPMAPS)));
@@ -726,9 +691,9 @@ ShadowRenderer::SVSMUpdateRecorder::SVSMUpdateRecorder(ShadowRenderer& owner, SV
     constants->dynamicPhase = 0;
 
     // Finalize turns these record-time counts into same-frame per-view indirect dispatch args.
-    constants->fillInstanceCount = owner._modelRenderer->GetOpaqueCullingResources().GetNumInstances();
+    constants->fillInstanceCount = 0;
     constants->fillCellCount = owner._terrainRenderer->GetNumDrawCalls();
-    constants->fillDrawCallCount = owner._modelRenderer->GetOpaqueCullingResources().GetDrawCallCount();
+    constants->fillDrawCallCount = 0;
 }
 
 void ShadowRenderer::SVSMUpdateRecorder::Record()
@@ -1458,10 +1423,9 @@ void ShadowRenderer::ResetSVSMPoolState(RenderResources& resources)
     resources.lightDescriptorSet.Bind("_svsmPageTable"_h, _svsmPageTableBuffer);
     resources.lightDescriptorSet.Bind("_svsmDynamicPageTable"_h, _svsmDynamicPageTableBuffer);
 
-    // The terrain/model SVSM page-render sets read these permanent buffers, bind them once
-    // here (the pools stay per-frame, they are created lazily). Same for the cameras buffer
+    // The terrain SVSM page-render set reads these permanent buffers. The model V2 shadow path
+    // owns its bindings through ModelShadowRenderer.
     _terrainRenderer->BindSVSMBuffers(_svsmDataBuffer, _svsmPageTableBuffer);
-    _modelRenderer->BindSVSMBuffers(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer);
 }
 
 void ShadowRenderer::BindCameraBuffers(RenderResources& resources)

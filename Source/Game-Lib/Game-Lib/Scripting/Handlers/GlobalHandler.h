@@ -32,6 +32,8 @@ namespace Scripting
         static i32 Logout(Zenith* zenith);
         static i32 Disconnect(Zenith* zenith);
         static i32 ExitGame(Zenith* zenith);
+        static i32 ResizeWindow(Zenith* zenith);
+        static i32 GetWindowSize(Zenith* zenith);
         static i32 GetCharacterList(Zenith* zenith);
         static i32 SelectCharacter(Zenith* zenith);
         static i32 GetMapName(Zenith* zenith);
@@ -55,6 +57,8 @@ namespace Scripting
         { "Logout",                 GlobalHandler::Logout },
         { "Disconnect",             GlobalHandler::Disconnect },
         { "ExitGame",               GlobalHandler::ExitGame },
+        { "ResizeWindow",           GlobalHandler::ResizeWindow, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetWindowSize",          GlobalHandler::GetWindowSize, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetCharacterList",       GlobalHandler::GetCharacterList },
         { "SelectCharacter",        GlobalHandler::SelectCharacter },
         { "GetMapName",             GlobalHandler::GetMapName }

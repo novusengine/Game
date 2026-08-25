@@ -8,7 +8,6 @@
 struct RenderResources;
 class GameRenderer;
 
-namespace MaterialLoading { class MaterialStorage; }
 namespace ModelLoading { class ModelGeometryStorage; }
 namespace ModelView { class ModelViewWorkResources; }
 namespace RenderScenes { class RenderScene; class RenderView; }
@@ -32,12 +31,6 @@ namespace ModelPipeline
         void AddOpaqueHighlightPass(Renderer::RenderGraph* renderGraph, const RenderScenes::RenderView& view,
                                     const ModelView::ModelViewWorkResources& work,
                                     const RenderScenes::RenderScene& scene, u8 frameIndex);
-        // TODO: Remove the diagnostic resolve after production material shading consumes typed visibility.
-        void AddDiagnosticPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
-                               const RenderScenes::RenderView& view, const ModelView::ModelViewWorkResources& work,
-                               const ModelLoading::ModelGeometryStorage& geometry,
-                               const MaterialLoading::MaterialStorage& materials,
-                               const RenderScenes::RenderScene& scene, u8 frameIndex);
 
       private:
         struct FrameBindings
@@ -61,13 +54,6 @@ namespace ModelPipeline
             Renderer::BufferID triangles = Renderer::BufferID::Invalid();
         };
 
-        struct DiagnosticBindings
-        {
-            CommonBindings common;
-            Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
-            Renderer::BufferID cullReasons[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
-        };
-
         struct HighlightBindings
         {
             FrameBindings frames[ModelView::MODEL_VIEW_FRAME_COUNT];
@@ -87,14 +73,11 @@ namespace ModelPipeline
         Renderer::DescriptorSet _preEffectsSet;
         Renderer::DescriptorSet _velocitySet;
         Renderer::DescriptorSet _highlightSet;
-        Renderer::DescriptorSet _diagnosticSet;
         Renderer::ComputePipelineID _preEffectsPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _velocityPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _highlightPipeline = Renderer::ComputePipelineID::Invalid();
-        Renderer::ComputePipelineID _diagnosticPipeline = Renderer::ComputePipelineID::Invalid();
         CommonBindings _preEffectsBindings;
         CommonBindings _velocityBindings;
         HighlightBindings _highlightBindings;
-        DiagnosticBindings _diagnosticBindings;
     };
 } // namespace ModelPipeline

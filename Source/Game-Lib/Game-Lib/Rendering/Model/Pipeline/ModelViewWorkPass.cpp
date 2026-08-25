@@ -4,7 +4,6 @@
 #include "Game-Lib/Rendering/CullUtils.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
-#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewState.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
@@ -122,7 +121,6 @@ namespace ModelPipeline
         const bool queuesRecreated =
             work.EnsureQueueCapacity(std::min(viewState.GetQueueCapacity(), configuredCapacity));
         const bool selectionRecreated = work.EnsureSelectionCapacity(viewState.GetDispatchInputCount());
-        const bool cullReasonsRecreated = work.EnsureCullReasonCapacity(ModelRendering::ShowModelCullReasons() ? work.GetQueueCapacity() : 1u);
         const RenderScenes::RenderSceneStats sceneStats = scene.GetStats();
         const bool historyRecreated = work.EnsureHistoryCapacity(sceneStats.instances.slotCapacity,
                                                                   sceneStats.meshletHistory.addressSpaceWords);
@@ -153,11 +151,6 @@ namespace ModelPipeline
             {
                 _cullBindings.frames[frame].meshletHistory = Renderer::BufferID::Invalid();
             }
-        }
-        if (cullReasonsRecreated)
-        {
-            for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
-                _cullBindings.frames[frame].cullReasons = Renderer::BufferID::Invalid();
         }
     }
 
@@ -232,12 +225,10 @@ namespace ModelPipeline
         Bind(_cullDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _cullBindings.frames[0].workStats);
         Bind(_cullDescriptorSet, "_visibilityRecords0"_h, work.GetVisibilityRecords(0),
              _cullBindings.frames[0].visibilityRecords);
-        Bind(_cullDescriptorSet, "_cullReasons0"_h, work.GetCullReasons(0), _cullBindings.frames[0].cullReasons);
         Bind(_cullDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _cullBindings.frames[1].chunkQueue);
         Bind(_cullDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _cullBindings.frames[1].workStats);
         Bind(_cullDescriptorSet, "_visibilityRecords1"_h, work.GetVisibilityRecords(1),
              _cullBindings.frames[1].visibilityRecords);
-        Bind(_cullDescriptorSet, "_cullReasons1"_h, work.GetCullReasons(1), _cullBindings.frames[1].cullReasons);
         Bind(_cullDescriptorSet, "_meshletHistory0"_h, work.GetMeshletHistory(0),
              _cullBindings.frames[0].meshletHistory);
         Bind(_cullDescriptorSet, "_meshletHistory1"_h, work.GetMeshletHistory(1),
@@ -439,7 +430,6 @@ namespace ModelPipeline
                             builder.Write(work.GetGeometryQueue(rasterClass, frameIndex), Usage::COMPUTE);
                     }
                     data.visibilityRecords = builder.Write(work.GetVisibilityRecords(frameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetCullReasons(frameIndex), Usage::COMPUTE);
                     // Both generations are RW shader bindings; resourceIndex selects the active generation.
                     builder.Write(work.GetChunkQueue(inactiveFrameIndex), Usage::COMPUTE);
                     for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
@@ -448,7 +438,6 @@ namespace ModelPipeline
                         builder.Write(work.GetGeometryQueue(rasterClass, inactiveFrameIndex), Usage::COMPUTE);
                     }
                     builder.Write(work.GetVisibilityRecords(inactiveFrameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetCullReasons(inactiveFrameIndex), Usage::COMPUTE);
                     data.globalSet = builder.Use(resources.globalDescriptorSet);
                     data.materialSet = builder.Use(resources.materialDescriptorSet);
                     data.selectSet = builder.Use(_selectDescriptorSet);
@@ -501,7 +490,6 @@ namespace ModelPipeline
                     f32 lodHysteresis;
                     u32 resetHistory;
                     u32 resourceIndex;
-                    u32 showCullReasons;
                 };
                 Constants* constants = graphResources.FrameNew<Constants>();
                 constants->viewIndex = view.GetCameraIndex();
@@ -513,7 +501,6 @@ namespace ModelPipeline
                 constants->lodHysteresis = 0.15f;
                 constants->resetHistory = resetHistory ? 1u : 0u;
                 constants->resourceIndex = frameIndex;
-                constants->showCullReasons = ModelRendering::ShowModelCullReasons() ? 1u : 0u;
 
                 if (inputCount > 0)
                 {
@@ -523,14 +510,12 @@ namespace ModelPipeline
                         u32 inputCount;
                         u32 selectionCapacity;
                         u32 resourceIndex;
-                        u32 showCullReasons;
                     };
                     SelectConstants* select = graphResources.FrameNew<SelectConstants>();
                     select->viewIndex = view.GetCameraIndex();
                     select->inputCount = inputCount;
                     select->selectionCapacity = selectionCapacity;
                     select->resourceIndex = frameIndex;
-                    select->showCullReasons = ModelRendering::ShowModelCullReasons() ? 1u : 0u;
                     commandList.BeginPipeline(_selectPipeline);
                     commandList.PushConstant(select, 0, sizeof(SelectConstants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
@@ -589,7 +574,6 @@ namespace ModelPipeline
                         u32 viewportWidth;
                         u32 viewportHeight;
                         u32 enableTemporal;
-                        u32 showCullReasons;
                     };
                     CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
                     cullConstants->viewIndex = view.GetCameraIndex();
@@ -600,9 +584,7 @@ namespace ModelPipeline
                         temporal && CVAR_ModelMeshletOcclusionCulling.Get() != 0 ? 1u : 0u;
                     cullConstants->viewportWidth = view.GetDimensions().x;
                     cullConstants->viewportHeight = view.GetDimensions().y;
-                    cullConstants->enableTemporal =
-                        temporal && !ModelRendering::ShowModelCullReasons() ? 1u : 0u;
-                    cullConstants->showCullReasons = ModelRendering::ShowModelCullReasons() ? 1u : 0u;
+                    cullConstants->enableTemporal = temporal ? 1u : 0u;
                     data.cullSet.Bind("_depthPyramid", data.depthPyramid);
                     commandList.BeginPipeline(_cullPipeline);
                     commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));

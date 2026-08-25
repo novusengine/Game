@@ -17,7 +17,7 @@
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>
 
-AutoCVar_ShowFlag CVAR_JoltDebugRender(CVarCategory::Client | CVarCategory::Rendering, "joltEnabled", "Render collision meshes as seen by Jolt", ShowFlag::DISABLED);
+AutoCVar_ShowFlag CVAR_JoltDebugRender(CVarCategory::Client | CVarCategory::Rendering, "joltEnabled", "Render collision meshes as seen by Jolt", ShowFlag::DISABLED, CVarFlags::DoNotSave);
 
 //AutoCVar_Int CVAR_JoltDebugCullingEnabled("joltDebugRenderer.culling", "enable jolt debug culling", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_JoltDebugOcclusionCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "joltOcclusionCulling", "enable jolt debug occlusion culling", 1, CVarFlags::EditCheckbox);
@@ -419,6 +419,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.debugDescriptorSet = data.debugSet;
                 params.globalDescriptorSet = data.globalSet;
                 params.cullingDescriptorSet = data.cullingSet;
+                params.createIndirectAfterCullSet = data.createIndirectAfterCullSet;
 
                 params.numShadowViews = 0;
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();

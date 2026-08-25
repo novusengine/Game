@@ -48,7 +48,6 @@ namespace ModelRendering
         void AddTransparentSelectionOutlinePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                 u8 frameIndex);
         void AddRetainedOutputPass(Renderer::RenderGraph* renderGraph);
-        void AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
         RenderScenes::RenderView& GetView() { return _view; }
         const RenderScenes::RenderView& GetView() const { return _view; }
@@ -75,7 +74,7 @@ namespace ModelRendering
         ModelPipeline::ModelTransparentSelectionPass _transparentSelectionPass;
         std::unique_ptr<MaterialRendering::MaterialResolvePass> _materialResolvePass;
         std::unique_ptr<ModelPipeline::ModelVisibilityResolvePass> _visibilityResolvePass;
-        std::array<Renderer::BufferID, 17> _uploadBindings = {};
+        std::array<Renderer::BufferID, 15> _uploadBindings = {};
         u32 _uploadQueueGeneration = 0;
         u32 _uploadSelectionGeneration = 0;
         u32 _uploadHistoryGeneration = 0;

@@ -55,7 +55,6 @@ namespace ModelPipeline
         Renderer::GraphicsPipelineID _twoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Renderer::GraphicsPipelineID _alphaTestOneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Renderer::GraphicsPipelineID _alphaTestTwoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
-        Renderer::GraphicsPipelineID _cullReasonDebugPipeline = Renderer::GraphicsPipelineID::Invalid();
         Bindings _bindings;
         ModelGeometryBindings _geometryBindings;
         u32 _queueGeneration = 0;

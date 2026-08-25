@@ -9,7 +9,6 @@
 
 class TerrainLoader;
 class ModelLoader;
-class ModelRenderer;
 namespace ModelRendering { class ModelPlacementLoader; }
 class MapLoader
 {

@@ -6,7 +6,6 @@
 #include <Game-Lib/Util/ServiceLocator.h>
 #include <Game-Lib/Rendering/GameRenderer.h>
 #include <Game-Lib/Rendering/Model/ModelRenderSystem.h>
-#include <Game-Lib/Rendering/Model/ModelRenderer.h>
 #include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
 #include <Game-Lib/Rendering/Liquid/LiquidRenderer.h>
 #include <Game-Lib/Rendering/Light/LightRenderer.h>
@@ -161,15 +160,6 @@ namespace Editor
                             snprintf(line, sizeof(line), "SVSMBudgetUsed;%u\n", shadowRenderer->GetSVSMBudgetUsed());
                             csv += line;
 
-                            if (ModelRenderer* statsModelRenderer = gameRenderer->GetModelRenderer())
-                            {
-                                std::string dynInstances = "SVSMDynInstances";
-                                for (u32 view = 1; view <= numClipmaps && view < Renderer::Settings::MAX_VIEWS; view++)
-                                {
-                                    dynInstances += ";" + std::to_string(statsModelRenderer->GetNumSVSMDynamicInstances(view));
-                                }
-                                csv += dynInstances + "\n";
-                            }
 
                             csv += "Clipmap;extent;marked;resident;dirty;invalidated;evicted;dynamic;deferred\n";
                             for (u32 i = 0; i < numClipmaps; i++)
@@ -226,17 +216,6 @@ namespace Editor
                                 modelShadow.rejectedBoundsMeshlets, modelShadow.rejectedGeometryGroupMeshlets,
                                 modelShadow.rejectedMaterialMeshlets, modelShadow.rejectedTransparentMeshlets);
 
-                    // Per-clipmap surviving dynamic instances of the SVSM dynamic fills, one
-                    // frame old. A bouncing count here = the fill/cull chain loses casters
-                    if (ModelRenderer* svsmModelRenderer = gameRenderer->GetModelRenderer())
-                    {
-                        std::string dynDraws = "SVSM Dyn instances:";
-                        for (u32 view = 1; view <= numClipmaps && view < Renderer::Settings::MAX_VIEWS; view++)
-                        {
-                            dynDraws += " " + std::to_string(svsmModelRenderer->GetNumSVSMDynamicInstances(view));
-                        }
-                        ImGui::Text("%s", dynDraws.c_str());
-                    }
 
                     i32 renderBudget = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmRenderBudget"_h);
                     if (renderBudget > 0)
@@ -788,7 +767,6 @@ namespace Editor
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
-        ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
         ModelRendering::ModelRenderSystem* modelRenderSystem = gameRenderer->GetModelRenderSystem();
         LiquidRenderer* liquidRenderer = gameRenderer->GetLiquidRenderer();
         JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
@@ -824,10 +802,7 @@ namespace Editor
 
         bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Clipmap views draw their full surviving set in one phase, no occluders
         bool viewSupportsModelsOcclusionCulling = viewID == 0;
-
         bool viewRendersTerrainCulling = true;
-        bool viewRendersOpaqueModelsCulling = true;
-        bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersLiquidCulling = viewID == 0; // Only main view supports mapObjectgs culling so far
         bool viewRendersJoltDebug = viewID == 0;
 
@@ -851,20 +826,6 @@ namespace Editor
                 DrawCullingStatsEntry("Terrain Geometry", drawCalls, drawCallsSurvived);
                 viewDrawCallsSurvived += drawCallsSurvived;
             };
-        }
-
-        // Opaque Models
-        if (viewRendersOpaqueModelsCulling)
-        {
-            CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesDrawCalls("Model (O)", viewID, cullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
-        }
-
-        // Transparent Models
-        if (viewRendersTransparentModelsCulling)
-        {
-            CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         if (viewID == 0 && modelRenderSystem)
@@ -915,7 +876,6 @@ namespace Editor
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
-        ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
         ModelRendering::ModelRenderSystem* modelRenderSystem = gameRenderer->GetModelRenderSystem();
         LiquidRenderer* liquidRenderer = gameRenderer->GetLiquidRenderer();
         JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
@@ -951,10 +911,7 @@ namespace Editor
 
         bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Clipmap views draw their full surviving set in one phase, no occluders
         bool viewSupportsModelsOcclusionCulling = viewID == 0;
-
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
-        bool viewRendersOpaqueModelsCulling = true;
-        bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersLiquidCulling = viewID == 0; // Only main view supports liquid culling so far
         bool viewRendersJoltDebug = viewID == 0;
 
@@ -978,20 +935,6 @@ namespace Editor
                 DrawCullingStatsEntry("Terrain Geometry", triangles, trianglesSurvived);
                 viewTrianglesSurvived += trianglesSurvived;
             }
-        }
-
-        // Opaque Models
-        if (viewRendersOpaqueModelsCulling)
-        {
-            CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesTriangle("Model (O)", viewID, cullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
-        }
-
-        // Transparent Models
-        if (viewRendersTransparentModelsCulling)
-        {
-            CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesTriangle("Model (T)", viewID, cullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         if (viewID == 0 && modelRenderSystem)
