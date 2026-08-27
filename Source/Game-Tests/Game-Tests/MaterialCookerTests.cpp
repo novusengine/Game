@@ -1,6 +1,7 @@
 #include <MaterialCooker/AuthoredMaterialShaderGenerator.h>
 #include <MaterialCooker/MaterialBackendShaderGenerator.h>
 #include <MaterialCooker/MaterialCooker.h>
+#include <MaterialCooker/MaterialProgramManifest.h>
 #include <MaterialCooker/MaterialSourceRegistry.h>
 
 #include <catch2/catch2.hpp>
@@ -164,6 +165,58 @@ TEST_CASE("Authored Material source declarations carry source mapping and "
         std::string::npos);
 
   std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("Native authored Material declarations produce zero-unit cook programs", "[Rendering][MaterialCooker]") {
+  const std::filesystem::path root = std::filesystem::temp_directory_path() / "NovusNativeMaterialSourceRegistryTest";
+  const std::filesystem::path authored = root / "Material" / "Authored";
+  std::error_code filesystemError;
+  std::filesystem::remove_all(root, filesystemError);
+  std::filesystem::create_directories(authored, filesystemError);
+  REQUIRE_FALSE(filesystemError);
+
+  {
+    std::ofstream output(authored / "Debug.mat.slang", std::ios::binary);
+    output << "material Debug\n"
+              "{\n"
+              "    programFamily = Common;\n"
+              "    materialPath = \"material/debug.material\";\n"
+              "    rasterClass = Opaque;\n"
+              "    instance Default\n"
+              "    {\n"
+              "        path = \"material/debug.materialinstance\";\n"
+              "        lightingModel = Unlit;\n"
+              "        flags = [TwoSided, CastsShadows];\n"
+              "    }\n"
+              "}\n"
+              "SurfaceDescription EvaluateMaterial(MaterialEvaluationContext context)\n"
+              "{\n"
+              "    return MakeDefaultSurface(context.input);\n"
+              "}\n";
+  }
+
+  const auto loaded = MaterialCooking::MaterialSourceRegistryIO::Load(authored, root);
+  REQUIRE(loaded);
+  REQUIRE(loaded.registry.materials.size() == 1);
+  CHECK(loaded.registry.materials[0].assetPath == "material/debug.material");
+  REQUIRE(loaded.registry.materials[0].instances.size() == 1);
+  CHECK(loaded.registry.materials[0].instances[0].lightingModelID == static_cast<u16>(FileFormat::Material::ABI::LightingModel::Unlit));
+  CHECK(loaded.registry.materials[0].instances[0].flags == (FileFormat::Material::MaterialInstanceFlags_TwoSided | FileFormat::Material::MaterialInstanceFlags_CastsShadows));
+
+  MaterialCooking::MaterialCookManifest manifest;
+  std::string appendError;
+  REQUIRE(MaterialCooking::MaterialSourceRegistryIO::AppendNativePrograms(loaded.registry, manifest, appendError));
+  const auto views = MaterialCooking::MaterialProgramManifestIO::MakeViews(manifest);
+  const auto resolved = MaterialCooking::MaterialSourceRegistryIO::Resolve(loaded.registry, views);
+  REQUIRE(resolved);
+  const auto plan = MaterialCooking::MaterialCookPlanBuilder::Build(views, resolved.programs);
+  REQUIRE(plan);
+  REQUIRE(plan.programs.size() == 1);
+  CHECK(plan.programs[0].program.unitCount == 0);
+  CHECK(plan.programs[0].materialFunction == "EvaluateMaterial_Debug");
+  CHECK(plan.programs[0].program.parameterBlockSize == 0);
+
+  std::filesystem::remove_all(root, filesystemError);
 }
 
 TEST_CASE(

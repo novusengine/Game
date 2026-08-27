@@ -67,7 +67,10 @@ namespace
         const std::span<const u8> payload(static_cast<const u8*>(data), size);
         const ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full);
         if (!result)
+        {
+            NC_LOG_ERROR("ModelLoader : Model asset validation failed: {}", AssetLoading::Describe(result.diagnostic));
             return nullptr;
+        }
 
         auto model = std::make_unique<ModelLoading::LoadedModelData>();
         model->asset = result.view.root;

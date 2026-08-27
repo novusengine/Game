@@ -74,6 +74,15 @@ TEST_CASE("Model asset reader accepts a minimal cooker-final payload", "[Renderi
     CHECK(result.limitations.invalidAnimationBoundsReferences == 1);
 }
 
+TEST_CASE("Model asset reader accepts a missing default material reference", "[Rendering][ModelAssetReader]")
+{
+    std::vector<u8> payload = MakeModelPayload();
+    const Model::ModelAsset& root = At<Model::ModelAsset>(payload, 0);
+    At<Model::MaterialSlot>(payload, root.materialSlotsOffset).defaultMaterialInstanceAssetID = FileFormat::INVALID_ASSET_ID;
+
+    CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full));
+}
+
 TEST_CASE("Model asset reader rejects truncated and overflowed root sections", "[Rendering][ModelAssetReader]")
 {
     std::vector<u8> truncated = MakeModelPayload();

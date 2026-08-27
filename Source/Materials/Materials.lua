@@ -12,6 +12,7 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     local shaderOutputPath = Solution.Projects.Current.BuildDir .. "/Data/Shaders"
     local reportPath = shaderOutputPath .. "/Materials.cook.json"
     local materialPackPath = shaderOutputPath .. "/Materials.matpack"
+    local materialAssetOutputPath = Solution.Projects.Current.BuildDir .. "/Data/Pact/data/custom"
     local projectFile = mod.Path .. "/" .. mod.Name .. ".lua"
 
     Solution.Util.SetFiles {
@@ -25,6 +26,7 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
         ' --material-cook "' .. manifestPath .. '"' ..
         ' "' .. reportPath .. '"' ..
         ' --material-pack "' .. materialPackPath .. '"' ..
+        ' --material-assets "' .. materialAssetOutputPath .. '"' ..
         ' "' .. shaderSourceDir .. '"' ..
         ' "' .. shaderOutputPath .. '"'
 

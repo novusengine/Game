@@ -5,6 +5,7 @@
 #include <ShaderCooker/ShaderCompiler.h>
 #include <ShaderCooker/ShaderCache.h>
 #include <MaterialCooker/AuthoredMaterialShaderGenerator.h>
+#include <MaterialCooker/AuthoredMaterialAssetWriter.h>
 #include <MaterialCooker/MaterialSourceRegistry.h>
 #include <MaterialCooker/MaterialProgramManifest.h>
 #include <MaterialCooker/MaterialPackWriter.h>
@@ -34,6 +35,7 @@ i32 main(int argc, char* argv[])
     std::filesystem::path materialManifestPath;
     std::filesystem::path materialReportPath;
     std::filesystem::path materialPackPath;
+    std::filesystem::path materialAssetOutputPath;
     MaterialCooking::MaterialMeasurementMode materialMeasurementMode =
         MaterialCooking::MaterialMeasurementMode::Disabled;
     while (argIndex < argc)
@@ -82,6 +84,15 @@ i32 main(int argc, char* argv[])
             }
             materialPackPath = argv[++argIndex];
         }
+        else if (argument == "--material-assets")
+        {
+            if (argIndex + 1 >= argc)
+            {
+                NC_LOG_ERROR("--material-assets expects <output-directory>");
+                return -1;
+            }
+            materialAssetOutputPath = argv[++argIndex];
+        }
         else
             break;
         ++argIndex;
@@ -94,6 +105,7 @@ i32 main(int argc, char* argv[])
                      "[--material-allow-incomplete-source-semantics] "
                      "[--material-measure <advisory|required>] "
                      "[--material-pack <output.matpack>] "
+                     "[--material-assets <output-directory>] "
                      "<shader_source_dir> <shader_bin_dir>", argc - argIndex);
         return -1;
     }
@@ -117,6 +129,11 @@ i32 main(int argc, char* argv[])
         NC_LOG_ERROR("--material-pack requires --material-cook");
         return -1;
     }
+    if (materialManifestPath.empty() && !materialAssetOutputPath.empty())
+    {
+        NC_LOG_ERROR("--material-assets requires --material-cook");
+        return -1;
+    }
 
     std::optional<MaterialCooking::MaterialCookResult> materialResult;
     if (!materialManifestPath.empty())
@@ -136,6 +153,12 @@ i32 main(int argc, char* argv[])
         if (!loadedSources)
         {
             NC_LOG_ERROR("Failed to load authored Material sources: {}", loadedSources.error);
+            return -1;
+        }
+        std::string nativeProgramError;
+        if (!MaterialCooking::MaterialSourceRegistryIO::AppendNativePrograms(loadedSources.registry, loaded.manifest, nativeProgramError))
+        {
+            NC_LOG_ERROR("Failed to append native Material programs: {}", nativeProgramError);
             return -1;
         }
 
@@ -178,6 +201,16 @@ i32 main(int argc, char* argv[])
             NC_LOG_ERROR("Failed to generate authored Material group shaders: {}",
                          generatedShaderDirectory.string());
             return -1;
+        }
+        if (!materialAssetOutputPath.empty())
+        {
+            std::string materialAssetError;
+            if (!MaterialCooking::AuthoredMaterialAssetWriter::Save(materialAssetOutputPath, loadedSources.registry, materialResult->plan, materialAssetError))
+            {
+                NC_LOG_ERROR("Failed to write authored Material assets: {}", materialAssetError);
+                return -1;
+            }
+            NC_LOG_INFO("Wrote authored Material assets: {}", materialAssetOutputPath.string());
         }
         NC_LOG_INFO("Material cook produced {} programs: {}",
                     materialResult->plan.programs.size(), materialReportPath.string());

@@ -8,16 +8,31 @@
 
 namespace MaterialCooking
 {
+    struct MaterialCookManifest;
+
+    struct AuthoredMaterialInstance
+    {
+        std::string name;
+        std::string path;
+        u32 flags = FileFormat::Material::MaterialInstanceFlags_None;
+        u16 lightingModelID = static_cast<u16>(FileFormat::Material::ABI::LightingModel::Standard);
+    };
+
     struct AuthoredMaterialSource
     {
         std::string name;
         std::string programFamily;
+        std::string assetPath;
         std::string materialSource;
         std::string generatedSource;
         std::string materialFunction;
         std::string materialCoverageFunction;
         std::string sourceBody;
         std::vector<u8> pixelShaderIDs;
+        std::vector<AuthoredMaterialInstance> instances;
+        FileFormat::Material::RasterClass rasterClass = FileFormat::Material::RasterClass::Opaque;
+
+        bool IsNative() const { return !assetPath.empty(); }
     };
 
     struct MaterialSourceRegistry
@@ -52,6 +67,7 @@ namespace MaterialCooking
         static MaterialSourceResolveResult Resolve(
             const MaterialSourceRegistry& registry,
             std::span<const AuthoredMaterialProgramView> sourcePrograms);
+        static bool AppendNativePrograms(const MaterialSourceRegistry& registry, MaterialCookManifest& manifest, std::string& error);
         static bool WriteGeneratedSources(
             const MaterialSourceRegistry& registry,
             const std::filesystem::path& shaderSourceDirectory,

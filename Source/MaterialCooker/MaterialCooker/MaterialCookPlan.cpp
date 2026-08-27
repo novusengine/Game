@@ -275,10 +275,23 @@ namespace MaterialCooking
 
             const bool layered = source->sourceUnits.size() > 1;
             const auto groupClass = BaseExecutionGroup(source->rasterClass, layered);
-            const MaterialCompileResult compiled = LegacyMaterialCompiler::Compile(
-                *source->material, source->parameters, source->sourceUnits,
-                source->lightingModelID, source->rasterClass,
-                static_cast<u16>(groupClass), requireCompleteSourceSemantics);
+            MaterialCompileResult compiled;
+            if (source->sourceUnits.empty())
+            {
+                compiled.program.sourceProgramKey = source->material->programKey;
+                compiled.program.sourceProgramID = source->material->programID;
+                compiled.program.lightingModelID = source->lightingModelID;
+                compiled.program.executionGroupID = static_cast<u16>(groupClass);
+                compiled.program.rasterClass = static_cast<u8>(source->rasterClass);
+                compiled.program.flags = source->material->flags;
+                compiled.program.parameterLayoutHash = FileFormat::Material::CalculateParameterLayoutHash(source->parameters, source->material->parameterBlockSize);
+                compiled.program.parameterBlockSize = source->material->parameterBlockSize;
+                compiled.program.parameterBlockAlignment = source->material->parameterBlockAlignment;
+            }
+            else
+            {
+                compiled = LegacyMaterialCompiler::Compile(*source->material, source->parameters, source->sourceUnits, source->lightingModelID, source->rasterClass, static_cast<u16>(groupClass), requireCompleteSourceSemantics);
+            }
             if (!compiled)
             {
                 result.diagnostics.push_back(Diagnostic(

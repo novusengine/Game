@@ -67,8 +67,6 @@ namespace ModelLoading
         for (u32 index = 0; index < result.view.materialSlots.size(); ++index)
         {
             const Model::MaterialSlot& slot = result.view.materialSlots[index];
-            if (slot.defaultMaterialInstanceAssetID == FileFormat::INVALID_ASSET_ID)
-                return Fail(DiagnosticCode::MissingRequiredReference, "materialSlots.defaultMaterialInstanceAssetID", index);
             if (slot.reserved != 0)
                 return Fail(DiagnosticCode::ReservedValueNonZero, "materialSlots.reserved", index, slot.reserved, 0);
         }

@@ -25,6 +25,8 @@
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
 
+#include <Filesystem/PactStorage.h>
+
 #include <entt/entt.hpp>
 #include <lualib.h>
 
@@ -40,6 +42,58 @@ namespace fs = std::filesystem;
 
 namespace Scripting::Asset
 {
+    static bool StartsWithCaseInsensitive(std::string_view value, std::string_view prefix)
+    {
+        if (value.size() < prefix.size())
+            return false;
+
+        return std::equal(prefix.begin(), prefix.end(), value.begin(), [](unsigned char lhs, unsigned char rhs) { return std::tolower(lhs) == std::tolower(rhs); });
+    }
+
+    static void AddUniqueCandidate(std::vector<std::string>& candidates, std::string candidate)
+    {
+        if (!candidate.empty() && std::find(candidates.begin(), candidates.end(), candidate) == candidates.end())
+            candidates.push_back(std::move(candidate));
+    }
+
+    static bool ResolveModelAssetPath(const std::string& dataRelativePath, PACT::PactStorage* pactStorage, std::string& resolvedPath, FileFormat::AssetID& assetID)
+    {
+        std::string normalizedPath = dataRelativePath;
+        std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+        while (normalizedPath.starts_with("./"))
+            normalizedPath.erase(0, 2);
+
+        std::vector<std::string> candidates;
+        constexpr std::string_view overlayPrefixes[] = { "pact/data/staging/", "pact/data/custom/", "data/pact/data/staging/", "data/pact/data/custom/" };
+        for (std::string_view prefix : overlayPrefixes)
+        {
+            if (StartsWithCaseInsensitive(normalizedPath, prefix))
+                AddUniqueCandidate(candidates, normalizedPath.substr(prefix.size()));
+        }
+        AddUniqueCandidate(candidates, normalizedPath);
+
+        const size_t casePreservingCandidateCount = candidates.size();
+        for (size_t i = 0; i < casePreservingCandidateCount; ++i)
+        {
+            std::string lowercaseCandidate = candidates[i];
+            std::transform(lowercaseCandidate.begin(), lowercaseCandidate.end(), lowercaseCandidate.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+            AddUniqueCandidate(candidates, std::move(lowercaseCandidate));
+        }
+
+        for (const std::string& candidate : candidates)
+        {
+            const FileFormat::AssetID candidateID = Util::AssetPath::Hash(candidate);
+            if (pactStorage->FileExists(candidateID))
+            {
+                resolvedPath = candidate;
+                assetID = candidateID;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     void AssetHandler::Register(Zenith* zenith)
     {
         LuaManager* luaManager = ServiceLocator::GetLuaManager();
@@ -146,17 +200,17 @@ namespace Scripting::Asset
 
     entt::entity AssetHandler::CreateModelAtPosition(const std::string& dataRelativePath, const vec3& position)
     {
+        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
+        std::string modelPath;
+        FileFormat::AssetID modelPathHash = FileFormat::INVALID_ASSET_ID;
+        if (!pactStorage || !ResolveModelAssetPath(dataRelativePath, pactStorage, modelPath, modelPathHash))
+        {
+            NC_LOG_ERROR("Asset Browser : Failed to spawn model '{}': no mounted PACT asset matches the browser path", dataRelativePath);
+            return entt::null;
+        }
+
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
         entt::registry& registry = *registries->gameRegistry;
-
-        // The model loader expects the canonical PACT path beneath Data/Model with forward slashes.
-        fs::path dataRoot = GetDataRoot();
-        std::error_code ec;
-        std::string modelPath = fs::relative(dataRoot / dataRelativePath, dataRoot, ec).string();
-        if (ec)
-            modelPath = dataRelativePath;
-        std::replace(modelPath.begin(), modelPath.end(), '\\', '/');
-        std::transform(modelPath.begin(), modelPath.end(), modelPath.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 
         entt::entity entity = registry.create();
         registry.emplace<ECS::Components::Name>(entity);
@@ -166,8 +220,12 @@ namespace Scripting::Asset
 
         ECS::TransformSystem::Get(registry).SetLocalTransform(entity, position, quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
 
-        u64 modelPathHash = ServiceLocator::GetGameRenderer()->GetModelLoader()->GetModelHashFromModelPath(modelPath);
-        ServiceLocator::GetGameRenderer()->GetModelLoader()->LoadModelForEntity(entity, model, modelPathHash);
+        if (!ServiceLocator::GetGameRenderer()->GetModelLoader()->LoadModelForEntity(entity, model, modelPathHash))
+        {
+            registry.destroy(entity);
+            NC_LOG_ERROR("Asset Browser : Failed to queue model '{}' (resolved PACT path '{}', asset {})", dataRelativePath, modelPath, modelPathHash);
+            return entt::null;
+        }
 
         return entity;
     }
@@ -188,6 +246,7 @@ namespace Scripting::Asset
         auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
         if (activeCamera.entity == entt::null)
         {
+            NC_LOG_ERROR("Asset Browser : Failed to spawn model '{}': there is no active camera", relativeRaw);
             zenith->Push();
             return 1;
         }
@@ -195,6 +254,20 @@ namespace Scripting::Asset
         auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
         entt::entity entity = CreateModelAtPosition(relativeRaw, cameraTransform.GetWorldPosition());
 
+        zenith->Push(entt::to_integral(entity));
+        return 1;
+    }
+
+    i32 AssetHandler::SpawnModelAtWorldOrigin(Zenith* zenith)
+    {
+        const char* relativeRaw = zenith->CheckVal<const char*>(1);
+        if (!relativeRaw)
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        const entt::entity entity = CreateModelAtPosition(relativeRaw, vec3(0.0f));
         zenith->Push(entt::to_integral(entity));
         return 1;
     }

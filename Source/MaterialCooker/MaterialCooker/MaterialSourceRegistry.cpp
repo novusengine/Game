@@ -1,4 +1,5 @@
 #include "MaterialSourceRegistry.h"
+#include "MaterialProgramManifest.h"
 
 #include <algorithm>
 #include <cctype>
@@ -7,6 +8,8 @@
 #include <iterator>
 #include <map>
 #include <set>
+
+#include <xxhash/xxhash64.h>
 
 namespace
 {
@@ -30,8 +33,19 @@ namespace
                     break;
 
                 std::string property;
-                if (!ParseIdentifier(property) || !Consume('='))
+                if (!ParseIdentifier(property))
                     return Fail("expected a Material property assignment", error);
+
+                if (property == "instance")
+                {
+                    AuthoredMaterialInstance& instance = material.instances.emplace_back();
+                    if (!ParseIdentifier(instance.name) || !Consume('{') || !ParseInstance(instance, error))
+                        return false;
+                    continue;
+                }
+
+                if (!Consume('='))
+                    return Fail("expected '=' after Material property", error);
 
                 if (property == "programFamily")
                 {
@@ -45,6 +59,17 @@ namespace
                         !Consume(';'))
                         return Fail("invalid or duplicate pixelShaderIDs", error);
                 }
+                else if (property == "materialPath")
+                {
+                    if (!material.assetPath.empty() || !ParseString(material.assetPath) || !Consume(';'))
+                        return Fail("invalid or duplicate materialPath", error);
+                }
+                else if (property == "rasterClass")
+                {
+                    std::string value;
+                    if (!ParseIdentifier(value) || !ParseRasterClass(value, material.rasterClass) || !Consume(';'))
+                        return Fail("invalid rasterClass", error);
+                }
                 else
                 {
                   return Fail("unsupported Material property '" + property +
@@ -55,6 +80,8 @@ namespace
 
             if (!hasProgramFamily)
                 return Fail("missing programFamily", error);
+            if (material.IsNative() && material.instances.empty())
+                return Fail("native Material requires at least one instance", error);
 
             material.sourceBody = std::string(_source.substr(_position));
             material.materialFunction = "EvaluateMaterial_" + material.name;
@@ -153,6 +180,119 @@ namespace
             }
         }
 
+        bool ParseString(std::string& value)
+        {
+            SkipWhitespace();
+            if (_position >= _source.size() || _source[_position] != '"')
+                return false;
+            const size_t start = ++_position;
+            while (_position < _source.size() && _source[_position] != '"')
+            {
+                if (_source[_position] == '\\' || _source[_position] == '\n' || _source[_position] == '\r')
+                    return false;
+                ++_position;
+            }
+            if (_position >= _source.size())
+                return false;
+            value.assign(_source.substr(start, _position - start));
+            ++_position;
+            return !value.empty();
+        }
+
+        bool ParseInstance(AuthoredMaterialInstance& instance, std::string& error)
+        {
+            bool hasPath = false;
+            while (true)
+            {
+                SkipWhitespace();
+                if (Consume('}'))
+                    break;
+
+                std::string property;
+                if (!ParseIdentifier(property) || !Consume('='))
+                    return Fail("expected a Material instance property assignment", error);
+                if (property == "path")
+                {
+                    if (hasPath || !ParseString(instance.path) || !Consume(';'))
+                        return Fail("invalid or duplicate instance path", error);
+                    hasPath = true;
+                }
+                else if (property == "lightingModel")
+                {
+                    std::string value;
+                    if (!ParseIdentifier(value) || !ParseLightingModel(value, instance.lightingModelID) || !Consume(';'))
+                        return Fail("invalid lightingModel", error);
+                }
+                else if (property == "flags")
+                {
+                    if (instance.flags != FileFormat::Material::MaterialInstanceFlags_None || !ParseInstanceFlags(instance.flags) || !Consume(';'))
+                        return Fail("invalid or duplicate instance flags", error);
+                }
+                else
+                    return Fail("unsupported Material instance property '" + property + "'", error);
+            }
+            if (!hasPath)
+                return Fail("Material instance is missing path", error);
+            return true;
+        }
+
+        bool ParseInstanceFlags(u32& flags)
+        {
+            if (!Consume('['))
+                return false;
+            std::set<std::string> uniqueValues;
+            while (true)
+            {
+                SkipWhitespace();
+                if (Consume(']'))
+                    return true;
+                std::string value;
+                if (!ParseIdentifier(value) || !uniqueValues.emplace(value).second)
+                    return false;
+                if (value == "TwoSided")
+                    flags |= FileFormat::Material::MaterialInstanceFlags_TwoSided;
+                else if (value == "CastsShadows")
+                    flags |= FileFormat::Material::MaterialInstanceFlags_CastsShadows;
+                else if (value == "ReceivesDecals")
+                    flags |= FileFormat::Material::MaterialInstanceFlags_ReceivesDecals;
+                else if (value == "ReceivesFog")
+                    flags |= FileFormat::Material::MaterialInstanceFlags_ReceivesFog;
+                else if (value == "HasTextureTransforms")
+                    flags |= FileFormat::Material::MaterialInstanceFlags_HasTextureTransforms;
+                else
+                    return false;
+                SkipWhitespace();
+                if (Consume(']'))
+                    return true;
+                if (!Consume(','))
+                    return false;
+            }
+        }
+
+        static bool ParseRasterClass(std::string_view value, FileFormat::Material::RasterClass& rasterClass)
+        {
+            if (value == "Opaque")
+                rasterClass = FileFormat::Material::RasterClass::Opaque;
+            else if (value == "AlphaTest")
+                rasterClass = FileFormat::Material::RasterClass::AlphaTest;
+            else if (value == "Transparent")
+                rasterClass = FileFormat::Material::RasterClass::Transparent;
+            else
+                return false;
+            return true;
+        }
+
+        static bool ParseLightingModel(std::string_view value, u16& lightingModelID)
+        {
+            if (value == "Standard")
+                lightingModelID = static_cast<u16>(FileFormat::Material::ABI::LightingModel::Standard);
+            else if (value == "Unlit")
+                lightingModelID = static_cast<u16>(FileFormat::Material::ABI::LightingModel::Unlit);
+            else
+                return false;
+            return true;
+        }
+
         bool Fail(std::string message, std::string& error) const
         {
             const u32 line = 1u + static_cast<u32>(
@@ -224,6 +364,7 @@ namespace MaterialCooking
 
         std::set<std::string> names;
         std::set<u8> pixelShaderIDs;
+        std::set<std::string> assetPaths;
         for (const std::filesystem::path& path : paths)
         {
             std::string source;
@@ -254,6 +395,22 @@ namespace MaterialCooking
                     return result;
                 }
             }
+            if (material.IsNative())
+            {
+                if (!assetPaths.emplace(material.assetPath).second)
+                {
+                    result.error = "duplicate authored Material asset path: " + material.assetPath;
+                    return result;
+                }
+                for (const AuthoredMaterialInstance& instance : material.instances)
+                {
+                    if (!assetPaths.emplace(instance.path).second)
+                    {
+                        result.error = "duplicate authored Material asset path: " + instance.path;
+                        return result;
+                    }
+                }
+            }
 
             std::filesystem::path relative = std::filesystem::relative(path, shaderSourceDirectory,
                                                                         filesystemError);
@@ -276,6 +433,46 @@ namespace MaterialCooking
             material.generatedSource = "Generated/MaterialSources/" + generated + ".inc.slang";
         }
         return result;
+    }
+
+    bool MaterialSourceRegistryIO::AppendNativePrograms(const MaterialSourceRegistry& registry, MaterialCookManifest& manifest, std::string& error)
+    {
+        error.clear();
+        std::set<std::string_view> canonicalKeys;
+        std::set<FileFormat::Material::MaterialProgramKey> programKeys;
+        for (const MaterialCookInputProgram& program : manifest.programs)
+        {
+            canonicalKeys.emplace(program.canonicalKey);
+            programKeys.emplace(program.material.programKey);
+        }
+
+        for (const AuthoredMaterialSource& source : registry.materials)
+        {
+            if (!source.IsNative())
+                continue;
+            if (!canonicalKeys.emplace(source.name).second)
+            {
+                error = "native Material canonical key collides with source manifest: " + source.name;
+                return false;
+            }
+
+            const u64 programKey = XXHash64::hash(source.assetPath.data(), source.assetPath.size(), 0);
+            if (programKey == FileFormat::Material::INVALID_MATERIAL_PROGRAM_KEY || !programKeys.emplace(programKey).second)
+            {
+                error = "native Material program key collision: " + source.name;
+                return false;
+            }
+
+            MaterialCookInputProgram& program = manifest.programs.emplace_back();
+            program.canonicalKey = source.name;
+            program.material.programKey = programKey;
+            program.material.programID = static_cast<u32>(programKey ^ (programKey >> 32u));
+            program.material.flags = source.materialCoverageFunction.empty() ? FileFormat::Material::MaterialFlags_None : FileFormat::Material::MaterialFlags_HasCoverageFunction;
+            program.material.parameterBlockAlignment = 16;
+            program.lightingModelID = source.instances.front().lightingModelID;
+            program.rasterClass = source.rasterClass;
+        }
+        return true;
     }
 
     MaterialSourceResolveResult MaterialSourceRegistryIO::Resolve(

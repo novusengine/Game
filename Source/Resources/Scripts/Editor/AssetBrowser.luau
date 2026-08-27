@@ -179,6 +179,7 @@ local function OpenFileMenu(file, mouseX, mouseY)
     if file.ext ~= MODEL_EXT then return end
     fileMenu:SetItems({
         { label = "Spawn at camera", onClick = function() Asset.SpawnModel(file.path) end },
+        { label = "Spawn at world origin", onClick = function() Asset.SpawnModelAtWorldOrigin(file.path) end },
     })
     fileMenu:Open(mouseX, mouseY)
 end

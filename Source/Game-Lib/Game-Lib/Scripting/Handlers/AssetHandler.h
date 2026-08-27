@@ -23,6 +23,7 @@ namespace Scripting::Asset
 
         static i32 ListDir(Zenith* zenith);
         static i32 SpawnModel(Zenith* zenith);
+        static i32 SpawnModelAtWorldOrigin(Zenith* zenith);
         static i32 BeginDragSpawn(Zenith* zenith);
         static i32 LoadRenderModel(Zenith* zenith);
         static i32 GetRenderAssetStats(Zenith* zenith);
@@ -37,6 +38,7 @@ namespace Scripting::Asset
     {
         { "ListDir",        AssetHandler::ListDir,        Scripting::LuaMethodFlags::DeveloperOnly },
         { "SpawnModel",     AssetHandler::SpawnModel,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SpawnModelAtWorldOrigin", AssetHandler::SpawnModelAtWorldOrigin, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BeginDragSpawn", AssetHandler::BeginDragSpawn, Scripting::LuaMethodFlags::DeveloperOnly },
         { "LoadRenderModel", AssetHandler::LoadRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetRenderAssetStats", AssetHandler::GetRenderAssetStats, Scripting::LuaMethodFlags::DeveloperOnly },
