@@ -73,10 +73,15 @@ namespace Editor
         struct IncomingTransfer
         {
         public:
-            u32 requestID = 0;
-            u64 revision = 0;
+            // Compilers reject default member initializers on nested types when a member of the
+            // enclosing class needs them before the class is complete (gcc bug 96645), so
+            // initialize via the constructor instead
+            IncomingTransfer() : requestID(0), revision(0), receivedBytes(0) {}
+
+            u32 requestID;
+            u64 revision;
             std::vector<u8> bytes;
-            size_t receivedBytes = 0;
+            size_t receivedBytes;
         };
 
         struct Checkout

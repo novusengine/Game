@@ -65,6 +65,7 @@ namespace Scripting::UI
 
         // UI functions
         static i32 GetCanvas(Zenith* zenith);
+        static i32 GetShapeSurface(Zenith* zenith);
         static i32 GetMousePos(Zenith* zenith);
         static i32 DrawLine2D(Zenith* zenith);
         static i32 GetTextureSize(Zenith* zenith);
@@ -146,6 +147,7 @@ namespace Scripting::UI
         { "RegisterSendMessageToChatCallback", UIHandler::RegisterSendMessageToChatCallback },
 
         { "GetCanvas", UIHandler::GetCanvas },
+        { "GetShapeSurface", UIHandler::GetShapeSurface },
         { "GetMousePos", UIHandler::GetMousePos },
         { "DrawLine2D", UIHandler::DrawLine2D },
 

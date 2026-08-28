@@ -525,7 +525,7 @@ namespace ECS::Systems::UI
             if (widget.type == Components::UI::WidgetType::Panel)
             {
                 auto& panelTemplate = registry.get<Components::UI::PanelTemplate>(childEntity);
-                if (panelTemplate.setFlags.backgroundRT)
+                if (panelTemplate.setFlags.backgroundRT && panelTemplate.backgroundRTEntity != entt::null) // ShapeSurface backgrounds have no canvas entity to recurse into
                 {
                     RecursivelyFindHoveredInCanvas(registry, panelTemplate.backgroundRTEntity, mousePos, allHoveredEntities, worldMin, cappedMax, discardedRecords);
                 }

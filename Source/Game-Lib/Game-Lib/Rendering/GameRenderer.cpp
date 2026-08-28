@@ -13,6 +13,7 @@
 #include "Liquid/LiquidLoader.h"
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
+#include "Shape/ShapeTextureRenderer.h"
 #include "Editor/EditorRenderer.h"
 #include "Effect/EffectRenderer.h"
 #include "Shadow/ShadowRenderer.h"
@@ -257,6 +258,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _materialRenderer = new MaterialRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _lightRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, this, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, this, _debugRenderer);
+    _shapeTextureRenderer = new ShapeTextureRenderer(_renderer, this);
     _canvasRenderer = new CanvasRenderer(_renderer, this, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer, this);
@@ -302,6 +304,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _lightRenderer->Update(deltaTime);
     _pixelQuery->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
+    _shapeTextureRenderer->Update(deltaTime);
     _canvasRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
@@ -521,6 +524,9 @@ f32 GameRenderer::Render()
 
     _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
+
+    // Renders dirty shape surfaces before the canvas pass samples them as panel backgrounds
+    _shapeTextureRenderer->AddShapePass(&renderGraph, _resources, _frameIndex);
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);

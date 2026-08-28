@@ -623,6 +623,18 @@ i32 Scripting::UI::WidgetMethods::SetPosY(Zenith* zenith, Widget* widget)
     return 0;
 }
 
+i32 Scripting::UI::WidgetMethods::ScreenToLocal(Zenith* zenith, Widget* widget)
+{
+    const vec3 screenPos = zenith->CheckVal<vec3>(2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    const vec2& worldPos = registry->get<ECS::Components::Transform2D>(widget->entity).GetWorldPosition();
+    zenith->Push(vec2(screenPos.x, screenPos.y) - worldPos);
+
+    return 1;
+}
+
 i32 Scripting::UI::WidgetMethods::GetWorldPos(Zenith* zenith, Widget* widget)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;

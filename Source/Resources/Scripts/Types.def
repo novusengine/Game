@@ -1,8 +1,23 @@
 export type vec = vector
 
+-- The full Luau built-in vector library, renamed to `vec` (New = vector.create). These are
+-- VM-optimized fastcalls — prefer them over hand-rolled component math.
 declare vec :
 {
     New : ((x : number, y : number, z : number?) -> vec),
+    magnitude : ((v : vec) -> number),
+    normalize : ((v : vec) -> vec),
+    cross : ((a : vec, b : vec) -> vec),
+    dot : ((a : vec, b : vec) -> number),
+    angle : ((a : vec, b : vec, axis : vec?) -> number),
+    floor : ((v : vec) -> vec),
+    ceil : ((v : vec) -> vec),
+    abs : ((v : vec) -> vec),
+    sign : ((v : vec) -> vec),
+    clamp : ((v : vec, min : vec, max : vec) -> vec),
+    max : ((first : vec, ...vec) -> vec),
+    min : ((first : vec, ...vec) -> vec),
+    lerp : ((a : vec, b : vec, t : number) -> vec),
 }
 
 declare extern type Engine with
@@ -383,6 +398,10 @@ declare extern type Widget extends WidgetInputEvents with
     function GetWorldPos(self) : vec
     function GetWorldPosX(self) : number
     function GetWorldPosY(self) : number
+
+    -- Converts a UI reference-space position (e.g. UI.GetMousePos()) into this widget's local
+    -- space, relative to its bottom-left corner
+    function ScreenToLocal(self, screenPos : vec) : vec
     function SetWorldPos(self, position : vec) : ()
     function SetWorldPosX(self, x : number) : ()
     function SetWorldPosY(self, y : number) : ()
@@ -401,6 +420,63 @@ declare extern type Canvas with
     function NewText(self, text : string, position : vec, layer : integer, template : string) : TextWidget
 end
 
+-- Offscreen vector-shape texture, usable as a panel background via Panel:SetBackground.
+-- All coordinates are in surface pixels using the UI convention: bottom-left origin, +Y up,
+-- and angles CCW from +X. Colors are vec RGB in 0..1 with a separate optional alpha. Stroke calls
+-- share the trailing signature (width, color, alpha?, dashLength?, gapLength?, dashOffset?);
+-- dashLength 0 (or omitted) = solid.
+declare extern type ShapeSurface with
+    function Clear(self) : ()
+    -- Schedules a redraw of the retained shapes without changing them
+    function ForceRefresh(self) : ()
+    function GetSize(self) : vec
+    -- Recreates the texture at a new size; consumers (e.g. Panel:SetBackground) must be re-bound afterwards
+    function Resize(self, size : vec) : ()
+    -- Backdrop rendered beneath the shapes (default fully transparent)
+    function SetClearColor(self, color : vec, alpha : number?) : ()
+    -- Record-time clip rects: shapes drawn while pushed are clipped (antialiased) to the rect; nested pushes intersect
+    function PushClipRect(self, min : vec, max : vec) : ()
+    function PopClipRect(self) : ()
+    -- Record-time transforms: translate/uniform-scale/rotate applied to subsequent draws; nested pushes compose.
+    -- Grids and checkerboards ignore the rotation component
+    function PushTransform(self, translation : vec, scale : number?, rotation : number?) : ()
+    function PopTransform(self) : ()
+
+    -- Stroke calls share the trailing signature (width, color, alpha?, dashLength?, gapLength?,
+    -- dashOffset?, endColor?, endAlpha?, capStyle?); an endColor blends the stroke from color to
+    -- endColor along the path (or along the angular span for arcs). capStyle (0 round, 1 butt,
+    -- 2 square) applies to single lines only; polylines/beziers always join and cap round
+    function DrawLine(self, from : vec, to : vec, width : number, color : vec, alpha : number?, dashLength : number?, gapLength : number?, dashOffset : number?, endColor : vec?, endAlpha : number?, capStyle : number?) : ()
+    function DrawPolyline(self, points : { vec }, width : number, color : vec, alpha : number?, dashLength : number?, gapLength : number?, dashOffset : number?, endColor : vec?, endAlpha : number?) : ()
+    function DrawBezier(self, p0 : vec, c0 : vec, c1 : vec, p1 : vec, width : number, color : vec, alpha : number?, dashLength : number?, gapLength : number?, dashOffset : number?, endColor : vec?, endAlpha : number?) : ()
+    -- cornerRadius is a uniform number or a table of four radii { bottomLeft, bottomRight, topLeft, topRight }
+    -- (whole pixels, max 255). endColor makes a vertical bottom->top gradient (uniform radius only);
+    -- rotation spins the rect around its center, radians CCW
+    function DrawRect(self, min : vec, max : vec, cornerRadius : number | { number }, color : vec, alpha : number?, endColor : vec?, endAlpha : number?, rotation : number?) : ()
+    -- capStyle occupies the shared stroke slot but is ignored on closed outlines; rotation follows it
+    function DrawRectOutline(self, min : vec, max : vec, cornerRadius : number, width : number, color : vec, alpha : number?, dashLength : number?, gapLength : number?, dashOffset : number?, endColor : vec?, endAlpha : number?, capStyle : number?, rotation : number?) : ()
+    -- edgeColor makes a radial center->edge gradient
+    function DrawCircle(self, center : vec, radius : number, color : vec, alpha : number?, edgeColor : vec?, edgeAlpha : number?) : ()
+    function DrawCircleOutline(self, center : vec, radius : number, width : number, color : vec, alpha : number?, dashLength : number?, gapLength : number?, dashOffset : number?, endColor : vec?, endAlpha : number?) : ()
+    -- radii.x/radii.y are the ellipse half-extents. Ellipse-outline dashes are spaced uniformly in
+    -- angle, so they stretch slightly along the flatter sides of eccentric ellipses
+    function DrawEllipse(self, center : vec, radii : vec, color : vec, alpha : number?, rotation : number?) : ()
+    function DrawEllipseOutline(self, center : vec, radii : vec, width : number, color : vec, alpha : number?, dashLength : number?, gapLength : number?, dashOffset : number?, rotation : number?) : ()
+    function DrawArc(self, center : vec, radius : number, startAngle : number, endAngle : number, width : number, color : vec, alpha : number?, dashLength : number?, gapLength : number?, dashOffset : number?, endColor : vec?, endAlpha : number?) : ()
+    -- endColor makes an angular gradient along the wedge's span
+    function DrawPie(self, center : vec, radius : number, startAngle : number, endAngle : number, color : vec, alpha : number?, endColor : vec?, endAlpha : number?) : ()
+    -- holes: optional table of point tables punched out of the polygon (must lie inside it)
+    function DrawPolygon(self, points : { vec }, color : vec, alpha : number?, holes : { { vec } }?) : ()
+    function DrawGrid(self, origin : vec, spacing : vec, lineWidth : number, color : vec, alpha : number?, majorEvery : number?, majorLineWidth : number?, majorColor : vec?, majorAlpha : number?) : ()
+    function DrawCheckerboard(self, origin : vec, cellSize : vec, colorA : vec, colorB : vec, alphaA : number?, alphaB : number?) : ()
+    -- Stamps a texture into the surface, tinted, optionally uv-cropped and rotated. Textures load
+    -- through the shape renderer's own texture array (independent of the UI's)
+    function DrawImage(self, min : vec, max : vec, texturePath : string, tint : vec?, alpha : number?, uvMin : vec?, uvMax : vec?, rotation : number?) : ()
+    -- Analytic rounded-rect drop shadow (soft falloff over blurRadius, single pass). Draw it
+    -- before the shape it sits under; offset shifts the shadow relative to the rect
+    function DrawRectShadow(self, min : vec, max : vec, cornerRadius : number, blurRadius : number, color : vec, alpha : number?, offset : vec?, rotation : number?) : ()
+end
+
 declare extern type Panel extends Widget with
     function GetSize(self) : vec
     function GetWidth(self) : number
@@ -409,7 +485,7 @@ declare extern type Panel extends Widget with
     function SetWidth(self, width : number) : ()
     function SetHeight(self, height : number) : ()
 
-    function SetBackground(self, background : (string | Canvas)?) : ()
+    function SetBackground(self, background : (string | Canvas | ShapeSurface)?) : ()
     function SetForeground(self, foreground : string?) : ()
 
     function SetTexCoords(self, min : vec, max : vec) : ()
@@ -490,6 +566,7 @@ declare UI :
     RegisterSendMessageToChatCallback : ((callback : SendMessageToChatCallback?) -> ()),
 
     GetCanvas : ((name : string, position : vec, size : vec, isRenderTexture : boolean?) -> Canvas),
+    GetShapeSurface : ((name : string, size : vec) -> ShapeSurface),
     GetMousePos : (() -> vec),
     DrawLine2D : ((from : vec, to : vec, color : vec) -> ()),
     GetTextureSize : ((path : string) -> vec?),

@@ -13,7 +13,8 @@ namespace Scripting::UI
         Canvas,
         Panel,
         Text,
-        Widget
+        Widget,
+        ShapeSurface
     };
 
     struct Widget
@@ -80,6 +81,8 @@ namespace Scripting::UI
         i32 SetPosX(Zenith* zenith, Widget* widget);
         i32 SetPosY(Zenith* zenith, Widget* widget);
 
+        i32 ScreenToLocal(Zenith* zenith, Widget* widget);
+
         // TODO: Rename these to GetPos/SetPos, and the previous ones to GetLocalPos/SetLocalPos
         i32 GetWorldPos(Zenith* zenith, Widget* widget);
         i32 GetWorldPosX(Zenith* zenith, Widget* widget);
@@ -139,6 +142,8 @@ namespace Scripting::UI
         { "SetPos", WidgetMethods::SetPos },
         { "SetPosX", WidgetMethods::SetPosX },
         { "SetPosY", WidgetMethods::SetPosY },
+
+        { "ScreenToLocal", WidgetMethods::ScreenToLocal },
 
         { "GetWorldPos", WidgetMethods::GetWorldPos },
         { "GetWorldPosX", WidgetMethods::GetWorldPosX },

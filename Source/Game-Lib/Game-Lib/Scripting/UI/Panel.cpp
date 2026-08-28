@@ -6,7 +6,9 @@
 #include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/UI/Canvas.h"
+#include "Game-Lib/Scripting/UI/ShapeSurface.h"
 #include "Game-Lib/Scripting/UI/Text.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -145,9 +147,24 @@ namespace Scripting::UI
                     panelTemplate.setFlags.background = false;
                     panelTemplate.setFlags.backgroundRT = true;
                 }
+                else if (widget->type == WidgetType::ShapeSurface)
+                {
+                    ShapeSurface* shapeSurface = reinterpret_cast<ShapeSurface*>(widget);
+                    Renderer::TextureID textureID = ServiceLocator::GetGameRenderer()->GetShapeTextureRenderer()->GetTextureID(shapeSurface->surfaceID);
+
+                    if (textureID == Renderer::TextureID::Invalid())
+                    {
+                        luaL_error(zenith->state, "Tried to SetBackground using a destroyed ShapeSurface");
+                    }
+
+                    panelTemplate.backgroundRT = textureID;
+                    panelTemplate.backgroundRTEntity = entt::null;
+                    panelTemplate.setFlags.background = false;
+                    panelTemplate.setFlags.backgroundRT = true;
+                }
                 else
                 {
-                    luaL_error(zenith->state, "Expected parameter 2 to be either a string or a Canvas");
+                    luaL_error(zenith->state, "Expected parameter 2 to be either a string, a Canvas or a ShapeSurface");
                 }
             }
             else if (zenith->IsNil(2))
@@ -160,7 +177,7 @@ namespace Scripting::UI
             }
             else
             {
-                luaL_error(zenith->state, "Expected parameter 2 to be either a string or a Canvas");
+                luaL_error(zenith->state, "Expected parameter 2 to be either a string, a Canvas or a ShapeSurface");
             }
 
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);

@@ -37,6 +37,7 @@ class ModelLoader;
 class MapLoader;
 class MaterialRenderer;
 class SkyboxRenderer;
+class ShapeTextureRenderer;
 class EditorRenderer;
 class DebugRenderer;
 class LightRenderer;
@@ -93,6 +94,7 @@ public:
     TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
     TextureRenderer* GetTextureRenderer() { return _textureRenderer; }
     SkyboxRenderer* GetSkyboxRenderer() { return _skyboxRenderer; }
+    ShapeTextureRenderer* GetShapeTextureRenderer() { return _shapeTextureRenderer; }
 
     LiquidLoader* GetLiquidLoader() { return _liquidLoader; }
     MapLoader* GetMapLoader() { return _mapLoader; }
@@ -179,6 +181,7 @@ private:
     LightRenderer* _lightRenderer = nullptr;
     JoltDebugRenderer* _joltDebugRenderer = nullptr;
     EditorRenderer* _editorRenderer = nullptr;
+    ShapeTextureRenderer* _shapeTextureRenderer = nullptr;
     CanvasRenderer* _canvasRenderer = nullptr;
     UIRenderer* _uiRenderer = nullptr;
     EffectRenderer* _effectRenderer = nullptr;

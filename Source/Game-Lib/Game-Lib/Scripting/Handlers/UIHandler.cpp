@@ -13,6 +13,7 @@
 #include "Game-Lib/Scripting/UI/Box.h"
 #include "Game-Lib/Scripting/UI/Canvas.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
+#include "Game-Lib/Scripting/UI/ShapeSurface.h"
 #include "Game-Lib/Scripting/UI/Text.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/UI/Box.h"
@@ -263,6 +264,7 @@ namespace Scripting::UI
         Canvas::Register(zenith);
         Panel::Register(zenith);
         Text::Register(zenith);
+        ShapeSurface::Register(zenith);
 
         // Utils
         Box::Register(zenith);
@@ -748,6 +750,11 @@ namespace Scripting::UI
         lua_setmetatable(zenith->state, -2);
 
         return 1;
+    }
+
+    i32 UIHandler::GetShapeSurface(Zenith* zenith)
+    {
+        return ShapeSurface::GetShapeSurface(zenith);
     }
 
     i32 UIHandler::GetMousePos(Zenith* zenith)

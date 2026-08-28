@@ -1254,6 +1254,12 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     drawData.texCoord = vec4(texCoordMin, texCoordMax);
     drawData.sliceCoords = vec4(sliceCoordMin, sliceCoordMax);
 
+    // Per-panel feature flags so the pixel shader can skip work most panels don't use;
+    // stamped into packed2 together with the clip/mask indices below
+    u32 panelFlags = 0;
+    panelFlags |= !panelTemplate.foreground.empty() ? 0x1u : 0u;                          // has additive foreground
+    panelFlags |= glm::any(glm::greaterThan(sliceInsets, vec4(0.0f))) ? 0x2u : 0u;        // uses nine-slice
+
     // Clipping. Resolution happens on the GPU via _widgetClipRects / _widgetMaskInfo;
     // we only stamp the slot indexes here. The slot contents are owned by the clip
     // source (the ancestor with clipChildren=true, or self if hasClipMaskTexture).
@@ -1271,7 +1277,7 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
                 maskBoundsIndex = ancestorClipper.maskBufferIndex;
         }
 
-        drawData.packed2 = uvec4(clipBoundsIndex, maskBoundsIndex, 0u, 0u);
+        drawData.packed2 = uvec4(clipBoundsIndex, maskBoundsIndex, panelFlags, 0u);
     }
 
     // packed0.z = screen-matrix slot (0 = identity sentinel); packed0.w = 3D worldpos index (-1 = none).
