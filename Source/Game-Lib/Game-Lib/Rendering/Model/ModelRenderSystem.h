@@ -23,6 +23,8 @@ namespace RenderScenes
     class RenderScene;
 }
 
+namespace Animation { class ModelDeformationSystem; }
+
 namespace Renderer
 {
     class DescriptorSet;
@@ -53,8 +55,9 @@ namespace ModelRendering
         ModelRenderSystem(Renderer::Renderer* renderer, GameRenderer* gameRenderer,
                           RenderAssets::RenderAssetResources* assets, RenderScenes::RenderScene* scene,
                           RenderResources& resources, bool validateTransfers = false);
+        ~ModelRenderSystem();
 
-        void Update();
+        void Update(f32 deltaTime);
         void Upload();
         void CompleteFrame(u8 frameIndex);
         void AdvanceFrame(u8 frameIndex);
@@ -65,6 +68,7 @@ namespace ModelRendering
         RenderScenes::RenderView* GetMainView() { return _mainView ? &_mainView->GetView() : nullptr; }
         void PreparePreEffectsViews(RenderResources& resources);
         void AddVisibilityPhase1Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddDeformationPass(Renderer::RenderGraph* renderGraph);
         void AddVisibilityPhase2Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -85,6 +89,8 @@ namespace ModelRendering
 
         ModelView::WorkStats GetMainViewStats() const;
         ModelPerformanceStats GetPerformanceStats() const;
+        Animation::ModelDeformationSystem* GetDeformationSystem() { return _deformationSystem.get(); }
+        const Animation::ModelDeformationSystem* GetDeformationSystem() const { return _deformationSystem.get(); }
 
       private:
         void RebuildSceneList();
@@ -107,5 +113,6 @@ namespace ModelRendering
         PixelQueryBindings _pixelQueryBindings;
         u64 _submittedFrameValues[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
         u64 _nextSubmissionValue = 1;
+        std::unique_ptr<Animation::ModelDeformationSystem> _deformationSystem;
     };
 } // namespace ModelRendering

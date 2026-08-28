@@ -1,6 +1,7 @@
 #include "ModelGeometryBindings.h"
 
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
+#include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 
 #include <Renderer/RenderGraph.h>
@@ -30,6 +31,13 @@ namespace ModelPipeline
         changed |= BindOne(descriptorSet, "_modelVisibilityVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(), _vertexIndices);
         changed |= BindOne(descriptorSet, "_modelVisibilityTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), _triangles);
         changed |= BindOne(descriptorSet, "_modelVisibilityMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(), _materialTable);
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            changed |= BindOne(descriptorSet, "_modelDeformationRecords"_h, deformation->GetRecords().GetBuffer(), _deformationRecords);
+            changed |= BindOne(descriptorSet, "_modelDeformedPositions"_h, deformation->GetPositions().GetBuffer(), _deformedPositions);
+            changed |= BindOne(descriptorSet, "_modelDeformedVertexAttributes"_h, deformation->GetVertexAttributes().GetBuffer(), _deformedVertexAttributes);
+        }
         return changed;
     }
 
@@ -46,5 +54,12 @@ namespace ModelPipeline
         builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), usage);
         builder.Read(geometry.GetMeshletTriangles().GetBuffer(), usage);
         builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), usage);
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            builder.Read(deformation->GetRecords().GetBuffer(), usage);
+            builder.Read(deformation->GetPositions().GetBuffer(), usage);
+            builder.Read(deformation->GetVertexAttributes().GetBuffer(), usage);
+        }
     }
 }

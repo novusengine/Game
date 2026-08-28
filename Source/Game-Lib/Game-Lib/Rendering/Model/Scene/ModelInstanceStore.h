@@ -1,5 +1,6 @@
 #pragma once
 #include "Game-Lib/Rendering/Asset/RenderAssetHandles.h"
+#include "Game-Lib/Rendering/Animation/Pose/PoseSourceStore.h"
 #include "Game-Lib/Rendering/Scene/RenderSceneHandles.h"
 #include "MeshletHistoryAllocator.h"
 
@@ -71,6 +72,7 @@ namespace ModelScene
         RenderScenes::ModelMaterialTableHandle materialTable;
         RenderScenes::GeometryGroupMaskHandle geometryGroupMask;
         MeshletHistoryRange meshletHistory;
+        Animation::PoseSourceHandle poseSource;
     };
 
     struct ModelInstanceStoreStats
@@ -105,6 +107,8 @@ namespace ModelScene
         bool SetMaterialTable(RenderScenes::ModelInstanceHandle handle, RenderScenes::ModelMaterialTableHandle table,
                               u32 offset, u32 count, bool isPrivate);
         bool InvalidateReplay(RenderScenes::ModelInstanceHandle handle);
+        bool SetPoseSource(RenderScenes::ModelInstanceHandle handle, Animation::PoseSourceHandle poseSource);
+        bool SetDeformationHandle(RenderScenes::ModelInstanceHandle handle, u32 deformationHandle);
         void AdvanceFrame();
         void PublishPending();
         void SyncToGPU(Renderer::Renderer* renderer);

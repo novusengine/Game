@@ -11,6 +11,7 @@
 // Includes that provide types used by descriptor sets
 #include "Light/LightShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
+#include "Animation/AnimationPalette.inc.slang"
 
 [shader("compute")]
 [numthreads(8, 8, 1)]

@@ -2,6 +2,7 @@
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/Material/MaterialRenderer.h"
 #include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
@@ -103,6 +104,13 @@ namespace ModelPipeline
         Bind("_transparentRasterVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer());
         Bind("_transparentRasterTriangles"_h, geometry.GetMeshletTriangles().GetBuffer());
         Bind("_transparentRasterMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer());
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            Bind("_modelDeformationRecords"_h, deformation->GetRecords().GetBuffer());
+            Bind("_modelDeformedPositions"_h, deformation->GetPositions().GetBuffer());
+            Bind("_modelDeformedVertexAttributes"_h, deformation->GetVertexAttributes().GetBuffer());
+        }
         return !_depthSet.HasPendingBufferWrites();
     }
 
@@ -148,6 +156,13 @@ namespace ModelPipeline
                 builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(geometry.GetMeshletTriangles().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::GRAPHICS);
+                const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+                if (deformation)
+                {
+                    builder.Read(deformation->GetRecords().GetBuffer(), Usage::GRAPHICS);
+                    builder.Read(deformation->GetPositions().GetBuffer(), Usage::GRAPHICS);
+                    builder.Read(deformation->GetVertexAttributes().GetBuffer(), Usage::GRAPHICS);
+                }
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::GRAPHICS);

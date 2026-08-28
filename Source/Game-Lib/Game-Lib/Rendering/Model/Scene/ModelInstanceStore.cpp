@@ -329,6 +329,35 @@ namespace ModelScene
         return true;
     }
 
+    bool ModelInstanceStore::SetPoseSource(RenderScenes::ModelInstanceHandle handle, Animation::PoseSourceHandle poseSource)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+        slot->resources.poseSource = poseSource;
+        return SetDeformationHandle(handle, RenderScenes::INVALID_SCENE_INDEX);
+    }
+
+    bool ModelInstanceStore::SetDeformationHandle(RenderScenes::ModelInstanceHandle handle, u32 deformationHandle)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        ModelInstanceGPURecord& record = _records[slotIndex];
+        if (record.deformationHandle == deformationHandle)
+            return true;
+        record.deformationHandle = deformationHandle;
+        _records.SetDirtyElement(slotIndex);
+        return true;
+    }
+
     void ModelInstanceStore::AdvanceFrame()
     {
         std::sort(_frameAdvanceEntries.begin(), _frameAdvanceEntries.end(),

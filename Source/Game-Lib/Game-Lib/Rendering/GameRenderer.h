@@ -82,6 +82,11 @@ namespace Map
     struct ModelAllocationHints;
 }
 
+namespace Animation
+{
+    class SkeletonDebugDraw;
+}
+
 struct ImGuiTheme
 {
 public:
@@ -114,6 +119,7 @@ public:
 
     CanvasRenderer* GetCanvasRenderer() { return _canvasRenderer; }
     DebugRenderer* GetDebugRenderer() { return _debugRenderer; }
+    Animation::SkeletonDebugDraw* GetSkeletonDebugDraw() { return _skeletonDebugDraw; }
     JoltDebugRenderer* GetJoltDebugRenderer() { return _joltDebugRenderer; }
     LiquidRenderer* GetLiquidRenderer() { return _liquidRenderer; }
     MaterialRenderer* GetMaterialRenderer() { return _materialRenderer; }
@@ -221,6 +227,7 @@ private:
     MaterialRenderer* _materialRenderer = nullptr;
     SkyboxRenderer* _skyboxRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
+    Animation::SkeletonDebugDraw* _skeletonDebugDraw = nullptr;
     LightRenderer* _lightRenderer = nullptr;
     JoltDebugRenderer* _joltDebugRenderer = nullptr;
     EditorRenderer* _editorRenderer = nullptr;

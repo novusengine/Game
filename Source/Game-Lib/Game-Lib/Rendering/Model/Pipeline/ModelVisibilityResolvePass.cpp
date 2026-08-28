@@ -1,6 +1,7 @@
 #include "ModelVisibilityResolvePass.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
@@ -77,6 +78,13 @@ namespace ModelPipeline
         Bind("_resolvedModelVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(),
              bindings.vertexIndices);
         Bind("_resolvedModelTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), bindings.triangles);
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            Bind("_resolvedModelDeformationRecords"_h, deformation->GetRecords().GetBuffer(), bindings.deformationRecords);
+            Bind("_resolvedModelDeformedPositions"_h, deformation->GetPositions().GetBuffer(), bindings.deformedPositions);
+            Bind("_resolvedModelDeformedVertexAttributes"_h, deformation->GetVertexAttributes().GetBuffer(), bindings.deformedVertexAttributes);
+        }
     }
 
     void ModelVisibilityResolvePass::Upload(const ModelView::ModelViewWorkResources& work,
@@ -125,6 +133,13 @@ namespace ModelPipeline
         builder.Read(geometry.GetVertexAttributes().GetBuffer(), Usage::COMPUTE);
         builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), Usage::COMPUTE);
         builder.Read(geometry.GetMeshletTriangles().GetBuffer(), Usage::COMPUTE);
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            builder.Read(deformation->GetRecords().GetBuffer(), Usage::COMPUTE);
+            builder.Read(deformation->GetPositions().GetBuffer(), Usage::COMPUTE);
+            builder.Read(deformation->GetVertexAttributes().GetBuffer(), Usage::COMPUTE);
+        }
     }
 
     void ModelVisibilityResolvePass::AddPreEffectsPass(

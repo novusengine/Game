@@ -1,6 +1,7 @@
 #include "ModelRenderSystem.h"
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
+#include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/Material/MaterialRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
@@ -17,6 +18,12 @@ AutoCVar_Int CVAR_ModelTemporalOcclusion(CVarCategory::Client | CVarCategory::Re
                                          CVarFlags::EditCheckbox);
 namespace ModelRendering
 {
+    ModelRenderSystem::~ModelRenderSystem()
+    {
+        for (RenderScenes::RenderScene* scene : _scenes)
+            scene->SetModelDeformationSystem(nullptr);
+    }
+
     ModelRenderSystem::ModelRenderSystem(Renderer::Renderer* renderer, GameRenderer* gameRenderer,
                                          RenderAssets::RenderAssetResources* assets, RenderScenes::RenderScene* scene,
                                          RenderResources& resources, bool validateTransfers)
@@ -43,6 +50,8 @@ namespace ModelRendering
         desc.worldShadows = true;
         CreateView(desc);
         _mainView = _views.at(desc.viewID).get();
+        _deformationSystem = std::make_unique<Animation::ModelDeformationSystem>(renderer, gameRenderer, validateTransfers);
+        _mainScene->SetModelDeformationSystem(_deformationSystem.get());
     }
 
     RenderScenes::RenderView* ModelRenderSystem::CreateView(const RenderScenes::RenderViewDesc& desc)
@@ -90,7 +99,7 @@ namespace ModelRendering
         return it != _views.end() && it->second->HasTransparentWork();
     }
 
-    void ModelRenderSystem::Update()
+    void ModelRenderSystem::Update(f32 deltaTime)
     {
         const uvec2 renderSize = static_cast<uvec2>(_renderer->GetRenderSize());
         for (auto& [viewID, view] : _views)
@@ -126,6 +135,8 @@ namespace ModelRendering
         _lastForcedLOD = forcedLOD;
         for (auto& [viewID, view] : _views)
             view->Update(forcedLOD);
+        _deformationSystem->AdvancePlayback(deltaTime);
+        _deformationSystem->Prepare(*_mainScene, _assets->GetModelGeometryStorage(), _assets->GetAnimationRegistry());
         for (RenderScenes::RenderScene* scene : _scenes)
         {
             scene->AcknowledgeModelMembershipChanges();
@@ -138,6 +149,7 @@ namespace ModelRendering
         ZoneScoped;
         for (RenderScenes::RenderScene* scene : _scenes)
             scene->SyncToGPU(_renderer);
+        _deformationSystem->Upload();
         for (auto& [viewID, view] : _views)
             view->Upload();
     }
@@ -167,7 +179,10 @@ namespace ModelRendering
         {
             RenderScenes::RenderScene* scene = view->GetView().GetScene();
             if (std::find(_scenes.begin(), _scenes.end(), scene) == _scenes.end())
+            {
                 _scenes.push_back(scene);
+                scene->SetModelDeformationSystem(_deformationSystem.get());
+            }
         }
     }
 
@@ -176,6 +191,11 @@ namespace ModelRendering
     {
         if (CVAR_ModelTemporalOcclusion.Get() != 0)
             _mainView->AddVisibilityPhase1Passes(renderGraph, resources, frameIndex);
+    }
+
+    void ModelRenderSystem::AddDeformationPass(Renderer::RenderGraph* renderGraph)
+    {
+        _deformationSystem->AddPass(renderGraph, _assets->GetModelGeometryStorage());
     }
 
     void ModelRenderSystem::AddVisibilityPhase2Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources,

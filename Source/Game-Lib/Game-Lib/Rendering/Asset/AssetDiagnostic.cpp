@@ -42,6 +42,37 @@ namespace AssetLoading
             return "overlapping_parameters";
         case DiagnosticCode::LayoutHashMismatch:
             return "layout_hash_mismatch";
+        case DiagnosticCode::UnsupportedVersion:
+            return "unsupported_version";
+        case DiagnosticCode::UnsupportedCodec:
+            return "unsupported_codec";
+        case DiagnosticCode::MissingDependency:
+            return "missing_dependency";
+        case DiagnosticCode::IncompatibleDomain:
+            return "incompatible_domain";
+        case DiagnosticCode::StaleHandle:
+            return "stale_handle";
+        }
+
+        return "unknown";
+    }
+
+    const char* ToString(DiagnosticStage stage)
+    {
+        switch (stage)
+        {
+        case DiagnosticStage::None:
+            return "none";
+        case DiagnosticStage::Read:
+            return "read";
+        case DiagnosticStage::Validate:
+            return "validate";
+        case DiagnosticStage::ResolveDependency:
+            return "resolve_dependency";
+        case DiagnosticStage::Compatibility:
+            return "compatibility";
+        case DiagnosticStage::Registry:
+            return "registry";
         }
 
         return "unknown";
@@ -51,11 +82,17 @@ namespace AssetLoading
     {
         std::ostringstream stream;
         stream << ToString(diagnostic.code);
+        if (diagnostic.stage != DiagnosticStage::None)
+            stream << " stage=" << ToString(diagnostic.stage);
         if (!diagnostic.field.empty())
             stream << " field=" << diagnostic.field;
         if (diagnostic.index != Diagnostic::NO_INDEX)
             stream << " index=" << diagnostic.index;
         stream << " observed=" << diagnostic.observed << " expected=" << diagnostic.expected;
+        if (diagnostic.requestedAssetID != std::numeric_limits<u64>::max())
+            stream << " requested_asset=" << diagnostic.requestedAssetID;
+        if (diagnostic.dependencyAssetID != std::numeric_limits<u64>::max())
+            stream << " dependency_asset=" << diagnostic.dependencyAssetID;
         return stream.str();
     }
 } // namespace AssetLoading

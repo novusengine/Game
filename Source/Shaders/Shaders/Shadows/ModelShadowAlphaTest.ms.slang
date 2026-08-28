@@ -43,14 +43,18 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
     if (threadID.x < vertexCount)
     {
         uint vertexIndex = _shadowRasterVertexIndices[model.meshletVertexIndexBase + meshlet.vertexOffset + threadID.x];
-        float3 localPosition = DecodePosition(_shadowRasterPositions[model.positionBase + lod.vertexOffset + vertexIndex],
-                                              mesh.positionDecodeOffset, mesh.positionDecodeExtent);
+        ModelDeformationRecord deformation = LoadModelShadowDeformation(instance, mesh, record);
+        float3 localPosition = ModelDeformationValid(instance, deformation, vertexIndex) ?
+            _shadowRasterDeformedPositions[deformation.positionOffset + vertexIndex].xyz :
+            DecodePosition(_shadowRasterPositions[model.positionBase + lod.vertexOffset + vertexIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent);
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[shadowRecord.clipmapIndex + 1u].worldToClip);
         vertices[threadID.x].clipmapIndex = shadowRecord.clipmapIndex;
         vertices[threadID.x].materialInstanceIndex = materialInstanceIndex;
-        vertices[threadID.x].uv0 = DecodeHalf2(
-            _shadowRasterVertexAttributes[model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex].z);
+        uint4 attributes = ModelDeformationValid(instance, deformation, vertexIndex) ?
+            _shadowRasterDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex] :
+            _shadowRasterVertexAttributes[model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex];
+        vertices[threadID.x].uv0 = DecodeHalf2(attributes.z);
         vertices[threadID.x].opacity = instance.opacity;
     }
     for (uint triangleIndex = threadID.x; triangleIndex < triangleCount; triangleIndex += 64u)

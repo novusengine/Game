@@ -27,6 +27,7 @@ namespace Scripting::Camera
         static i32 GetFarClip(Zenith* zenith);
         static i32 GetSpeed(Zenith* zenith);
         static i32 SetSpeed(Zenith* zenith);
+        static i32 ActivateFreeflying(Zenith* zenith);
         static i32 GetMapInfo(Zenith* zenith);
         static i32 GetSaveNames(Zenith* zenith);
         static i32 HasSave(Zenith* zenith);
@@ -63,6 +64,7 @@ namespace Scripting::Camera
         { "GetFarClip",            CameraHandler::GetFarClip },
         { "GetSpeed",              CameraHandler::GetSpeed },
         { "SetSpeed",              CameraHandler::SetSpeed,             Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ActivateFreeflying",    CameraHandler::ActivateFreeflying,   Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetMapInfo",            CameraHandler::GetMapInfo },
         { "GetSaveNames",          CameraHandler::GetSaveNames },
         { "HasSave",               CameraHandler::HasSave },

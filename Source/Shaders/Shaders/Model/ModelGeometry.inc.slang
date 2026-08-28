@@ -23,6 +23,20 @@ struct ModelInstanceRecord
     uint reserved2;
 };
 
+struct ModelDeformationRecord
+{
+    uint positionOffset;
+    uint vertexAttributeOffset;
+    uint vertexCount;
+    uint poseGeneration;
+};
+
+bool ModelDeformationValid(ModelInstanceRecord instance, ModelDeformationRecord deformation, uint vertexIndex)
+{
+    return instance.deformationHandle != 0xFFFFFFFFu && deformation.positionOffset != 0xFFFFFFFFu &&
+           deformation.vertexAttributeOffset != 0xFFFFFFFFu && vertexIndex < deformation.vertexCount;
+}
+
 struct ModelMeshlet
 {
     float3 boundsCenter;

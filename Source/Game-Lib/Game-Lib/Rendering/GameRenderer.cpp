@@ -3,6 +3,7 @@
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
 #include "Debug/JoltDebugRenderer.h"
+#include "Animation/Debug/SkeletonDebugDraw.h"
 #include "Asset/RenderAssetResources.h"
 #include "Scene/RenderScene.h"
 #include "Scene/RenderView.h"
@@ -259,6 +260,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc, bool enableNsightGPUTrace)
         NC_LOG_CRITICAL("RENDER_BOOTSTRAP render_asset_initialization_failed");
         std::abort();
     }
+    _skeletonDebugDraw = new Animation::SkeletonDebugDraw(_debugRenderer, &_renderAssetResources->GetAnimationRegistry());
     _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetModelGeometryStorage(), &_renderAssetResources->GetMaterialStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
     _displayResolver = new ModelLoading::DisplayResolver(_renderAssetResources);
     _modelParameterOverrides = new ModelLoading::ModelParameterOverrides(_renderAssetResources);
@@ -313,6 +315,7 @@ GameRenderer::~GameRenderer()
     delete _modelParameterOverrides;
     delete _displayResolver;
     delete _worldRenderScene;
+    delete _skeletonDebugDraw;
     delete _renderAssetResources;
     delete _renderTargetCapture;
     DepthPyramidUtils::Shutdown();
@@ -440,8 +443,10 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _effectRenderer->Update(deltaTime);
     _modelSceneBridge->SyncTransforms(*ServiceLocator::GetEnttRegistries()->gameRegistry);
     _unitInspection->Update(*ServiceLocator::GetEnttRegistries()->gameRegistry);
-    _modelRenderSystem->Update();
+    _modelRenderSystem->Update(deltaTime);
     _shadowRenderer->Update(deltaTime, _resources);
+
+    _skeletonDebugDraw->Update();
 
     // Last: collects debug verts emitted by the other renderer updates.
     _debugRenderer->Update(deltaTime);
@@ -589,6 +594,7 @@ f32 GameRenderer::Render()
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddDeformationPass(&renderGraph);
     _modelRenderSystem->AddVisibilityPhase1Passes(&renderGraph, _resources, _frameIndex);
 
     if (buildDepthPyramids)

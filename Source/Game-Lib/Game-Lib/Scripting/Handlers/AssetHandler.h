@@ -16,7 +16,7 @@ namespace Scripting::Asset
     {
     public:
         void Register(Zenith* zenith);
-        void Clear(Zenith* zenith) {}
+        void Clear(Zenith* zenith);
 
         void PostLoad(Zenith* zenith) {}
         void Update(Zenith* zenith, f32 deltaTime) {}
@@ -24,6 +24,16 @@ namespace Scripting::Asset
         static i32 ListDir(Zenith* zenith);
         static i32 SpawnModel(Zenith* zenith);
         static i32 SpawnModelAtWorldOrigin(Zenith* zenith);
+        static i32 BindRestPose(Zenith* zenith);
+        static i32 BindAnimation(Zenith* zenith);
+        static i32 AnimationPlay(Zenith* zenith);
+        static i32 AnimationPause(Zenith* zenith);
+        static i32 AnimationStop(Zenith* zenith);
+        static i32 AnimationSeek(Zenith* zenith);
+        static i32 AnimationSetLooping(Zenith* zenith);
+        static i32 AnimationSetPlaybackRate(Zenith* zenith);
+        static i32 GetAnimationState(Zenith* zenith);
+        static i32 DestroyAnimatedModel(Zenith* zenith);
         static i32 BeginDragSpawn(Zenith* zenith);
         static i32 LoadRenderModel(Zenith* zenith);
         static i32 GetRenderAssetStats(Zenith* zenith);
@@ -39,6 +49,16 @@ namespace Scripting::Asset
         { "ListDir",        AssetHandler::ListDir,        Scripting::LuaMethodFlags::DeveloperOnly },
         { "SpawnModel",     AssetHandler::SpawnModel,     Scripting::LuaMethodFlags::DeveloperOnly },
         { "SpawnModelAtWorldOrigin", AssetHandler::SpawnModelAtWorldOrigin, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "BindRestPose",    AssetHandler::BindRestPose,    Scripting::LuaMethodFlags::DeveloperOnly },
+        { "BindAnimation", AssetHandler::BindAnimation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationPlay", AssetHandler::AnimationPlay, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationPause", AssetHandler::AnimationPause, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationStop", AssetHandler::AnimationStop, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationSeek", AssetHandler::AnimationSeek, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationSetLooping", AssetHandler::AnimationSetLooping, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationSetPlaybackRate", AssetHandler::AnimationSetPlaybackRate, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetAnimationState", AssetHandler::GetAnimationState, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DestroyAnimatedModel", AssetHandler::DestroyAnimatedModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BeginDragSpawn", AssetHandler::BeginDragSpawn, Scripting::LuaMethodFlags::DeveloperOnly },
         { "LoadRenderModel", AssetHandler::LoadRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetRenderAssetStats", AssetHandler::GetRenderAssetStats, Scripting::LuaMethodFlags::DeveloperOnly },

@@ -14,7 +14,8 @@ namespace AssetLoading
         Texture = 1,
         Material,
         MaterialInstance,
-        Model
+        Model,
+        Animation
     };
 
     bool ShouldPerformFullValidation(ValidationMode mode);

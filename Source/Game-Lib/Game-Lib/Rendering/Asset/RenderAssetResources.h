@@ -1,4 +1,5 @@
 #pragma once
+#include "Game-Lib/Rendering/Animation/Asset/AnimationAssetRegistry.h"
 #include "Game-Lib/Rendering/Material/MaterialRegistry.h"
 #include "Game-Lib/Rendering/Material/MaterialAnimator.h"
 #include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
@@ -35,6 +36,7 @@ namespace RenderAssets
         MaterialLoading::MaterialResourceBindingStats materialBindings;
         MaterialLoading::MaterialRegistryStats materials;
         MaterialLoading::MaterialTextureRegistryStats textures;
+        AnimationLoading::AnimationAssetRegistryStats animations;
     };
 
     // Coordinates the CPU-side registries and GPU-side storage for model, material, and texture assets.
@@ -92,6 +94,8 @@ namespace RenderAssets
             return _materialProgramLibrary;
         }
         const MaterialLoading::MaterialTextureRegistry& GetTextureRegistry() const { return _textureRegistry; }
+        AnimationLoading::AnimationAssetRegistry& GetAnimationRegistry() { return _animationRegistry; }
+        const AnimationLoading::AnimationAssetRegistry& GetAnimationRegistry() const { return _animationRegistry; }
         RenderAssetResourceStats GetStats() const;
 
       private:
@@ -104,6 +108,7 @@ namespace RenderAssets
         MaterialLoading::MaterialRegistry _materialRegistry;
         ModelLoading::ModelGeometryStorage _geometryStorage;
         ModelLoading::ModelAssetRegistry _modelRegistry;
+        AnimationLoading::AnimationAssetRegistry _animationRegistry;
         Renderer::GPUVector<u32> _captureScratch;
         bool _initialized = false;
     };

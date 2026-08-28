@@ -5,6 +5,8 @@
 #include <catch2/catch2.hpp>
 
 #include <cstring>
+#include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <vector>
 
@@ -156,4 +158,36 @@ TEST_CASE("Model asset semantic validation is optional", "[Rendering][ModelAsset
     CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Minimal));
     CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full).diagnostic.code ==
           AssetLoading::DiagnosticCode::UnsupportedFlags);
+}
+
+TEST_CASE("NBS Phase 1 skinned Model export passes the Game semantic validator", "[Rendering][ModelAssetReader][NBSIntegration]")
+{
+    const char* fixturePath = std::getenv("NOVUS_NBS_PHASE1_MODEL");
+    if (fixturePath == nullptr || fixturePath[0] == '\0')
+    {
+        SUCCEED("Set NOVUS_NBS_PHASE1_MODEL to run the external NBS export gate");
+        return;
+    }
+
+    std::ifstream stream(fixturePath, std::ios::binary | std::ios::ate);
+    REQUIRE(stream);
+    const std::streamsize size = stream.tellg();
+    REQUIRE(size > 0);
+    stream.seekg(0, std::ios::beg);
+    std::vector<u8> payload(static_cast<size_t>(size));
+    REQUIRE(stream.read(reinterpret_cast<char*>(payload.data()), size));
+
+    const ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full);
+    REQUIRE(result);
+    REQUIRE(result.view.meshes.size() == 1);
+    CHECK((result.view.meshes[0].flags & Model::MeshFlags_Skinned) != 0);
+    CHECK(result.view.meshes[0].skeletonAssetID == 0xFC5117E7F4409C54ull);
+    for (const Model::MeshLOD& lod : result.view.meshLODs)
+    {
+        CHECK(lod.numSkinningData == lod.numVertices);
+        CHECK(lod.numJointPaletteRemaps > 0);
+        CHECK(lod.numJointPaletteRemaps <= 256);
+        CHECK((lod.flags & Model::MeshLODFlags_HasSkinningData) != 0);
+        CHECK((lod.flags & Model::MeshLODFlags_StaticFallbackIsBindPose) != 0);
+    }
 }

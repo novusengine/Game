@@ -43,6 +43,23 @@ struct Constants
 [[vk::binding(26, PER_PASS)]] StructuredBuffer<uint2> _shadowRasterPositions;
 [[vk::binding(27, PER_PASS)]] StructuredBuffer<uint> _shadowRasterVertexIndices;
 [[vk::binding(28, PER_PASS)]] StructuredBuffer<uint> _shadowRasterTriangles;
+[[vk::binding(40, PER_PASS)]] StructuredBuffer<ModelDeformationRecord> _shadowRasterDeformationRecords;
+[[vk::binding(41, PER_PASS)]] StructuredBuffer<float4> _shadowRasterDeformedPositions;
+[[vk::binding(42, PER_PASS)]] StructuredBuffer<uint4> _shadowRasterDeformedVertexAttributes;
+
+ModelDeformationRecord LoadModelShadowDeformation(ModelInstanceRecord instance, ModelMesh mesh, DecodedModelVisibilityRecord record)
+{
+    return instance.deformationHandle == 0xFFFFFFFFu ? (ModelDeformationRecord)0 :
+        _shadowRasterDeformationRecords[instance.deformationHandle + mesh.lodOffset + record.lodIndex];
+}
+
+float3 LoadModelShadowPosition(ModelInstanceRecord instance, ModelRecord model, ModelMesh mesh, ModelLOD lod, DecodedModelVisibilityRecord record, uint vertexIndex)
+{
+    ModelDeformationRecord deformation = LoadModelShadowDeformation(instance, mesh, record);
+    if (ModelDeformationValid(instance, deformation, vertexIndex))
+        return _shadowRasterDeformedPositions[deformation.positionOffset + vertexIndex].xyz;
+    return DecodePosition(_shadowRasterPositions[model.positionBase + lod.vertexOffset + vertexIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent);
+}
 
 uint LoadModelShadowQueueCount()
 {

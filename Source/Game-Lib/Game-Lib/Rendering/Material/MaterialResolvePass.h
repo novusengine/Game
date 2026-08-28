@@ -49,6 +49,9 @@ namespace MaterialRendering
             Renderer::BufferID indices = Renderer::BufferID::Invalid();
             Renderer::BufferID triangles = Renderer::BufferID::Invalid();
             Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
+            Renderer::BufferID deformationRecords = Renderer::BufferID::Invalid();
+            Renderer::BufferID deformedPositions = Renderer::BufferID::Invalid();
+            Renderer::BufferID deformedAttributes = Renderer::BufferID::Invalid();
         };
 
         struct ResolveBindings

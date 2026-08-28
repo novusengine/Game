@@ -23,6 +23,9 @@
 #ifndef MODEL_VISIBILITY_NO_MATERIAL
 [[vk::binding(18, PER_PASS)]] StructuredBuffer<uint> _resolvedModelMaterialTable;
 #endif
+[[vk::binding(19, PER_PASS)]] StructuredBuffer<ModelDeformationRecord> _resolvedModelDeformationRecords;
+[[vk::binding(20, PER_PASS)]] StructuredBuffer<float4> _resolvedModelDeformedPositions;
+[[vk::binding(21, PER_PASS)]] StructuredBuffer<uint4> _resolvedModelDeformedVertexAttributes;
 
 struct ReconstructedModelPixel
 {
@@ -98,10 +101,13 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
     for (uint i = 0u; i < 3u; ++i)
     {
         uint vertexIndex = _resolvedModelVertexIndices[result.model.meshletVertexIndexBase + result.meshlet.vertexOffset + localVertexIndices[i]];
-        float3 localPosition = DecodePosition(
-            _resolvedModelPositions[result.model.positionBase + result.lod.vertexOffset + vertexIndex],
-            result.mesh.positionDecodeOffset, result.mesh.positionDecodeExtent);
-        uint4 attributes = _resolvedModelVertexAttributes[result.model.vertexAttributeBase + result.lod.vertexAttributeOffset + vertexIndex];
+        ModelDeformationRecord deformation = result.instance.deformationHandle == 0xFFFFFFFFu ? (ModelDeformationRecord)0 :
+            _resolvedModelDeformationRecords[result.instance.deformationHandle + result.mesh.lodOffset + result.record.lodIndex];
+        bool deformed = ModelDeformationValid(result.instance, deformation, vertexIndex);
+        float3 localPosition = deformed ? _resolvedModelDeformedPositions[deformation.positionOffset + vertexIndex].xyz :
+            DecodePosition(_resolvedModelPositions[result.model.positionBase + result.lod.vertexOffset + vertexIndex], result.mesh.positionDecodeOffset, result.mesh.positionDecodeExtent);
+        uint4 attributes = deformed ? _resolvedModelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex] :
+            _resolvedModelVertexAttributes[result.model.vertexAttributeBase + result.lod.vertexAttributeOffset + vertexIndex];
         worldPositions[i] = mul(float4(localPosition, 1.0f), result.instance.currentWorld).xyz;
 #ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
         previousWorldPositions[i] = mul(float4(localPosition, 1.0f), result.instance.previousWorld).xyz;

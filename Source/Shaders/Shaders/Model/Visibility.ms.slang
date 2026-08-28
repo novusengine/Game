@@ -45,6 +45,9 @@ struct Constants
 [[vk::binding(28, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueSolidTwoSided1;
 [[vk::binding(29, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueAlphaTestOneSided1;
 [[vk::binding(30, PER_PASS)]] StructuredBuffer<uint> _modelGeometryQueueAlphaTestTwoSided1;
+[[vk::binding(40, PER_PASS)]] StructuredBuffer<ModelDeformationRecord> _modelDeformationRecords;
+[[vk::binding(41, PER_PASS)]] StructuredBuffer<float4> _modelDeformedPositions;
+[[vk::binding(42, PER_PASS)]] StructuredBuffer<uint4> _modelDeformedVertexAttributes;
 struct MeshVertex
 {
     float4 position : SV_Position;
@@ -262,13 +265,17 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
 #else
         bool validVertex = positionIndex >= model.positionBase && positionIndex < positionCount;
 #endif
-        float3 localPosition = validVertex ? DecodePosition(_modelVisibilityPositions[positionIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent) : float3(0.0f, 0.0f, 0.0f);
+        ModelDeformationRecord deformation = instance.deformationHandle == 0xFFFFFFFFu ? (ModelDeformationRecord)0 : _modelDeformationRecords[instance.deformationHandle + mesh.lodOffset + record.lodIndex];
+        bool deformed = validVertex && ModelDeformationValid(instance, deformation, vertexIndex);
+        float3 localPosition = deformed ? _modelDeformedPositions[deformation.positionOffset + vertexIndex].xyz :
+            (validVertex ? DecodePosition(_modelVisibilityPositions[positionIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent) : float3(0.0f, 0.0f, 0.0f));
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[_constants.viewIndex].worldToClip);
         vertices[threadID.x].recordEntry = queueEntry;
 #if ALPHA_TEST
         vertices[threadID.x].materialInstanceIndex = materialInstanceIndex;
-        vertices[threadID.x].uv0 = validVertex ? DecodeHalf2(_modelVisibilityVertexAttributes[attributeIndex].z) :
+        uint4 selectedAttributes = deformed ? _modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex] : _modelVisibilityVertexAttributes[attributeIndex];
+        vertices[threadID.x].uv0 = validVertex ? DecodeHalf2(selectedAttributes.z) :
                                                  float2(0.0f, 0.0f);
 #endif
     }

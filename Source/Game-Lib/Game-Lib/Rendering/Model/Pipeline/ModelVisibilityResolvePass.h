@@ -52,6 +52,9 @@ namespace ModelPipeline
             Renderer::BufferID vertexAttributes = Renderer::BufferID::Invalid();
             Renderer::BufferID vertexIndices = Renderer::BufferID::Invalid();
             Renderer::BufferID triangles = Renderer::BufferID::Invalid();
+            Renderer::BufferID deformationRecords = Renderer::BufferID::Invalid();
+            Renderer::BufferID deformedPositions = Renderer::BufferID::Invalid();
+            Renderer::BufferID deformedVertexAttributes = Renderer::BufferID::Invalid();
         };
 
         struct HighlightBindings

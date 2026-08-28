@@ -138,7 +138,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             continue;
         uint localLOD = min(_transparentLODHistory[historyIndex], mesh.numLODs - 1u);
         ModelLOD lod = _transparentLODs[lodBase + localLOD];
-        if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u && (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u)
+        if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u && (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u && instance.deformationHandle == 0xFFFFFFFFu)
             continue;
 
         uint submeshBase = model.submeshBase + lod.submeshOffset;

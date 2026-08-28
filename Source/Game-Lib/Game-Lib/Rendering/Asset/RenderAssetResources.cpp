@@ -18,7 +18,7 @@ namespace RenderAssets
           _materialBindings(renderer, materialDescriptorSet),
           _materialRegistry(pactStorage, &_materialStorage, &_materialProgramLibrary, &_textureRegistry, &_materialAnimator),
           _geometryStorage(validateTransfers),
-          _modelRegistry(pactStorage, &_geometryStorage, &_materialStorage, &_materialRegistry), _captureScratch(validateTransfers)
+          _modelRegistry(pactStorage, &_geometryStorage, &_materialStorage, &_materialRegistry), _animationRegistry(pactStorage), _captureScratch(validateTransfers)
     {
         _captureScratch.SetDebugName("Render Asset Capture Scratch");
         _captureScratch.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
@@ -140,6 +140,7 @@ namespace RenderAssets
         stats.materialBindings = _materialBindings.GetStats();
         stats.materials = _materialRegistry.GetStats();
         stats.textures = _textureRegistry.GetStats();
+        stats.animations = _animationRegistry.GetStats();
         return stats;
     }
 } // namespace RenderAssets

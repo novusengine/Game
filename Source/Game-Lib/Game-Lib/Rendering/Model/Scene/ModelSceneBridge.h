@@ -1,5 +1,6 @@
 #pragma once
 #include "Game-Lib/Rendering/Asset/RenderAssetHandles.h"
+#include "Game-Lib/Rendering/Animation/Pose/PoseSourceStore.h"
 #include "Game-Lib/Rendering/Scene/RenderSceneHandles.h"
 
 #include <entt/entt.hpp>
@@ -32,6 +33,8 @@ namespace ModelScene
         bool SetHighlight(entt::entity entity, f32 intensity, u32 packedColor = 0xFFFFFFFFu);
         bool SetOpacity(entt::entity entity, f32 opacity, bool forceTransparent = false);
         bool SetCastsShadows(entt::entity entity, bool castsShadows);
+        bool SetPoseSource(entt::entity entity, Animation::PoseSourceHandle poseSource);
+        bool SetShadowDynamic(entt::entity entity, bool dynamic);
         bool SetMaterial(entt::entity entity, u32 slot, RenderAssets::MaterialInstanceHandle material);
         bool ResetMaterials(entt::entity entity);
         bool SetGeometryGroupEnabled(entt::entity entity, u32 groupID, bool enabled);

@@ -3,6 +3,7 @@
 #include "Game-Lib/Rendering/Model/Scene/MeshletHistoryAllocator.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelInstanceStore.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelMaterialTableStore.h"
+#include "Game-Lib/Rendering/Animation/Pose/PoseSourceStore.h"
 #include "Game-Lib/Rendering/Shadow/SceneShadowState.h"
 
 #include <span>
@@ -22,6 +23,8 @@ namespace Renderer
 {
     class Renderer;
 }
+
+namespace Animation { class ModelDeformationSystem; }
 
 namespace Map
 {
@@ -79,6 +82,9 @@ namespace RenderScenes
         bool SetGeometryGroupRangeEnabled(ModelInstanceHandle handle, u32 firstGroupID, u32 lastGroupID, bool enabled);
         bool SetAllGeometryGroups(ModelInstanceHandle handle, bool enabled);
         bool SetModelShadowDynamic(ModelInstanceHandle handle, bool dynamic) { return _instances.SetShadowDynamic(handle, dynamic); }
+        bool SetModelPoseSource(ModelInstanceHandle handle, Animation::PoseSourceHandle poseSource) { return _instances.SetPoseSource(handle, poseSource); }
+        bool SetModelDeformationHandle(ModelInstanceHandle handle, u32 deformationHandle) { return _instances.SetDeformationHandle(handle, deformationHandle); }
+        bool MarkModelAnimated(ModelInstanceHandle handle);
 
         u32 DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs)
         {
@@ -106,8 +112,11 @@ namespace RenderScenes
         bool DescribeModelInstance(ModelInstanceHandle handle, ModelRenderDescription& description) const;
         RenderSceneStats GetStats() const;
         u64 GetTransparentRoutingRevision() const { return _transparentRoutingRevision; }
+        void SetModelDeformationSystem(Animation::ModelDeformationSystem* system) { _deformationSystem = system; }
+        Animation::ModelDeformationSystem* GetModelDeformationSystem() const { return _deformationSystem; }
 
         const ModelScene::ModelInstanceStore& GetModelInstances() const { return _instances; }
+        ModelScene::ModelInstanceStore& GetModelInstances() { return _instances; }
         bool HasModelHighlights() const { return _instances.GetHighlightedInstanceCount() != 0; }
         bool HasTransparentModelHighlights() const;
         const ModelScene::ModelMaterialTableStore& GetModelMaterialTables() const { return _materialTables; }
@@ -132,5 +141,6 @@ namespace RenderScenes
         mutable bool _transparentHighlightsDirty = true;
         mutable bool _hasTransparentHighlights = false;
         u64 _transparentRoutingRevision = 0;
+        Animation::ModelDeformationSystem* _deformationSystem = nullptr;
     };
 } // namespace RenderScenes

@@ -1,6 +1,7 @@
 #include "ModelShadowPass.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/RenderResources.h"
@@ -257,14 +258,17 @@ namespace ShadowRendering
                 ExpandConstants* expand = graphResources.FrameNew<ExpandConstants>();
                 *expand = {casterCount, numClipmaps, work.GetCapacity(), forcedLOD, lodTargetTexels,
                            dynamicSplit ? 1u : 0u, frameIndex};
-                commandList.BeginPipeline(_expandPipeline);
-                commandList.PushConstant(expand, 0, sizeof(*expand));
-                commandList.BindDescriptorSet(data.globalSet, frameIndex);
-                commandList.BindDescriptorSet(data.materialSet, frameIndex);
-                commandList.BindDescriptorSet(data.expandSet, frameIndex);
-                const u32 instanceGroups = (casterCount + MODEL_SHADOW_COMPUTE_THREAD_COUNT - 1u) / MODEL_SHADOW_COMPUTE_THREAD_COUNT;
-                commandList.Dispatch(instanceGroups, numClipmaps, 1);
-                commandList.EndPipeline(_expandPipeline);
+                if (casterCount > 0 && numClipmaps > 0)
+                {
+                    commandList.BeginPipeline(_expandPipeline);
+                    commandList.PushConstant(expand, 0, sizeof(*expand));
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                    commandList.BindDescriptorSet(data.expandSet, frameIndex);
+                    const u32 instanceGroups = (casterCount + MODEL_SHADOW_COMPUTE_THREAD_COUNT - 1u) / MODEL_SHADOW_COMPUTE_THREAD_COUNT;
+                    commandList.Dispatch(instanceGroups, numClipmaps, 1);
+                    commandList.EndPipeline(_expandPipeline);
+                }
                 commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::COMPUTE);
                 commandList.BufferBarrier(data.chunks, Renderer::BufferPassUsage::COMPUTE);
 
@@ -335,6 +339,13 @@ namespace ShadowRendering
         Bind("_shadowRasterPositions"_h, geometry.GetPositions().GetBuffer());
         Bind("_shadowRasterVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer());
         Bind("_shadowRasterTriangles"_h, geometry.GetMeshletTriangles().GetBuffer());
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            Bind("_shadowRasterDeformationRecords"_h, deformation->GetRecords().GetBuffer());
+            Bind("_shadowRasterDeformedPositions"_h, deformation->GetPositions().GetBuffer());
+            Bind("_shadowRasterDeformedVertexAttributes"_h, deformation->GetVertexAttributes().GetBuffer());
+        }
         if (alphaTest)
         {
             Bind("_shadowRasterVertexAttributes"_h, geometry.GetVertexAttributes().GetBuffer());
@@ -431,6 +442,13 @@ namespace ShadowRendering
                 builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(geometry.GetMeshletTriangles().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::GRAPHICS);
+                const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+                if (deformation)
+                {
+                    builder.Read(deformation->GetRecords().GetBuffer(), Usage::GRAPHICS);
+                    builder.Read(deformation->GetPositions().GetBuffer(), Usage::GRAPHICS);
+                    builder.Read(deformation->GetVertexAttributes().GetBuffer(), Usage::GRAPHICS);
+                }
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::GRAPHICS);

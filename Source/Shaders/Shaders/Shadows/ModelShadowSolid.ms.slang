@@ -35,8 +35,7 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
     if (threadID.x < vertexCount)
     {
         uint vertexIndex = _shadowRasterVertexIndices[model.meshletVertexIndexBase + meshlet.vertexOffset + threadID.x];
-        float3 localPosition = DecodePosition(_shadowRasterPositions[model.positionBase + lod.vertexOffset + vertexIndex],
-                                              mesh.positionDecodeOffset, mesh.positionDecodeExtent);
+        float3 localPosition = LoadModelShadowPosition(instance, model, mesh, lod, record, vertexIndex);
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[shadowRecord.clipmapIndex + 1u].worldToClip);
         vertices[threadID.x].clipmapIndex = shadowRecord.clipmapIndex;

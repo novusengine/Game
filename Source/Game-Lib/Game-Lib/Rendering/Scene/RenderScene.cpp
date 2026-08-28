@@ -172,6 +172,18 @@ namespace RenderScenes
         return true;
     }
 
+    bool RenderScene::MarkModelAnimated(ModelInstanceHandle handle)
+    {
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
+        if (!record || !resources || !_geometryStorage->HasModel(resources->model))
+            return false;
+        const bool visible = (record->flags & ModelScene::ModelInstanceFlagVisible) != 0 && (record->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0 && record->opacity > 0.0f;
+        const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+        _shadowState.ModelTransformChanged(handle, bounds, record->currentWorld, record->currentWorld, visible);
+        return _instances.SetShadowDynamic(handle, visible);
+    }
+
     bool RenderScene::SetModelTransform(ModelInstanceHandle handle, const mat4x4& transform, bool teleported)
     {
         const ModelScene::ModelInstanceGPURecord* oldRecord = _instances.GetRecord(handle);

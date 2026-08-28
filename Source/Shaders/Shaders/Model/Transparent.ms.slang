@@ -31,6 +31,9 @@ struct Constants
 [[vk::binding(12, PER_PASS)]] StructuredBuffer<uint> _transparentRasterVertexIndices;
 [[vk::binding(13, PER_PASS)]] StructuredBuffer<uint> _transparentRasterTriangles;
 [[vk::binding(14, PER_PASS)]] StructuredBuffer<uint> _transparentRasterMaterialTable;
+[[vk::binding(40, PER_PASS)]] StructuredBuffer<ModelDeformationRecord> _modelDeformationRecords;
+[[vk::binding(41, PER_PASS)]] StructuredBuffer<float4> _modelDeformedPositions;
+[[vk::binding(42, PER_PASS)]] StructuredBuffer<uint4> _modelDeformedVertexAttributes;
 
 struct MeshVertex
 {
@@ -157,8 +160,12 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         uint attributeIndex = model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex;
         bool validVertex = positionIndex >= model.positionBase && positionIndex < positionCount &&
                            attributeIndex >= model.vertexAttributeBase && attributeIndex < attributeCount;
-        float3 localPosition = validVertex ? DecodePosition(_transparentRasterPositions[positionIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent) : float3(0.0f, 0.0f, 0.0f);
-        uint4 attributes = validVertex ? _transparentRasterVertexAttributes[attributeIndex] : uint4(0u);
+        ModelDeformationRecord deformation = instance.deformationHandle == 0xFFFFFFFFu ? (ModelDeformationRecord)0 : _modelDeformationRecords[instance.deformationHandle + mesh.lodOffset + record.lodIndex];
+        bool deformed = validVertex && ModelDeformationValid(instance, deformation, vertexIndex);
+        float3 localPosition = deformed ? _modelDeformedPositions[deformation.positionOffset + vertexIndex].xyz :
+            (validVertex ? DecodePosition(_transparentRasterPositions[positionIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent) : float3(0.0f, 0.0f, 0.0f));
+        uint4 attributes = deformed ? _modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex] :
+            (validVertex ? _transparentRasterVertexAttributes[attributeIndex] : uint4(0u));
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[_constants.viewIndex].worldToClip);
         vertices[threadID.x].worldPosition = worldPosition.xyz;

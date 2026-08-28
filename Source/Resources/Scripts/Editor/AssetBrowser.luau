@@ -169,6 +169,75 @@ local function ParentPath(path)
     return path:match("^(.*)/[^/]*$") or ""
 end
 
+local function FindCVar(name)
+    for _, cvar in Editor.GetCVars() do
+        if cvar.name == name then
+            return cvar
+        end
+    end
+    return nil
+end
+
+local function SetCVar(name, value)
+    local cvar = FindCVar(name)
+    if cvar == nil then
+        print("Asset Browser: CVAR not found: " .. name)
+        return false
+    end
+    Editor.SetCVar(cvar.category, cvar.name, value)
+    return true
+end
+
+local function SpawnWithRestSkeleton(file)
+    local skeletonPath = file.path:gsub("%.model$", ".skeleton")
+    SetCVar("animationDebugSkeletonPath", skeletonPath)
+    SetCVar("animationDebugSkeletonPose", 0)
+    SetCVar("animationDebugSkeletonAxes", 1)
+    SetCVar("animationDebugSkeletonEnabled", 1)
+    local entity = Asset.SpawnModelAtWorldOrigin(file.path)
+    if entity ~= nil then
+        Editor.SetSelected(entity)
+        local attempts = 0
+        local function BindWhenReady()
+            attempts += 1
+            if Asset.BindRestPose(entity, skeletonPath) then
+                print("Asset Browser: compute rest-pose deformation bound")
+            elseif attempts < 120 then
+                Scheduler.AfterFrames(1, BindWhenReady)
+            else
+                print("Asset Browser: timed out binding compute rest pose")
+            end
+        end
+        Scheduler.AfterFrames(1, BindWhenReady)
+    end
+end
+
+local function SpawnWithIdleAnimation(file)
+    local directory = ParentPath(file.path)
+    local skeletonPath = directory .. "/character.skeleton"
+    local clipPath = directory .. "/orc_idle.animationclip"
+    SetCVar("animationDebugSkeletonPath", skeletonPath)
+    SetCVar("animationDebugSkeletonPose", 1)
+    SetCVar("animationDebugSkeletonAxes", 1)
+    local entity = Asset.SpawnModelAtWorldOrigin(file.path)
+    if entity == nil then return end
+    Editor.SetSelected(entity)
+    local attempts = 0
+    local function BindWhenReady()
+        attempts += 1
+        if Asset.BindAnimation(entity, skeletonPath, clipPath) then
+            Asset.AnimationSeek(entity, 0)
+            Asset.AnimationPlay(entity)
+            print("Asset Browser: direct idle animation playing")
+        elseif attempts < 120 then
+            Scheduler.AfterFrames(1, BindWhenReady)
+        else
+            print("Asset Browser: timed out binding idle animation")
+        end
+    end
+    Scheduler.AfterFrames(1, BindWhenReady)
+end
+
 local function RefreshModeButtons()
     rowModeBtn:SetHighlighted(displayMode == "row")
     displayModeBtn:SetHighlighted(displayMode == "display")
@@ -180,6 +249,8 @@ local function OpenFileMenu(file, mouseX, mouseY)
     fileMenu:SetItems({
         { label = "Spawn at camera", onClick = function() Asset.SpawnModel(file.path) end },
         { label = "Spawn at world origin", onClick = function() Asset.SpawnModelAtWorldOrigin(file.path) end },
+        { label = "Spawn with rest skeleton", onClick = function() SpawnWithRestSkeleton(file) end },
+        { label = "Spawn with idle animation", onClick = function() SpawnWithIdleAnimation(file) end },
     })
     fileMenu:Open(mouseX, mouseY)
 end

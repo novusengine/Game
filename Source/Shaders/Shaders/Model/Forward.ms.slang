@@ -39,6 +39,9 @@ struct Constants
 [[vk::binding(20, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityVertexIndices;
 [[vk::binding(21, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityTriangles;
 [[vk::binding(22, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityMaterialTable;
+[[vk::binding(40, PER_PASS)]] StructuredBuffer<ModelDeformationRecord> _modelDeformationRecords;
+[[vk::binding(41, PER_PASS)]] StructuredBuffer<float4> _modelDeformedPositions;
+[[vk::binding(42, PER_PASS)]] StructuredBuffer<uint4> _modelDeformedVertexAttributes;
 
 struct MeshVertex
 {
@@ -107,9 +110,12 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
     if (threadID.x < vertexCount)
     {
         uint vertexIndex = _modelVisibilityVertexIndices[model.meshletVertexIndexBase + meshlet.vertexOffset + threadID.x];
-        float3 localPosition = DecodePosition(_modelVisibilityPositions[model.positionBase + lod.vertexOffset + vertexIndex],
-                                              mesh.positionDecodeOffset, mesh.positionDecodeExtent);
-        uint4 attributes = _modelVisibilityVertexAttributes[model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex];
+        ModelDeformationRecord deformation = instance.deformationHandle == 0xFFFFFFFFu ? (ModelDeformationRecord)0 : _modelDeformationRecords[instance.deformationHandle + mesh.lodOffset + record.lodIndex];
+        bool deformed = ModelDeformationValid(instance, deformation, vertexIndex);
+        float3 localPosition = deformed ? _modelDeformedPositions[deformation.positionOffset + vertexIndex].xyz :
+            DecodePosition(_modelVisibilityPositions[model.positionBase + lod.vertexOffset + vertexIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent);
+        uint4 attributes = deformed ? _modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex] :
+            _modelVisibilityVertexAttributes[model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex];
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[_constants.viewIndex].worldToClip);
         vertices[threadID.x].worldPosition = worldPosition.xyz;

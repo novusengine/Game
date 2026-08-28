@@ -1,6 +1,7 @@
 #include "ModelRenderView.h"
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
+#include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/CullUtils.h"
 #include "Game-Lib/Rendering/Material/MaterialRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
@@ -105,7 +106,8 @@ namespace ModelRendering
             _transparentWork.EnsureCapacity(_state.GetQueueCapacity());
 
             const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
-            const std::array<Renderer::BufferID, 15> uploadBindings = {
+            const Animation::ModelDeformationSystem* deformation = scene->GetModelDeformationSystem();
+            const std::array<Renderer::BufferID, 18> uploadBindings = {
                 _state.GetInputs().GetBuffer(),
                 _state.GetTransparentEligibility().GetBuffer(),
                 _state.GetLODHistory().GetBuffer(),
@@ -120,7 +122,10 @@ namespace ModelRendering
                 geometry.GetMeshletVertexIndices().GetBuffer(),
                 geometry.GetMeshletTriangles().GetBuffer(),
                 scene->GetGeometryGroupMasks().GetMasks().GetBuffer(),
-                scene->GetModelMaterialTables().GetEntries().GetBuffer()};
+                scene->GetModelMaterialTables().GetEntries().GetBuffer(),
+                deformation ? deformation->GetRecords().GetBuffer() : Renderer::BufferID::Invalid(),
+                deformation ? deformation->GetPositions().GetBuffer() : Renderer::BufferID::Invalid(),
+                deformation ? deformation->GetVertexAttributes().GetBuffer() : Renderer::BufferID::Invalid()};
             const u32 queueGeneration = _work.GetQueueGeneration();
             const u32 selectionGeneration = _work.GetSelectionGeneration();
             const u32 historyGeneration = _work.GetHistoryGeneration();

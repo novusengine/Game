@@ -26,7 +26,22 @@ namespace AssetLoading
         MissingRequiredReference,
         DuplicateParameter,
         OverlappingParameters,
-        LayoutHashMismatch
+        LayoutHashMismatch,
+        UnsupportedVersion,
+        UnsupportedCodec,
+        MissingDependency,
+        IncompatibleDomain,
+        StaleHandle
+    };
+
+    enum class DiagnosticStage : u8
+    {
+        None,
+        Read,
+        Validate,
+        ResolveDependency,
+        Compatibility,
+        Registry
     };
 
     struct Diagnostic
@@ -38,6 +53,9 @@ namespace AssetLoading
         u32 index = NO_INDEX;
         u64 observed = 0;
         u64 expected = 0;
+        u64 requestedAssetID = std::numeric_limits<u64>::max();
+        u64 dependencyAssetID = std::numeric_limits<u64>::max();
+        DiagnosticStage stage = DiagnosticStage::None;
 
         explicit operator bool() const
         {
@@ -46,5 +64,6 @@ namespace AssetLoading
     };
 
     const char* ToString(DiagnosticCode code);
+    const char* ToString(DiagnosticStage stage);
     std::string Describe(const Diagnostic& diagnostic);
 } // namespace AssetLoading

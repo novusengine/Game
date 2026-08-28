@@ -29,5 +29,8 @@ namespace ModelPipeline
         Renderer::BufferID _vertexIndices = Renderer::BufferID::Invalid();
         Renderer::BufferID _triangles = Renderer::BufferID::Invalid();
         Renderer::BufferID _materialTable = Renderer::BufferID::Invalid();
+        Renderer::BufferID _deformationRecords = Renderer::BufferID::Invalid();
+        Renderer::BufferID _deformedPositions = Renderer::BufferID::Invalid();
+        Renderer::BufferID _deformedVertexAttributes = Renderer::BufferID::Invalid();
     };
 }

@@ -9,7 +9,7 @@ namespace
         "Perform full semantic validation when loading render assets", 0, CVarFlags::EditCheckbox);
     AutoCVar_Int CVAR_RenderAssetFailureInjection(
         CVarCategory::Client | CVarCategory::Rendering, "renderAssetFailureInjection",
-        "Inject render asset failures: 0 off, 1 texture, 2 material, 3 material instance, 4 model", 0,
+        "Inject render asset failures: 0 off, 1 texture, 2 material, 3 material instance, 4 model, 5 animation", 0,
         CVarFlags::DoNotSave);
 }
 

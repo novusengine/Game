@@ -105,16 +105,42 @@ namespace Scripting::Scene
         entt::registry* registry = GetGameRegistry();
         entt::entity entity = GetEntityArg(zenith, registry, 1);
         if (entity == entt::null)
-            return 0;
+        {
+            zenith->Push(false);
+            return 1;
+        }
 
-        ECS::Components::WorldAABB* worldAABB = registry->try_get<ECS::Components::WorldAABB>(entity);
-        if (!worldAABB)
-            return 0;
+        vec3 boundsMin;
+        vec3 boundsMax;
+        if (const ECS::Components::WorldAABB* worldAABB = registry->try_get<ECS::Components::WorldAABB>(entity))
+        {
+            boundsMin = worldAABB->min;
+            boundsMax = worldAABB->max;
+        }
+        else
+        {
+            const ECS::Components::AABB* aabb = registry->try_get<ECS::Components::AABB>(entity);
+            const ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
+            if (!aabb || !transform || glm::all(glm::lessThanEqual(aabb->extents, vec3(0.0f))))
+            {
+                zenith->Push(false);
+                return 1;
+            }
 
-        vec3 position = (worldAABB->min + worldAABB->max) * 0.5f;
-        f32 radius = glm::distance(worldAABB->min, worldAABB->max) * 0.5f;
+            const mat4x4 transformMatrix = transform->GetMatrix();
+            const vec3 worldCenter = vec3(transformMatrix * vec4(aabb->centerPos, 1.0f));
+            const mat3x3 linearTransform(transformMatrix);
+            const vec3 worldExtents = glm::abs(linearTransform[0]) * aabb->extents.x + glm::abs(linearTransform[1]) * aabb->extents.y + glm::abs(linearTransform[2]) * aabb->extents.z;
+            boundsMin = worldCenter - worldExtents;
+            boundsMax = worldCenter + worldExtents;
+        }
+
+        vec3 position = (boundsMin + boundsMax) * 0.5f;
+        const f32 framingScale = zenith->IsNumber(2) ? glm::max(zenith->Get<f32>(2), 0.01f) : 1.0f;
+        f32 radius = glm::distance(boundsMin, boundsMax) * 0.5f * framingScale;
         ECS::Util::CameraUtil::CenterOnObject(position, radius);
-        return 0;
+        zenith->Push(true);
+        return 1;
     }
 
     i32 SceneHandler::GetName(Zenith* zenith)

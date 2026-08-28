@@ -4,6 +4,7 @@
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
+#include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
@@ -193,6 +194,40 @@ namespace Scripting::Camera
         if (settings)
             settings->cameraSpeed = glm::max(speed, 0.0f);
         return 0;
+    }
+
+    i32 CameraHandler::ActivateFreeflying(Zenith* zenith)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->gameRegistry)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        entt::registry& registry = *registries->gameRegistry;
+        entt::registry::context& ctx = registry.ctx();
+        if (!ctx.contains<ECS::Singletons::ActiveCamera>() || !ctx.contains<ECS::Singletons::FreeflyingCameraSettings>())
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+        auto& settings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
+        if (!registry.valid(settings.entity))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        activeCamera.entity = settings.entity;
+        auto& camera = registry.get<ECS::Components::Camera>(activeCamera.entity);
+        camera.dirtyView = true;
+        camera.dirtyPerspective = true;
+        ECS::Util::CameraUtil::SetCaptureMouse(false);
+        zenith->Push(true);
+        return 1;
     }
 
     i32 CameraHandler::GetMapInfo(Zenith* zenith)

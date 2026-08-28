@@ -71,6 +71,18 @@ namespace ModelScene
                existing->second.scene->SetModelCastsShadows(existing->second.handle, castsShadows);
     }
 
+    bool ModelSceneBridge::SetPoseSource(entt::entity entity, Animation::PoseSourceHandle poseSource)
+    {
+        const auto existing = _instances.find(entity);
+        return existing != _instances.end() && existing->second.scene && existing->second.scene->SetModelPoseSource(existing->second.handle, poseSource);
+    }
+
+    bool ModelSceneBridge::SetShadowDynamic(entt::entity entity, bool dynamic)
+    {
+        const auto existing = _instances.find(entity);
+        return existing != _instances.end() && existing->second.scene && existing->second.scene->SetModelShadowDynamic(existing->second.handle, dynamic);
+    }
+
     bool ModelSceneBridge::SetMaterial(entt::entity entity, u32 slot,
                                        RenderAssets::MaterialInstanceHandle material)
     {

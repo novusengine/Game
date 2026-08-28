@@ -1,4 +1,8 @@
+#include "Game-Lib/Util/ServiceLocator.h"
+
 #include <catch2/catch2.hpp>
+
+#include <enkiTS/TaskScheduler.h>
 
 #include <quill/Backend.h>
 #include <quill/Frontend.h>
@@ -8,6 +12,21 @@
 
 namespace
 {
+    class TestTaskScheduler
+    {
+      public:
+        TestTaskScheduler()
+        {
+            _scheduler.Initialize(1);
+            ServiceLocator::SetTaskScheduler(&_scheduler);
+        }
+
+      private:
+        enki::TaskScheduler _scheduler;
+    };
+
+    [[maybe_unused]] TestTaskScheduler TaskScheduler;
+
     void FlushTestLogs()
     {
         for (auto* logger : quill::Frontend::get_all_loggers())

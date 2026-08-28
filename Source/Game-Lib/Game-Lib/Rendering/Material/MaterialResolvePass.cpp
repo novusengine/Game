@@ -1,6 +1,7 @@
 #include "MaterialResolvePass.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Material/MaterialRenderer.h"
@@ -64,6 +65,13 @@ namespace MaterialRendering
         Bind("_resolvedModelTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), bindings.triangles);
         Bind("_resolvedModelMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
              bindings.materialTable);
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            Bind("_resolvedModelDeformationRecords"_h, deformation->GetRecords().GetBuffer(), bindings.deformationRecords);
+            Bind("_resolvedModelDeformedPositions"_h, deformation->GetPositions().GetBuffer(), bindings.deformedPositions);
+            Bind("_resolvedModelDeformedVertexAttributes"_h, deformation->GetVertexAttributes().GetBuffer(), bindings.deformedAttributes);
+        }
     }
 
     bool MaterialResolvePass::Upload(const ModelView::ModelViewWorkResources& work,
@@ -98,6 +106,13 @@ namespace MaterialRendering
         builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), Usage::COMPUTE);
         builder.Read(geometry.GetMeshletTriangles().GetBuffer(), Usage::COMPUTE);
         builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::COMPUTE);
+        const Animation::ModelDeformationSystem* deformation = scene.GetModelDeformationSystem();
+        if (deformation)
+        {
+            builder.Read(deformation->GetRecords().GetBuffer(), Usage::COMPUTE);
+            builder.Read(deformation->GetPositions().GetBuffer(), Usage::COMPUTE);
+            builder.Read(deformation->GetVertexAttributes().GetBuffer(), Usage::COMPUTE);
+        }
         builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::COMPUTE);
         builder.Read(materials.GetTextureIndices().GetBuffer(), Usage::COMPUTE);
         builder.Read(materials.GetSamplerIDs().GetBuffer(), Usage::COMPUTE);

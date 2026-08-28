@@ -123,7 +123,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         uint localLOD = SelectShadowLOD(mesh, model, instance, clipmapIndex);
         ModelLOD lod = _shadowLODs[model.meshLODBase + mesh.lodOffset + localLOD];
         if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u &&
-            (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u)
+            (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u &&
+            instance.deformationHandle == 0xFFFFFFFFu)
             continue;
 
         for (uint submeshIndex = 0u; submeshIndex < lod.numSubmeshes; ++submeshIndex)

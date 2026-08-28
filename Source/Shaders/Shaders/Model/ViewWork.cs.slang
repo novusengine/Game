@@ -175,7 +175,8 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
         uint localLOD = _selectedLOD;
         ModelLOD lod = _modelLODs[lodBase + localLOD];
         if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u &&
-            (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u)
+            (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u &&
+            instance.deformationHandle == 0xFFFFFFFFu)
         {
             if (lane == 0u)
                 AddStat(MODEL_WORK_STAT_SKIPPED_SKINNED_LODS, 1u);
