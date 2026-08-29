@@ -31,13 +31,274 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace Scripting::Editor
 {
     namespace
     {
+        bool AreIntegerArguments(Zenith* zenith, i32 first, i32 last)
+        {
+            for (i32 index = first; index <= last; ++index)
+            {
+                if (!zenith->IsInteger(index))
+                    return false;
+            }
+
+            return true;
+        }
+
+        bool ReadIntegerField(Zenith* zenith, i32 tableIndex, const char* fieldName, i64& value)
+        {
+            if (!zenith->GetTableField(fieldName, tableIndex))
+                return false;
+
+            const bool valid = zenith->IsInteger(-1);
+            if (valid)
+                value = zenith->Get<i64>(-1);
+            zenith->Pop();
+            return valid;
+        }
+
+        bool ReadCostComponents(Zenith* zenith, i32 currencyTableIndex, i32 itemTableIndex, std::vector<::Editor::CostCurrencyComponentInput>& currencyComponents, std::vector<::Editor::CostItemComponentInput>& itemComponents)
+        {
+            if (!zenith->IsTable(currencyTableIndex) || !zenith->IsTable(itemTableIndex))
+                return false;
+
+            const size_t currencyCount = static_cast<size_t>(lua_objlen(zenith->state, currencyTableIndex));
+            const size_t itemCount = static_cast<size_t>(lua_objlen(zenith->state, itemTableIndex));
+            if (currencyCount + itemCount < 1 || currencyCount + itemCount > 8)
+                return false;
+
+            currencyComponents.reserve(currencyCount);
+            for (size_t index = 1; index <= currencyCount; ++index)
+            {
+                lua_rawgeti(zenith->state, currencyTableIndex, static_cast<i32>(index));
+
+                const i32 componentTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 currencyID = 0;
+                i64 amount = 0;
+                const bool valid = zenith->IsTable(componentTableIndex) && ReadIntegerField(zenith, componentTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, componentTableIndex, "currencyID", currencyID) && ReadIntegerField(zenith, componentTableIndex, "amount", amount) &&
+                    priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() &&
+                    currencyID >= 0 && currencyID <= std::numeric_limits<u16>::max() && amount >= 0;
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                currencyComponents.push_back({ static_cast<i32>(priority), static_cast<u16>(currencyID), static_cast<u64>(amount) });
+            }
+
+            itemComponents.reserve(itemCount);
+            for (size_t index = 1; index <= itemCount; ++index)
+            {
+                lua_rawgeti(zenith->state, itemTableIndex, static_cast<i32>(index));
+
+                const i32 componentTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 itemTemplateID = 0;
+                i64 amount = 0;
+                const bool valid = zenith->IsTable(componentTableIndex) && ReadIntegerField(zenith, componentTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, componentTableIndex, "itemTemplateID", itemTemplateID) && ReadIntegerField(zenith, componentTableIndex, "amount", amount) &&
+                    priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() &&
+                    itemTemplateID >= 0 && itemTemplateID <= std::numeric_limits<u32>::max() && amount >= 0 && amount <= std::numeric_limits<u32>::max();
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                itemComponents.push_back({ static_cast<i32>(priority), static_cast<u32>(itemTemplateID), static_cast<u32>(amount) });
+            }
+
+            return true;
+        }
+
+        bool ReadVendorListItems(Zenith* zenith, i32 tableIndex, std::vector<::Editor::VendorListItemInput>& items)
+        {
+            if (!zenith->IsTable(tableIndex))
+                return false;
+
+            const size_t count = static_cast<size_t>(lua_objlen(zenith->state, tableIndex));
+            if (count < 1 || count > 256)
+                return false;
+
+            items.reserve(count);
+            for (size_t index = 1; index <= count; ++index)
+            {
+                lua_rawgeti(zenith->state, tableIndex, static_cast<i32>(index));
+
+                const i32 itemTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 itemTemplateID = 0;
+                i64 purchaseQuantity = 0;
+                i64 costID = 0;
+                i64 visibilityConditionSetID = 0;
+                i64 enabledConditionSetID = 0;
+                i64 disabledReasonTextID = 0;
+                i64 flags = 0;
+                const bool valid = zenith->IsTable(itemTableIndex) && ReadIntegerField(zenith, itemTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, itemTableIndex, "itemTemplateID", itemTemplateID) && ReadIntegerField(zenith, itemTableIndex, "purchaseQuantity", purchaseQuantity) &&
+                    ReadIntegerField(zenith, itemTableIndex, "costID", costID) && ReadIntegerField(zenith, itemTableIndex, "visibilityConditionSetID", visibilityConditionSetID) &&
+                    ReadIntegerField(zenith, itemTableIndex, "enabledConditionSetID", enabledConditionSetID) && ReadIntegerField(zenith, itemTableIndex, "disabledReasonTextID", disabledReasonTextID) &&
+                    ReadIntegerField(zenith, itemTableIndex, "flags", flags) && priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() &&
+                    itemTemplateID > 0 && itemTemplateID <= std::numeric_limits<u32>::max() && purchaseQuantity > 0 && purchaseQuantity <= std::numeric_limits<u32>::max() &&
+                    costID >= 0 && costID <= std::numeric_limits<u32>::max() && visibilityConditionSetID >= 0 && visibilityConditionSetID <= std::numeric_limits<u32>::max() &&
+                    enabledConditionSetID >= 0 && enabledConditionSetID <= std::numeric_limits<u32>::max() && disabledReasonTextID >= 0 && disabledReasonTextID <= std::numeric_limits<u32>::max() &&
+                    flags >= 0 && flags <= std::numeric_limits<u32>::max();
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                items.push_back({ static_cast<i32>(priority), static_cast<u32>(itemTemplateID), static_cast<u32>(purchaseQuantity), static_cast<u32>(costID),
+                    static_cast<u32>(visibilityConditionSetID), static_cast<u32>(enabledConditionSetID), static_cast<u32>(disabledReasonTextID), static_cast<u32>(flags) });
+            }
+
+            return true;
+        }
+
+        bool ReadQuestObjectiveTargets(Zenith* zenith, i32 tableIndex, std::vector<::Editor::QuestObjectiveTargetInput>& targets)
+        {
+            if (!zenith->IsTable(tableIndex))
+                return false;
+
+            const size_t count = static_cast<size_t>(lua_objlen(zenith->state, tableIndex));
+            if (count < 1 || count > 32)
+                return false;
+
+            targets.reserve(count);
+            for (size_t index = 1; index <= count; ++index)
+            {
+                lua_rawgeti(zenith->state, tableIndex, static_cast<i32>(index));
+
+                const i32 targetTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 targetID = 0;
+                i64 contribution = 0;
+                const bool valid = zenith->IsTable(targetTableIndex) && ReadIntegerField(zenith, targetTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, targetTableIndex, "targetID", targetID) && ReadIntegerField(zenith, targetTableIndex, "contribution", contribution) &&
+                    priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() && targetID > 0 &&
+                    targetID <= std::numeric_limits<u32>::max() && contribution > 0 && contribution <= std::numeric_limits<u32>::max();
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                targets.push_back({ static_cast<i32>(priority), static_cast<u32>(targetID), static_cast<u32>(contribution) });
+            }
+
+            return true;
+        }
+
+        bool ReadQuestRewards(Zenith* zenith, i32 itemTableIndex, i32 currencyTableIndex, i32 reputationTableIndex, i32 experienceTableIndex, std::vector<::Editor::QuestRewardItemInput>& items, std::vector<::Editor::QuestRewardCurrencyInput>& currencies, std::vector<::Editor::QuestRewardReputationInput>& reputations, std::vector<::Editor::QuestRewardExperienceInput>& experience)
+        {
+            if (!zenith->IsTable(itemTableIndex) || !zenith->IsTable(currencyTableIndex) || !zenith->IsTable(reputationTableIndex) || !zenith->IsTable(experienceTableIndex))
+                return false;
+
+            const size_t itemCount = static_cast<size_t>(lua_objlen(zenith->state, itemTableIndex));
+            const size_t currencyCount = static_cast<size_t>(lua_objlen(zenith->state, currencyTableIndex));
+            const size_t reputationCount = static_cast<size_t>(lua_objlen(zenith->state, reputationTableIndex));
+            const size_t experienceCount = static_cast<size_t>(lua_objlen(zenith->state, experienceTableIndex));
+            if (itemCount + currencyCount + reputationCount + experienceCount < 1 || itemCount + currencyCount + reputationCount + experienceCount > 16)
+                return false;
+
+            items.reserve(itemCount);
+            for (size_t index = 1; index <= itemCount; ++index)
+            {
+                lua_rawgeti(zenith->state, itemTableIndex, static_cast<i32>(index));
+
+                const i32 rewardTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 itemTemplateID = 0;
+                i64 quantity = 0;
+                i64 flags = 0;
+                const bool valid = zenith->IsTable(rewardTableIndex) && ReadIntegerField(zenith, rewardTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, rewardTableIndex, "itemTemplateID", itemTemplateID) && ReadIntegerField(zenith, rewardTableIndex, "quantity", quantity) &&
+                    ReadIntegerField(zenith, rewardTableIndex, "flags", flags) && priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() &&
+                    itemTemplateID > 0 && itemTemplateID <= std::numeric_limits<u32>::max() && quantity > 0 && quantity <= std::numeric_limits<u32>::max() &&
+                    flags >= 0 && flags <= std::numeric_limits<u32>::max();
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                items.push_back({ static_cast<i32>(priority), static_cast<u32>(itemTemplateID), static_cast<u32>(quantity), static_cast<u32>(flags) });
+            }
+
+            currencies.reserve(currencyCount);
+            for (size_t index = 1; index <= currencyCount; ++index)
+            {
+                lua_rawgeti(zenith->state, currencyTableIndex, static_cast<i32>(index));
+
+                const i32 rewardTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 currencyID = 0;
+                i64 amount = 0;
+                i64 flags = 0;
+                const bool valid = zenith->IsTable(rewardTableIndex) && ReadIntegerField(zenith, rewardTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, rewardTableIndex, "currencyID", currencyID) && ReadIntegerField(zenith, rewardTableIndex, "amount", amount) &&
+                    ReadIntegerField(zenith, rewardTableIndex, "flags", flags) && priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() &&
+                    currencyID > 0 && currencyID <= std::numeric_limits<u16>::max() && amount > 0 && flags >= 0 && flags <= std::numeric_limits<u32>::max();
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                currencies.push_back({ static_cast<i32>(priority), static_cast<u16>(currencyID), static_cast<u64>(amount), static_cast<u32>(flags) });
+            }
+
+            reputations.reserve(reputationCount);
+            for (size_t index = 1; index <= reputationCount; ++index)
+            {
+                lua_rawgeti(zenith->state, reputationTableIndex, static_cast<i32>(index));
+
+                const i32 rewardTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 factionID = 0;
+                i64 amount = 0;
+                i64 flags = 0;
+                const bool valid = zenith->IsTable(rewardTableIndex) && ReadIntegerField(zenith, rewardTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, rewardTableIndex, "factionID", factionID) && ReadIntegerField(zenith, rewardTableIndex, "amount", amount) &&
+                    ReadIntegerField(zenith, rewardTableIndex, "flags", flags) && priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() &&
+                    factionID > 0 && factionID <= std::numeric_limits<u16>::max() && amount >= std::numeric_limits<i32>::min() &&
+                    amount <= std::numeric_limits<i32>::max() && amount != 0 && flags >= 0 && flags <= std::numeric_limits<u32>::max();
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                reputations.push_back({ static_cast<i32>(priority), static_cast<u16>(factionID), static_cast<i32>(amount), static_cast<u32>(flags) });
+            }
+
+            experience.reserve(experienceCount);
+            for (size_t index = 1; index <= experienceCount; ++index)
+            {
+                lua_rawgeti(zenith->state, experienceTableIndex, static_cast<i32>(index));
+
+                const i32 rewardTableIndex = zenith->GetTop();
+                i64 priority = 0;
+                i64 amount = 0;
+                i64 flags = 0;
+                const bool valid = zenith->IsTable(rewardTableIndex) && ReadIntegerField(zenith, rewardTableIndex, "priority", priority) &&
+                    ReadIntegerField(zenith, rewardTableIndex, "amount", amount) && ReadIntegerField(zenith, rewardTableIndex, "flags", flags) &&
+                    priority >= std::numeric_limits<i32>::min() && priority <= std::numeric_limits<i32>::max() && amount > 0 &&
+                    flags >= 0 && flags <= std::numeric_limits<u32>::max();
+
+                zenith->Pop();
+                if (!valid)
+                    return false;
+
+                experience.push_back({ static_cast<i32>(priority), static_cast<u64>(amount), static_cast<u32>(flags) });
+            }
+
+            return true;
+        }
+
         template <typename T>
         void AddCVarTableFields(Zenith* zenith, const CVarStorage<T>& storage, CVarFlags flags)
         {
@@ -900,18 +1161,23 @@ namespace Scripting::Editor
         case CVarType::INT:
             cvarSystem->GetCVarArray<i32>()->SetCurrent(zenith->IsBoolean(3) ? (zenith->ToBoolean(3) ? 1 : 0) : zenith->CheckVal<i32>(3), parameter->arrayIndex);
             break;
+
         case CVarType::FLOAT:
             cvarSystem->GetCVarArray<f64>()->SetCurrent(zenith->CheckVal<f64>(3), parameter->arrayIndex);
             break;
+
         case CVarType::STRING:
             cvarSystem->GetCVarArray<std::string>()->SetCurrent(zenith->CheckVal<const char*>(3), parameter->arrayIndex);
             break;
+
         case CVarType::FLOATVEC:
             cvarSystem->GetCVarArray<vec4>()->SetCurrent(vec4(zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5), zenith->CheckVal<f32>(6)), parameter->arrayIndex);
             break;
+
         case CVarType::INTVEC:
             cvarSystem->GetCVarArray<ivec4>()->SetCurrent(ivec4(zenith->CheckVal<i32>(3), zenith->CheckVal<i32>(4), zenith->CheckVal<i32>(5), zenith->CheckVal<i32>(6)), parameter->arrayIndex);
             break;
+
         case CVarType::SHOWFLAG:
             cvarSystem->GetCVarArray<ShowFlag>()->SetCurrent(zenith->CheckVal<bool>(3) ? ShowFlag::ENABLED : ShowFlag::DISABLED, parameter->arrayIndex);
             break;
@@ -935,30 +1201,35 @@ namespace Scripting::Editor
             cvarSystem->GetCVarArray<i32>()->SetCurrent(storage->initial, parameter->arrayIndex);
             break;
         }
+
         case CVarType::FLOAT:
         {
             CVarStorage<f64>* storage = cvarSystem->GetCVarArray<f64>()->GetCurrentStorage(parameter->arrayIndex);
             cvarSystem->GetCVarArray<f64>()->SetCurrent(storage->initial, parameter->arrayIndex);
             break;
         }
+
         case CVarType::STRING:
         {
             CVarStorage<std::string>* storage = cvarSystem->GetCVarArray<std::string>()->GetCurrentStorage(parameter->arrayIndex);
             cvarSystem->GetCVarArray<std::string>()->SetCurrent(storage->initial, parameter->arrayIndex);
             break;
         }
+
         case CVarType::FLOATVEC:
         {
             CVarStorage<vec4>* storage = cvarSystem->GetCVarArray<vec4>()->GetCurrentStorage(parameter->arrayIndex);
             cvarSystem->GetCVarArray<vec4>()->SetCurrent(storage->initial, parameter->arrayIndex);
             break;
         }
+
         case CVarType::INTVEC:
         {
             CVarStorage<ivec4>* storage = cvarSystem->GetCVarArray<ivec4>()->GetCurrentStorage(parameter->arrayIndex);
             cvarSystem->GetCVarArray<ivec4>()->SetCurrent(storage->initial, parameter->arrayIndex);
             break;
         }
+
         case CVarType::SHOWFLAG:
         {
             CVarStorage<ShowFlag>* storage = cvarSystem->GetCVarArray<ShowFlag>()->GetCurrentStorage(parameter->arrayIndex);
@@ -1035,6 +1306,7 @@ namespace Scripting::Editor
                     {
                         if (!effects->Has(effectID))
                             continue;
+
                         const auto& effect = effects->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(effectID);
                         if (static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.effectType) == MetaGen::Shared::Spell::SpellEffectTypeEnum::ApplyAura && effect.parameters[0] > 0)
                         {
@@ -1500,7 +1772,7 @@ namespace Scripting::Editor
                 zenith->CreateTable();
                 zenith->AddTableField("id", id);
                 zenith->AddTableField("menuID", option.menuID);
-                zenith->AddTableField("orderIndex", option.orderIndex);
+                zenith->AddTableField("priority", option.priority);
                 zenith->AddTableField("textID", option.textID);
                 zenith->AddTableField("icon", option.icon);
                 zenith->AddTableField("flags", option.flags);
@@ -1554,6 +1826,7 @@ namespace Scripting::Editor
                 zenith->AddTableField("creatureTemplateID", creatureTemplateID);
                 zenith->AddTableField("rangePolicy", provider.rangePolicy);
                 zenith->AddTableField("interactionRange", provider.interactionRange);
+                zenith->AddTableField("defaultGreetingTextID", provider.defaultGreetingTextID);
                 zenith->AddTableField("flags", provider.flags);
                 zenith->SetTableKey(++index);
                 return true;
@@ -1582,9 +1855,449 @@ namespace Scripting::Editor
         }
         zenith->SetTableKey("creatureTemplateGossip");
 
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* costs = data->GetStorage(Artifact::Cost);
+            i32 index = 0;
+            costs->Each([&](u32 id, const MetaGen::Shared::ClientDB::CostEditorRecord& cost)
+            {
+                if (id == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("internalName", costs->GetString(cost.internalName).c_str());
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("costs");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* components = data->GetStorage(Artifact::CostCurrencyComponent);
+            i32 index = 0;
+            components->Each([&](u32 id, const MetaGen::Shared::ClientDB::CostCurrencyComponentEditorRecord& component)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("costID", component.costID);
+                zenith->AddTableField("priority", component.priority);
+                zenith->AddTableField("currencyID", component.currencyID);
+                zenith->AddTableField("amount", component.amount);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("costCurrencyComponents");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* components = data->GetStorage(Artifact::CostItemComponent);
+            i32 index = 0;
+            components->Each([&](u32 id, const MetaGen::Shared::ClientDB::CostItemComponentEditorRecord& component)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("costID", component.costID);
+                zenith->AddTableField("priority", component.priority);
+                zenith->AddTableField("itemTemplateID", component.itemTemplateID);
+                zenith->AddTableField("amount", component.amount);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("costItemComponents");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* lists = data->GetStorage(Artifact::VendorList);
+            i32 index = 0;
+            lists->Each([&](u32 id, const MetaGen::Shared::ClientDB::VendorListEditorRecord& list)
+            {
+                if (id == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("internalName", lists->GetString(list.internalName).c_str());
+                zenith->AddTableField("flags", list.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("vendorLists");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* items = data->GetStorage(Artifact::VendorListItem);
+            i32 index = 0;
+            items->Each([&](u32 id, const MetaGen::Shared::ClientDB::VendorListItemEditorRecord& item)
+            {
+                if (id == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("vendorListID", item.vendorListID);
+                zenith->AddTableField("priority", item.priority);
+                zenith->AddTableField("itemTemplateID", item.itemTemplateID);
+                zenith->AddTableField("purchaseQuantity", item.purchaseQuantity);
+                zenith->AddTableField("costID", item.costID);
+                zenith->AddTableField("visibilityConditionSetID", item.visibilityConditionSetID);
+                zenith->AddTableField("enabledConditionSetID", item.enabledConditionSetID);
+                zenith->AddTableField("disabledReasonTextID", item.disabledReasonTextID);
+                zenith->AddTableField("flags", item.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("vendorListItems");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* bindings = data->GetStorage(Artifact::CreatureTemplateVendor);
+            i32 index = 0;
+            bindings->Each([&](u32 creatureTemplateID, const MetaGen::Shared::ClientDB::CreatureTemplateVendorEditorRecord& binding)
+            {
+                if (creatureTemplateID == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("creatureTemplateID", creatureTemplateID);
+                zenith->AddTableField("vendorListID", binding.vendorListID);
+                zenith->AddTableField("flags", binding.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("creatureTemplateVendor");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* quests = data->GetStorage(Artifact::QuestTemplate);
+            i32 index = 0;
+            quests->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestTemplateEditorRecord& quest)
+            {
+                if (id == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("internalName", quests->GetString(quest.internalName).c_str());
+                zenith->AddTableField("titleTextID", quest.titleTextID);
+                zenith->AddTableField("summaryTextID", quest.summaryTextID);
+                zenith->AddTableField("detailsTextID", quest.detailsTextID);
+                zenith->AddTableField("logTextID", quest.logTextID);
+                zenith->AddTableField("progressTextID", quest.progressTextID);
+                zenith->AddTableField("completionTextID", quest.completionTextID);
+                zenith->AddTableField("visibilityConditionSetID", quest.visibilityConditionSetID);
+                zenith->AddTableField("availabilityConditionSetID", quest.availabilityConditionSetID);
+                zenith->AddTableField("unavailableReasonTextID", quest.unavailableReasonTextID);
+                zenith->AddTableField("level", quest.level);
+                zenith->AddTableField("flags", quest.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questTemplates");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* prerequisites = data->GetStorage(Artifact::QuestPrerequisite);
+            i32 index = 0;
+            prerequisites->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestPrerequisiteEditorRecord& prerequisite)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("questID", prerequisite.questID);
+                zenith->AddTableField("prerequisiteQuestID", prerequisite.prerequisiteQuestID);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questPrerequisites");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* questGivers = data->GetStorage(Artifact::CreatureTemplateQuestGiver);
+            i32 index = 0;
+            questGivers->Each([&](u32 creatureTemplateID, const MetaGen::Shared::ClientDB::CreatureTemplateQuestGiverEditorRecord& questGiver)
+            {
+                if (creatureTemplateID == 0)
+                    return true;
+
+                zenith->CreateTable();
+                zenith->AddTableField("creatureTemplateID", creatureTemplateID);
+                zenith->AddTableField("flags", questGiver.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("creatureTemplateQuestGivers");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* associations = data->GetStorage(Artifact::CreatureTemplateQuest);
+            i32 index = 0;
+            associations->Each([&](u32 id, const MetaGen::Shared::ClientDB::CreatureTemplateQuestEditorRecord& association)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("creatureTemplateID", association.creatureTemplateID);
+                zenith->AddTableField("questID", association.questID);
+                zenith->AddTableField("roleFlags", association.roleFlags);
+                zenith->AddTableField("priority", association.priority);
+                zenith->AddTableField("visibilityConditionSetID", association.visibilityConditionSetID);
+                zenith->AddTableField("enabledConditionSetID", association.enabledConditionSetID);
+                zenith->AddTableField("flags", association.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("creatureTemplateQuests");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* objectives = data->GetStorage(Artifact::QuestObjective);
+            i32 index = 0;
+            objectives->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestObjectiveEditorRecord& objective)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("questID", objective.questID);
+                zenith->AddTableField("priority", objective.priority);
+                zenith->AddTableField("objectiveType", objective.objectiveType);
+                zenith->AddTableField("requiredCount", objective.requiredCount);
+                zenith->AddTableField("textID", objective.textID);
+                zenith->AddTableField("flags", objective.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questObjectives");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* targets = data->GetStorage(Artifact::QuestObjectiveTarget);
+            i32 index = 0;
+            targets->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestObjectiveTargetEditorRecord& target)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("objectiveID", target.objectiveID);
+                zenith->AddTableField("priority", target.priority);
+                zenith->AddTableField("targetID", target.targetID);
+                zenith->AddTableField("contribution", target.contribution);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questObjectiveTargets");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* groups = data->GetStorage(Artifact::QuestRewardGroup);
+            i32 index = 0;
+            groups->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestRewardGroupEditorRecord& group)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("questID", group.questID);
+                zenith->AddTableField("priority", group.priority);
+                zenith->AddTableField("selectionCount", group.selectionCount);
+                zenith->AddTableField("flags", group.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questRewardGroups");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* rewards = data->GetStorage(Artifact::QuestRewardItem);
+            i32 index = 0;
+            rewards->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestRewardItemEditorRecord& reward)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("rewardGroupID", reward.rewardGroupID);
+                zenith->AddTableField("priority", reward.priority);
+                zenith->AddTableField("itemTemplateID", reward.itemTemplateID);
+                zenith->AddTableField("quantity", reward.quantity);
+                zenith->AddTableField("flags", reward.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questRewardItems");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* rewards = data->GetStorage(Artifact::QuestRewardCurrency);
+            i32 index = 0;
+            rewards->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestRewardCurrencyEditorRecord& reward)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("rewardGroupID", reward.rewardGroupID);
+                zenith->AddTableField("priority", reward.priority);
+                zenith->AddTableField("currencyID", reward.currencyID);
+                zenith->AddTableField("amount", reward.amount);
+                zenith->AddTableField("flags", reward.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questRewardCurrencies");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* rewards = data->GetStorage(Artifact::QuestRewardReputation);
+            i32 index = 0;
+            rewards->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestRewardReputationEditorRecord& reward)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("rewardGroupID", reward.rewardGroupID);
+                zenith->AddTableField("priority", reward.priority);
+                zenith->AddTableField("factionID", reward.factionID);
+                zenith->AddTableField("amount", reward.amount);
+                zenith->AddTableField("flags", reward.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questRewardReputations");
+
+        zenith->CreateTable();
+        if (data && data->state == ::Editor::DatabaseEditorDataState::Ready)
+        {
+            using Artifact = MetaGen::Shared::Interaction::InteractionEditorArtifactEnum;
+            ::ClientDB::Data* rewards = data->GetStorage(Artifact::QuestRewardExperience);
+            i32 index = 0;
+            rewards->Each([&](u32 id, const MetaGen::Shared::ClientDB::QuestRewardExperienceEditorRecord& reward)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("id", id);
+                zenith->AddTableField("rewardGroupID", reward.rewardGroupID);
+                zenith->AddTableField("priority", reward.priority);
+                zenith->AddTableField("amount", reward.amount);
+                zenith->AddTableField("flags", reward.flags);
+                zenith->SetTableKey(++index);
+                return true;
+            });
+        }
+        zenith->SetTableKey("questRewardExperience");
+
+        zenith->CreateTable();
+        if (registries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
+        {
+            auto& clientDB = registries->dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+            if (clientDB.Has(ClientDBHash::Item))
+            {
+                ::ClientDB::Data* items = clientDB.Get(ClientDBHash::Item);
+                i32 index = 0;
+                items->Each([&](u32 id, const MetaGen::Shared::ClientDB::ItemRecord& item)
+                {
+                    if (id == 0)
+                        return true;
+
+                    zenith->CreateTable();
+                    zenith->AddTableField("id", id);
+                    zenith->AddTableField("name", items->GetString(item.name).c_str());
+                    zenith->AddTableField("iconID", item.iconID);
+                    zenith->AddTableField("rarity", item.rarity);
+                    zenith->AddTableField("category", item.category);
+                    zenith->SetTableKey(++index);
+                    return true;
+                });
+            }
+        }
+        zenith->SetTableKey("itemTemplates");
+
+        zenith->CreateTable();
+        if (registries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
+        {
+            auto& clientDB = registries->dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+            if (clientDB.Has(ClientDBHash::Currency))
+            {
+                ::ClientDB::Data* currencies = clientDB.Get(ClientDBHash::Currency);
+                i32 index = 0;
+                currencies->Each([&](u32 id, const MetaGen::Shared::ClientDB::CurrencyRecord& currency)
+                {
+                    if (id == 0 || id > std::numeric_limits<u16>::max())
+                        return true;
+
+                    zenith->CreateTable();
+                    zenith->AddTableField("id", static_cast<u16>(id));
+                    zenith->AddTableField("name", currencies->GetString(currency.name).c_str());
+                    zenith->SetTableKey(++index);
+                    return true;
+                });
+            }
+        }
+        zenith->SetTableKey("currencies");
+
+        zenith->CreateTable();
+        if (registries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
+        {
+            auto& clientDB = registries->dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+            if (clientDB.Has(ClientDBHash::Faction))
+            {
+                ::ClientDB::Data* factions = clientDB.Get(ClientDBHash::Faction);
+                i32 index = 0;
+                factions->Each([&](u32 id, const MetaGen::Shared::ClientDB::FactionRecord& faction)
+                {
+                    if (id == 0 || id > std::numeric_limits<u16>::max())
+                        return true;
+
+                    zenith->CreateTable();
+                    zenith->AddTableField("id", static_cast<u16>(id));
+                    zenith->AddTableField("name", factions->GetString(faction.name).c_str());
+                    zenith->SetTableKey(++index);
+                    return true;
+                });
+            }
+        }
+        zenith->SetTableKey("factions");
+
         PushEnumOptions<MetaGen::Shared::Interaction::ConditionComparisonEnumMeta>(zenith, "conditionComparisons");
         PushEnumOptions<MetaGen::Shared::Interaction::ConditionGroupOperatorEnumMeta>(zenith, "conditionGroupOperators");
         PushEnumOptions<MetaGen::Shared::Interaction::InteractionRangePolicyEnumMeta>(zenith, "interactionRangePolicies");
+        PushEnumOptions<MetaGen::Shared::Interaction::QuestObjectiveTypeEnumMeta>(zenith, "questObjectiveTypes");
         return 1;
     }
 
@@ -1821,7 +2534,7 @@ namespace Scripting::Editor
             }
         }
         const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(10), zenith->CheckVal<i64>(11), zenith->CheckVal<i64>(12), zenith->CheckVal<i64>(13) };
-        zenith->Push(backend->CreateGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<u16>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<u16>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u8>(9), parameters));
+        zenith->Push(backend->CreateGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<u16>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u8>(9), parameters));
         return 1;
     }
 
@@ -1842,28 +2555,7 @@ namespace Scripting::Editor
             }
         }
         const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(11), zenith->CheckVal<i64>(12), zenith->CheckVal<i64>(13), zenith->CheckVal<i64>(14) };
-        zenith->Push(backend->UpdateGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u16>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9), zenith->CheckVal<u8>(10), parameters));
-        return 1;
-    }
-
-    i32 EditorToolHandler::ReorderInteractionEditorGossipMenuOption(Zenith* zenith)
-    {
-        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
-        if (!backend)
-        {
-            zenith->Push(0u);
-            return 1;
-        }
-        for (i32 index = 1; index <= 14; ++index)
-        {
-            if (!zenith->IsInteger(index))
-            {
-                zenith->Push(0u);
-                return 1;
-            }
-        }
-        const std::array<i64, 4> parameters = { zenith->CheckVal<i64>(11), zenith->CheckVal<i64>(12), zenith->CheckVal<i64>(13), zenith->CheckVal<i64>(14) };
-        zenith->Push(backend->ReorderGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u16>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9), zenith->CheckVal<u8>(10), parameters));
+        zenith->Push(backend->UpdateGossipMenuOption(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u16>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9), zenith->CheckVal<u8>(10), parameters));
         return 1;
     }
 
@@ -1878,16 +2570,16 @@ namespace Scripting::Editor
     {
         ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
         const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsNumber(3) && zenith->IsInteger(4) &&
-            zenith->IsInteger(5) && zenith->IsInteger(6);
-        zenith->Push(valid ? backend->CreateCreatureTemplateInteraction(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6)) : 0u);
+            zenith->IsInteger(5) && zenith->IsInteger(6) && zenith->IsInteger(7);
+        zenith->Push(valid ? backend->CreateCreatureTemplateInteraction(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7)) : 0u);
         return 1;
     }
 
     i32 EditorToolHandler::UpdateInteractionEditorCreatureTemplateInteraction(Zenith* zenith)
     {
         ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
-        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsNumber(3) && zenith->IsInteger(4);
-        zenith->Push(valid ? backend->UpdateCreatureTemplateInteraction(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<u32>(4)) : 0u);
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsNumber(3) && zenith->IsInteger(4) && zenith->IsInteger(5);
+        zenith->Push(valid ? backend->UpdateCreatureTemplateInteraction(zenith->CheckVal<u32>(1), zenith->CheckVal<u8>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5)) : 0u);
         return 1;
     }
 
@@ -1918,6 +2610,442 @@ namespace Scripting::Editor
     {
         ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
         zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCreatureTemplateGossip(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCost(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(1) ? zenith->Get<const char*>(1) : nullptr;
+        std::vector<::Editor::CostCurrencyComponentInput> currencyComponents;
+        std::vector<::Editor::CostItemComponentInput> itemComponents;
+        const bool valid = backend && internalName && ReadCostComponents(zenith, 2, 3, currencyComponents, itemComponents);
+        zenith->Push(valid ? backend->CreateCost(internalName, currencyComponents, itemComponents) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCost(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        zenith->Push(backend && zenith->IsInteger(1) && internalName ? backend->UpdateCost(zenith->CheckVal<u32>(1), internalName) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCost(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCost(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCostCurrencyComponent(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3) && zenith->IsInteger(4);
+        zenith->Push(valid ? backend->CreateCostCurrencyComponent(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u16>(3), zenith->CheckVal<u64>(4)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCostCurrencyComponent(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3) && zenith->IsInteger(4) && zenith->IsInteger(5);
+        zenith->Push(valid ? backend->UpdateCostCurrencyComponent(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3), zenith->CheckVal<u16>(4), zenith->CheckVal<u64>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCostCurrencyComponent(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCostCurrencyComponent(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCostItemComponent(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3) && zenith->IsInteger(4);
+        zenith->Push(valid ? backend->CreateCostItemComponent(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<u32>(4)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCostItemComponent(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3) && zenith->IsInteger(4) && zenith->IsInteger(5);
+        zenith->Push(valid ? backend->UpdateCostItemComponent(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCostItemComponent(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCostItemComponent(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorVendorList(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(1) ? zenith->Get<const char*>(1) : nullptr;
+        std::vector<::Editor::VendorListItemInput> items;
+        const bool valid = backend && internalName && zenith->IsInteger(2) && ReadVendorListItems(zenith, 3, items);
+        zenith->Push(valid ? backend->CreateVendorList(internalName, zenith->CheckVal<u32>(2), items) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorVendorList(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        zenith->Push(backend && zenith->IsInteger(1) && internalName && zenith->IsInteger(3) ? backend->UpdateVendorList(zenith->CheckVal<u32>(1), internalName, zenith->CheckVal<u32>(3)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorVendorList(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteVendorList(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorVendorListItem(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        if (!backend)
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+        for (i32 index = 1; index <= 9; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        zenith->Push(backend->CreateVendorListItem(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9)));
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorVendorListItem(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        if (!backend)
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+        for (i32 index = 1; index <= 10; ++index)
+        {
+            if (!zenith->IsInteger(index))
+            {
+                zenith->Push(0u);
+                return 1;
+            }
+        }
+        zenith->Push(backend->UpdateVendorListItem(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9), zenith->CheckVal<u32>(10)));
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorVendorListItem(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteVendorListItem(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCreatureTemplateVendor(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3);
+        zenith->Push(valid ? backend->CreateCreatureTemplateVendor(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCreatureTemplateVendor(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && zenith->IsInteger(1) && zenith->IsInteger(2) && zenith->IsInteger(3);
+        zenith->Push(valid ? backend->UpdateCreatureTemplateVendor(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCreatureTemplateVendor(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCreatureTemplateVendor(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestTemplate(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(1) ? zenith->Get<const char*>(1) : nullptr;
+        const bool valid = backend && internalName && AreIntegerArguments(zenith, 2, 12);
+        zenith->Push(valid ? backend->CreateQuestTemplate(internalName, zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<u32>(4),
+            zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9),
+            zenith->CheckVal<u32>(10), zenith->CheckVal<u16>(11), zenith->CheckVal<u32>(12)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestTemplate(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const char* internalName = zenith->IsString(2) ? zenith->Get<const char*>(2) : nullptr;
+        const bool valid = backend && zenith->IsInteger(1) && internalName && AreIntegerArguments(zenith, 3, 13);
+        zenith->Push(valid ? backend->UpdateQuestTemplate(zenith->CheckVal<u32>(1), internalName, zenith->CheckVal<u32>(3), zenith->CheckVal<u32>(4),
+            zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8), zenith->CheckVal<u32>(9),
+            zenith->CheckVal<u32>(10), zenith->CheckVal<u32>(11), zenith->CheckVal<u16>(12), zenith->CheckVal<u32>(13)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestTemplate(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestTemplate(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestPrerequisite(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && AreIntegerArguments(zenith, 1, 2) ? backend->CreateQuestPrerequisite(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestPrerequisite(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && AreIntegerArguments(zenith, 1, 3) ? backend->UpdateQuestPrerequisite(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestPrerequisite(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestPrerequisite(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCreatureTemplateQuestGiver(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && AreIntegerArguments(zenith, 1, 2) ? backend->CreateCreatureTemplateQuestGiver(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCreatureTemplateQuestGiver(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && AreIntegerArguments(zenith, 1, 2) ? backend->UpdateCreatureTemplateQuestGiver(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCreatureTemplateQuestGiver(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCreatureTemplateQuestGiver(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorCreatureTemplateQuest(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 7);
+        zenith->Push(valid ? backend->CreateCreatureTemplateQuest(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u8>(3),
+            zenith->CheckVal<i32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorCreatureTemplateQuest(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 8);
+        zenith->Push(valid ? backend->UpdateCreatureTemplateQuest(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u32>(3),
+            zenith->CheckVal<u8>(4), zenith->CheckVal<i32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7), zenith->CheckVal<u32>(8)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorCreatureTemplateQuest(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteCreatureTemplateQuest(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestObjective(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        std::vector<::Editor::QuestObjectiveTargetInput> targets;
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 6) && ReadQuestObjectiveTargets(zenith, 7, targets);
+        zenith->Push(valid ? backend->CreateQuestObjective(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u8>(3),
+            zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), targets) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestObjective(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 7);
+        zenith->Push(valid ? backend->UpdateQuestObjective(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3),
+            zenith->CheckVal<u8>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6), zenith->CheckVal<u32>(7)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestObjective(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestObjective(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestObjectiveTarget(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && AreIntegerArguments(zenith, 1, 4) ? backend->CreateQuestObjectiveTarget(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<u32>(4)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestObjectiveTarget(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && AreIntegerArguments(zenith, 1, 5) ? backend->UpdateQuestObjectiveTarget(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3), zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestObjectiveTarget(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestObjectiveTarget(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestRewardGroup(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        std::vector<::Editor::QuestRewardItemInput> items;
+        std::vector<::Editor::QuestRewardCurrencyInput> currencies;
+        std::vector<::Editor::QuestRewardReputationInput> reputations;
+        std::vector<::Editor::QuestRewardExperienceInput> experience;
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 4) && ReadQuestRewards(zenith, 5, 6, 7, 8, items, currencies, reputations, experience);
+        zenith->Push(valid ? backend->CreateQuestRewardGroup(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u8>(3), zenith->CheckVal<u32>(4),
+            items, currencies, reputations, experience) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestRewardGroup(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && AreIntegerArguments(zenith, 1, 5) ? backend->UpdateQuestRewardGroup(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3), zenith->CheckVal<u8>(4), zenith->CheckVal<u32>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestRewardGroup(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestRewardGroup(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestRewardItem(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 5);
+        zenith->Push(valid ? backend->CreateQuestRewardItem(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u32>(3),
+            zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestRewardItem(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 6);
+        zenith->Push(valid ? backend->UpdateQuestRewardItem(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3),
+            zenith->CheckVal<u32>(4), zenith->CheckVal<u32>(5), zenith->CheckVal<u32>(6)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestRewardItem(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestRewardItem(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestRewardCurrency(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 5);
+        zenith->Push(valid ? backend->CreateQuestRewardCurrency(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u16>(3),
+            zenith->CheckVal<u64>(4), zenith->CheckVal<u32>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestRewardCurrency(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 6);
+        zenith->Push(valid ? backend->UpdateQuestRewardCurrency(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3),
+            zenith->CheckVal<u16>(4), zenith->CheckVal<u64>(5), zenith->CheckVal<u32>(6)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestRewardCurrency(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestRewardCurrency(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestRewardReputation(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 5);
+        zenith->Push(valid ? backend->CreateQuestRewardReputation(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u16>(3),
+            zenith->CheckVal<i32>(4), zenith->CheckVal<u32>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestRewardReputation(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 6);
+        zenith->Push(valid ? backend->UpdateQuestRewardReputation(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3),
+            zenith->CheckVal<u16>(4), zenith->CheckVal<i32>(5), zenith->CheckVal<u32>(6)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestRewardReputation(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestRewardReputation(zenith->CheckVal<u32>(1)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::CreateInteractionEditorQuestRewardExperience(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 4);
+        zenith->Push(valid ? backend->CreateQuestRewardExperience(zenith->CheckVal<u32>(1), zenith->CheckVal<i32>(2), zenith->CheckVal<u64>(3), zenith->CheckVal<u32>(4)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::UpdateInteractionEditorQuestRewardExperience(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        const bool valid = backend && AreIntegerArguments(zenith, 1, 5);
+        zenith->Push(valid ? backend->UpdateQuestRewardExperience(zenith->CheckVal<u32>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<i32>(3),
+            zenith->CheckVal<u64>(4), zenith->CheckVal<u32>(5)) : 0u);
+        return 1;
+    }
+
+    i32 EditorToolHandler::DeleteInteractionEditorQuestRewardExperience(Zenith* zenith)
+    {
+        ::Editor::InteractionEditorBackend* backend = GetInteractionEditorBackend();
+        zenith->Push(backend && zenith->IsInteger(1) ? backend->DeleteQuestRewardExperience(zenith->CheckVal<u32>(1)) : 0u);
         return 1;
     }
 
@@ -1969,6 +3097,7 @@ namespace Scripting::Editor
         {
             if (descriptor.owner == SpellEffectOwner::None)
                 continue;
+
             zenith->CreateTable();
             zenith->AddTableField("value", static_cast<u8>(descriptor.type));
             zenith->AddTableField("name", descriptor.name.data());

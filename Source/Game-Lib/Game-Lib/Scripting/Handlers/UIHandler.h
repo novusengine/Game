@@ -67,6 +67,8 @@ namespace Scripting::UI
         static i32 GetCanvas(Zenith* zenith);
         static i32 GetShapeSurface(Zenith* zenith);
         static i32 GetMousePos(Zenith* zenith);
+        static i32 GetClipboardText(Zenith* zenith);
+        static i32 SetClipboardText(Zenith* zenith);
         static i32 DrawLine2D(Zenith* zenith);
         static i32 GetTextureSize(Zenith* zenith);
         static i32 IsSmoothUnitFrameBarsEnabled(Zenith* zenith);
@@ -149,6 +151,8 @@ namespace Scripting::UI
         { "GetCanvas", UIHandler::GetCanvas },
         { "GetShapeSurface", UIHandler::GetShapeSurface },
         { "GetMousePos", UIHandler::GetMousePos },
+        { "GetClipboardText", UIHandler::GetClipboardText },
+        { "SetClipboardText", UIHandler::SetClipboardText },
         { "DrawLine2D", UIHandler::DrawLine2D },
 
         // Utils

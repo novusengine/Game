@@ -27,6 +27,7 @@ export type Nameplate = {
     fill: Panel,
     nameText: TextWidget,
     healthText: TextWidget,
+    questMarker: TextWidget,
 
     -- Methods
     Destroy: (self: Nameplate) -> (),
@@ -41,6 +42,7 @@ export type Nameplate = {
     GetUnitName: (self: Nameplate) -> string,
     SetUnitName: (self: Nameplate, unitName: string) -> (),
     SetNameColor: (self: Nameplate, color: vec) -> (),
+    SetQuestMarker: (self: Nameplate, marker: string, color: vec) -> (),
     IsStandalone: (self: Nameplate) -> boolean,
     SetStandalone: (self: Nameplate, standalone: boolean) -> (),
     SetHealthValues: (self: Nameplate, health: number, maxHealth: number) -> (),
@@ -111,6 +113,12 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         self.nameText:SetColor(color);
     end
 
+    nameplateTable.SetQuestMarker = function(self : Nameplate, marker : string, color : vec)
+        self.questMarker:SetText(marker);
+        self.questMarker:SetColor(color);
+        self.questMarker:SetVisible(marker ~= "");
+    end
+
     nameplateTable.IsStandalone = function(self : Nameplate)
         return self.isStandalone;
     end
@@ -163,6 +171,10 @@ function nameplateAPI.New(parent : Widget, position : vec, size : vec, layer : i
     -- Create name text
     nameplateTable.nameText = nameplateTable.root:NewText(nameplateTable.unitName, vec.New(0, NAME_OFFSET_Y), 0i, "NameplateName");
     nameplateTable.nameText:SetRelativePoint(vec.New(0.5, 0.0));
+
+    nameplateTable.questMarker = nameplateTable.root:NewText("", vec.New(0, 20), 0i, "NameplateQuestMarker");
+    nameplateTable.questMarker:SetRelativePoint(vec.New(0.5, 0.0));
+    nameplateTable.questMarker:SetVisible(false);
 
     -- Create health text
     nameplateTable.healthText = nameplateTable.background:NewText("0 / 100 (0%)", vec.New(0, 0), 0i, "NameplateHealth");

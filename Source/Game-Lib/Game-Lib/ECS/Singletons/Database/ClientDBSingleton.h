@@ -57,7 +57,10 @@ enum class ClientDBHash : u64
     Icon                                = XXHash64::hashLiteral("clientdb/icon.cdb"),
     Faction                             = XXHash64::hashLiteral("clientdb/faction.cdb"),
     FactionRelation                     = XXHash64::hashLiteral("clientdb/factionrelation.cdb"),
-    FactionStanding                     = XXHash64::hashLiteral("clientdb/factionstanding.cdb")
+    FactionStanding                     = XXHash64::hashLiteral("clientdb/factionstanding.cdb"),
+    Currency                            = XXHash64::hashLiteral("clientdb/currency.cdb"),
+    CostCurrencyComponent               = XXHash64::hashLiteral("clientdb/cost_currency_component.cdb"),
+    CostItemComponent                   = XXHash64::hashLiteral("clientdb/cost_item_component.cdb")
 };
 
 struct ClientDBDefinition
@@ -67,7 +70,7 @@ public:
     std::string_view debugName;
 };
 
-inline constexpr std::array<ClientDBDefinition, 41> ClientDBHashes =
+inline constexpr std::array<ClientDBDefinition, 44> ClientDBHashes =
 {{
     { ClientDBHash::TextureFileData, "TextureFileData" },
     { ClientDBHash::ModelFileData, "ModelFileData" },
@@ -109,7 +112,10 @@ inline constexpr std::array<ClientDBDefinition, 41> ClientDBHashes =
     { ClientDBHash::Icon, "Icon" },
     { ClientDBHash::Faction, "Faction" },
     { ClientDBHash::FactionRelation, "FactionRelation" },
-    { ClientDBHash::FactionStanding, "FactionStanding" }
+    { ClientDBHash::FactionStanding, "FactionStanding" },
+    { ClientDBHash::Currency, "Currency" },
+    { ClientDBHash::CostCurrencyComponent, "CostCurrencyComponent" },
+    { ClientDBHash::CostItemComponent, "CostItemComponent" }
 }};
 
 inline bool HasClientDBRecordSuffix(std::string_view dbName)

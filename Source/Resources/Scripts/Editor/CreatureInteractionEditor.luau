@@ -31,10 +31,14 @@ local refreshButton = Button.New(toolbar, vec.New(0, 0), vec.New(74, 22), 1i, { 
 local configuredButton = Button.New(toolbar, vec.New(0, 0), vec.New(112, 22), 1i, { text = "Show Configured", textTemplate = TEXT });
 local searchInput = InputField.New(toolbar, vec.New(0, 0), vec.New(260, 22), 1i, { textTemplate = TEXT, placeholderText = "Search creature templates" });
 local menusButton = Button.New(toolbar, vec.New(0, 0), vec.New(104, 22), 1i, { text = "Gossip Flow", textTemplate = TEXT });
+local vendorsButton = Button.New(toolbar, vec.New(0, 0), vec.New(104, 22), 1i, { text = "Vendor Lists", textTemplate = TEXT });
+local questsButton = Button.New(toolbar, vec.New(0, 0), vec.New(104, 22), 1i, { text = "Quests", textTemplate = TEXT });
 toolbar:SetChildOpts(refreshButton, { sizeX = 74, sizeY = 22 });
 toolbar:SetChildOpts(configuredButton, { sizeX = 112, sizeY = 22 });
 toolbar:SetChildOpts(searchInput, { modeX = "flex", sizeY = 22 });
 toolbar:SetChildOpts(menusButton, { sizeX = 104, sizeY = 22 });
+toolbar:SetChildOpts(vendorsButton, { sizeX = 104, sizeY = 22 });
+toolbar:SetChildOpts(questsButton, { sizeX = 104, sizeY = 22 });
 
 local browserTitle = browser:NewText("Creature Templates", vec.New(0, 0), 1i, TEXT);
 browserTitle:SetColor(Theme.selectedColor);
@@ -43,7 +47,7 @@ local browserState = browser:NewText("Interaction data has not been requested.",
 browserState:SetColor(colors.muted);
 browser:SetChildOpts(browserState, { sizeY = 18 });
 
-local snapshot = { dataState = "Unavailable", creatureTemplates = {}, creatureTemplateInteractions = {}, creatureTemplateGossip = {}, gossipMenus = {}, interactionRangePolicies = {} };
+local snapshot = { dataState = "Unavailable", creatureTemplates = {}, creatureTemplateInteractions = {}, creatureTemplateGossip = {}, gossipMenus = {}, vendorLists = {}, creatureTemplateVendor = {}, interactionRangePolicies = {} };
 local visibleTemplates = {};
 local configuredByTemplate = {};
 local selectedTemplateID : integer? = nil;
@@ -74,9 +78,21 @@ local function FindGossip(templateID)
     return nil;
 end
 
+local function FindVendor(templateID)
+    for _, binding in snapshot.creatureTemplateVendor do if binding.creatureTemplateID == templateID then return binding; end end
+    return nil;
+end
+
 local function MenuOptions()
     local options = {};
     for _, menu in snapshot.gossipMenus do if menu.id ~= 0i then table.insert(options, { label = menu.internalName, value = menu.id }); end end
+    table.sort(options, function(left, right) return string.lower(left.label) < string.lower(right.label); end);
+    return options;
+end
+
+local function VendorOptions()
+    local options = {};
+    for _, list in snapshot.vendorLists do if list.id ~= 0i then table.insert(options, { label = list.internalName, value = list.id }); end end
     table.sort(options, function(left, right) return string.lower(left.label) < string.lower(right.label); end);
     return options;
 end
@@ -166,10 +182,36 @@ local rootMenuField = NewPropertyField(gossipForm, "Root Gossip Menu", 340);
 local rootMenuDropdown = Dropdown.New(rootMenuField, canvas, vec.New(0, 0), vec.New(340, 24), 1i, { options = {}, placeholder = "Select a root menu", previewMaxCharacters = 44, button = { textTemplate = TEXT } });
 rootMenuField:SetChildOpts(rootMenuDropdown, { modeX = "flex", sizeY = 24 });
 local gossipActions = NewPropertyField(gossipForm, "Capability Actions", 190);
-local saveGossipButton = Button.New(gossipActions, vec.New(0, 0), vec.New(190, 24), 1i, { text = "Save Root Menu", textTemplate = TEXT });
-gossipActions:SetChildOpts(saveGossipButton, { modeX = "flex", sizeY = 24 });
+local gossipActionRow = HorizontalLayout.New(gossipActions, vec.New(0, 0), vec.New(190, 24), 1i, { spacing = 4, panelTemplate = "DebugDarkGrey", alpha = 0.0 });
+local saveGossipButton = Button.New(gossipActionRow, vec.New(0, 0), vec.New(116, 24), 1i, { text = "Save Gossip", textTemplate = TEXT });
+local removeGossipButton = Button.New(gossipActionRow, vec.New(0, 0), vec.New(70, 24), 1i, { text = "Remove", textTemplate = TEXT });
+gossipActionRow:SetChildOpts(saveGossipButton, { modeX = "flex", weightX = 1, minX = 100, sizeY = 24 });
+gossipActionRow:SetChildOpts(removeGossipButton, { sizeX = 70, sizeY = 24 });
+gossipActions:SetChildOpts(gossipActionRow, { modeX = "flex", sizeY = 24 });
 gossipForm:SetChildOpts(rootMenuField, { modeX = "flex", weightX = 1, minX = 280, sizeY = 46 });
 gossipForm:SetChildOpts(gossipActions, { sizeX = 190, sizeY = 46 });
+
+local vendorTitle = inspector:NewText("Vendor Capability", vec.New(0, 0), 1i, TEXT);
+vendorTitle:SetColor(Theme.selectedColor);
+inspector:SetChildOpts(vendorTitle, { sizeY = 20 });
+local vendorExplanation = inspector:NewText("A vendor binding assigns one standalone vendor list to every applicable spawn of this template.", vec.New(0, 0), 1i, TEXT);
+vendorExplanation:SetWrapWidth(RIGHT_WIDTH - 20);
+vendorExplanation:SetColor(colors.muted);
+inspector:SetChildOpts(vendorExplanation, { modeX = "flex", sizeY = 36 });
+local vendorForm = HorizontalLayout.New(inspector, vec.New(0, 0), vec.New(RIGHT_WIDTH - 20, 48), 1i, { spacing = 6, panelTemplate = "DebugDarkGrey", alpha = 0.0 });
+inspector:SetChildOpts(vendorForm, { modeX = "flex", sizeY = 48 });
+local vendorListField = NewPropertyField(vendorForm, "Vendor List", 340);
+local vendorListDropdown = Dropdown.New(vendorListField, canvas, vec.New(0, 0), vec.New(340, 24), 1i, { options = {}, placeholder = "Select a vendor list", previewMaxCharacters = 44, button = { textTemplate = TEXT } });
+vendorListField:SetChildOpts(vendorListDropdown, { modeX = "flex", sizeY = 24 });
+local vendorActions = NewPropertyField(vendorForm, "Capability Actions", 190);
+local vendorActionRow = HorizontalLayout.New(vendorActions, vec.New(0, 0), vec.New(190, 24), 1i, { spacing = 4, panelTemplate = "DebugDarkGrey", alpha = 0.0 });
+vendorActions:SetChildOpts(vendorActionRow, { modeX = "flex", sizeY = 24 });
+local saveVendorButton = Button.New(vendorActionRow, vec.New(0, 0), vec.New(116, 24), 1i, { text = "Enable Vendor", textTemplate = TEXT });
+local removeVendorButton = Button.New(vendorActionRow, vec.New(0, 0), vec.New(70, 24), 1i, { text = "Remove", textTemplate = TEXT });
+vendorActionRow:SetChildOpts(saveVendorButton, { modeX = "flex", sizeY = 24 });
+vendorActionRow:SetChildOpts(removeVendorButton, { sizeX = 70, sizeY = 24 });
+vendorForm:SetChildOpts(vendorListField, { modeX = "flex", weightX = 1, minX = 280, sizeY = 46 });
+vendorForm:SetChildOpts(vendorActions, { sizeX = 190, sizeY = 46 });
 
 local enablePanel = VerticalLayout.New(inspector, vec.New(0, 0), vec.New(RIGHT_WIDTH - 20, 82), 1i, { spacing = 6, panelTemplate = "DebugDarkGrey", alpha = 0.0 });
 inspector:SetChildOpts(enablePanel, { modeX = "flex", sizeY = 82 });
@@ -185,6 +227,12 @@ statusText:SetWrapWidth(RIGHT_WIDTH - 20);
 inspector:SetChildOpts(statusText, { modeX = "flex", sizeY = 48 });
 local removeModal = Modal.New(canvas, vec.New(0, 0), vec.New(450, 175), integer.add(LAYER, 100i), {
     name = "CreatureInteractionEditorRemove", title = "Remove interaction provider", message = "", confirmText = "Remove", cancelText = "Cancel",
+});
+local removeGossipModal = Modal.New(canvas, vec.New(0, 0), vec.New(450, 175), integer.add(LAYER, 100i), {
+    name = "CreatureInteractionEditorRemoveGossip", title = "Remove gossip capability", message = "", confirmText = "Remove", cancelText = "Cancel",
+});
+local removeVendorModal = Modal.New(canvas, vec.New(0, 0), vec.New(450, 175), integer.add(LAYER, 100i), {
+    name = "CreatureInteractionEditorRemoveVendor", title = "Remove vendor capability", message = "", confirmText = "Remove", cancelText = "Cancel",
 });
 
 RefreshTemplates = function(preserveScroll)
@@ -221,10 +269,13 @@ RefreshInspector = function()
     local definition = FindTemplate(selectedTemplateID);
     local provider = FindProvider(selectedTemplateID);
     local gossip = FindGossip(selectedTemplateID);
+    local vendor = FindVendor(selectedTemplateID);
     local ready = snapshot.dataState == "Ready" and pendingRequestID == 0i and not awaitingSnapshot;
     local menuOptions = MenuOptions();
+    local vendorOptions = VendorOptions();
     policyDropdown:SetOptions(RangePolicyOptions());
     rootMenuDropdown:SetOptions(menuOptions);
+    vendorListDropdown:SetOptions(vendorOptions);
     if definition then
         templateTitle:SetText(`{definition.name} - Template #{definition.id}`);
         templateSubtitle:SetText(if definition.subname ~= "" then definition.subname else "No subname");
@@ -245,26 +296,44 @@ RefreshInspector = function()
     end
     if gossip then rootMenuDropdown:SetValue(gossip.rootMenuID, false);
     elseif #menuOptions > 0 then rootMenuDropdown:SetValue(menuOptions[1].value, false); end
+    if vendor then vendorListDropdown:SetValue(vendor.vendorListID, false);
+    elseif #vendorOptions > 0 then vendorListDropdown:SetValue(vendorOptions[1].value, false); end
 
     local hasSelection = definition ~= nil;
     local providerEnabled = provider ~= nil;
+    gossipTitle:SetText(if gossip then "Gossip Capability: Enabled" else "Gossip Capability: Not Configured");
+    gossipTitle:SetColor(if gossip then colors.success else colors.muted);
+    vendorTitle:SetText(if vendor then "Vendor Capability: Enabled" else "Vendor Capability: Not Configured");
+    vendorTitle:SetColor(if vendor then colors.success else colors.muted);
     providerForm:SetVisible(hasSelection);
     gossipTitle:SetVisible(hasSelection);
     gossipExplanation:SetVisible(hasSelection);
     gossipForm:SetVisible(hasSelection);
+    vendorTitle:SetVisible(hasSelection and providerEnabled);
+    vendorExplanation:SetVisible(hasSelection and providerEnabled);
+    vendorForm:SetVisible(hasSelection and providerEnabled);
     enablePanel:SetVisible(hasSelection and not providerEnabled);
     saveProviderButton:SetVisible(providerEnabled);
     removeProviderButton:SetVisible(providerEnabled);
-    saveGossipButton:SetVisible(providerEnabled and gossip ~= nil);
+    saveGossipButton:SetText(if gossip then "Save Gossip" else "Enable Gossip");
+    saveGossipButton:SetVisible(providerEnabled);
+    removeGossipButton:SetVisible(gossip ~= nil);
     policyDropdown:SetInteractable(ready and hasSelection);
     rangeInput.button:SetInteractable(ready and hasSelection and policyDropdown:GetValue() == 1i);
     rootMenuDropdown:SetInteractable(ready and hasSelection and #menuOptions > 0);
+    vendorListDropdown:SetInteractable(ready and providerEnabled and #vendorOptions > 0);
     saveProviderButton:SetInteractable(ready and providerEnabled and ReadRange(policyDropdown:GetValue()) ~= nil);
     removeProviderButton:SetInteractable(ready and providerEnabled);
-    saveGossipButton:SetInteractable(ready and providerEnabled and gossip ~= nil and #menuOptions > 0);
+    saveGossipButton:SetInteractable(ready and providerEnabled and #menuOptions > 0);
+    removeGossipButton:SetInteractable(ready and gossip ~= nil);
+    saveVendorButton:SetText(if vendor then "Save Vendor" else "Enable Vendor");
+    saveVendorButton:SetInteractable(ready and providerEnabled and #vendorOptions > 0);
+    removeVendorButton:SetVisible(vendor ~= nil);
+    removeVendorButton:SetInteractable(ready and vendor ~= nil);
     enableButton:SetInteractable(ready and hasSelection and not providerEnabled and #menuOptions > 0 and ReadRange(policyDropdown:GetValue()) ~= nil);
     providerForm:Invalidate();
     gossipForm:Invalidate();
+    vendorForm:Invalidate();
     inspector:Invalidate();
     statusText:SetText(statusMessage);
     statusText:SetColor(statusColor);
@@ -302,6 +371,8 @@ searchInput:SetOnTextChanged(function() RefreshTemplates(); end);
 refreshButton:SetOnMouseUp(function() if InteractionEditor.RequestSnapshot() then ApplySnapshot(true); end end);
 configuredButton:SetOnMouseUp(function() configuredOnly = not configuredOnly; RefreshTemplates(); end);
 menusButton:SetOnMouseUp(function() EditorRegistry.Toggle("GossipFlowEditor"); end);
+vendorsButton:SetOnMouseUp(function() EditorRegistry.Toggle("VendorEditor"); end);
+questsButton:SetOnMouseUp(function() EditorRegistry.Toggle("QuestEditor"); end);
 policyDropdown:SetOnValueChanged(function(value)
     if refreshingFields then return; end
     if value == 0i then rangeInput:SetText("0");
@@ -314,25 +385,55 @@ enableButton:SetOnMouseUp(function()
     local range = ReadRange(policyDropdown:GetValue());
     if definition == nil or range == nil or rootMenuDropdown:GetValue() == nil then return; end
     selectAfterSnapshot = definition.id;
-    Submit(InteractionEditor.CreateCreatureTemplateInteraction(definition.id, policyDropdown:GetValue(), range, 0i, rootMenuDropdown:GetValue(), 0i));
+    Submit(InteractionEditor.CreateCreatureTemplateInteraction(definition.id, policyDropdown:GetValue(), range, 0i, 0i, rootMenuDropdown:GetValue(), 0i));
 end);
 saveProviderButton:SetOnMouseUp(function()
     local provider = FindProvider(selectedTemplateID);
     local range = ReadRange(policyDropdown:GetValue());
     if provider == nil or range == nil then statusMessage = "Custom interaction distance must be greater than zero."; statusColor = colors.error; RefreshInspector(); return; end
     selectAfterSnapshot = provider.creatureTemplateID;
-    Submit(InteractionEditor.UpdateCreatureTemplateInteraction(provider.creatureTemplateID, policyDropdown:GetValue(), range, provider.flags));
+    Submit(InteractionEditor.UpdateCreatureTemplateInteraction(provider.creatureTemplateID, policyDropdown:GetValue(), range, provider.defaultGreetingTextID, provider.flags));
 end);
 saveGossipButton:SetOnMouseUp(function()
+    local provider = FindProvider(selectedTemplateID);
     local gossip = FindGossip(selectedTemplateID);
-    if gossip == nil or rootMenuDropdown:GetValue() == nil then return; end
-    selectAfterSnapshot = gossip.creatureTemplateID;
-    Submit(InteractionEditor.UpdateCreatureTemplateGossip(gossip.creatureTemplateID, rootMenuDropdown:GetValue(), gossip.flags));
+    local rootMenuID = rootMenuDropdown:GetValue();
+    if provider == nil or rootMenuID == nil then return; end
+    selectAfterSnapshot = provider.creatureTemplateID;
+    Submit(if gossip == nil then InteractionEditor.CreateCreatureTemplateGossip(provider.creatureTemplateID, rootMenuID, 0i)
+        else InteractionEditor.UpdateCreatureTemplateGossip(gossip.creatureTemplateID, rootMenuID, gossip.flags));
+end);
+removeGossipButton:SetOnMouseUp(function()
+    local definition = FindTemplate(selectedTemplateID);
+    local gossip = FindGossip(selectedTemplateID);
+    if definition == nil or gossip == nil then return; end
+    removeGossipModal:Open({ message = `Remove the root gossip menu binding from every spawn of "{definition.name}" (template #{definition.id})? The interaction provider and any other capability bindings will remain configured.`, onConfirm = function()
+        selectAfterSnapshot = definition.id;
+        Submit(InteractionEditor.DeleteCreatureTemplateGossip(definition.id));
+    end });
+end);
+saveVendorButton:SetOnMouseUp(function()
+    local provider = FindProvider(selectedTemplateID);
+    local vendor = FindVendor(selectedTemplateID);
+    local vendorListID = vendorListDropdown:GetValue();
+    if provider == nil or vendorListID == nil then return; end
+    selectAfterSnapshot = provider.creatureTemplateID;
+    Submit(if vendor == nil then InteractionEditor.CreateCreatureTemplateVendor(provider.creatureTemplateID, vendorListID, 0i)
+        else InteractionEditor.UpdateCreatureTemplateVendor(provider.creatureTemplateID, vendorListID, vendor.flags));
+end);
+removeVendorButton:SetOnMouseUp(function()
+    local definition = FindTemplate(selectedTemplateID);
+    local vendor = FindVendor(selectedTemplateID);
+    if definition == nil or vendor == nil then return; end
+    removeVendorModal:Open({ message = `Remove the vendor-list binding from every spawn of "{definition.name}" (template #{definition.id})? The interaction provider and any other capability bindings will remain configured.`, onConfirm = function()
+        selectAfterSnapshot = definition.id;
+        Submit(InteractionEditor.DeleteCreatureTemplateVendor(definition.id));
+    end });
 end);
 removeProviderButton:SetOnMouseUp(function()
     local definition = FindTemplate(selectedTemplateID);
     if definition == nil or FindProvider(definition.id) == nil then return; end
-    removeModal:Open({ message = `Remove the native interaction provider and gossip binding from every spawn of "{definition.name}" (template #{definition.id})?`, onConfirm = function()
+    removeModal:Open({ message = `Remove the native interaction provider and all capability bindings from every spawn of "{definition.name}" (template #{definition.id})?`, onConfirm = function()
         selectAfterSnapshot = definition.id;
         Submit(InteractionEditor.DeleteCreatureTemplateInteraction(definition.id));
     end });
@@ -345,7 +446,7 @@ function methods:Show()
     if snapshot.dataState == "Unavailable" or snapshot.dataState == "Failed" then InteractionEditor.RequestSnapshot(); end
     ApplySnapshot();
 end
-function methods:Hide() root:SetVisible(false); removeModal:Close(); end
+function methods:Hide() root:SetVisible(false); removeModal:Close(); removeGossipModal:Close(); removeVendorModal:Close(); end
 function methods:IsVisible() return root:IsVisible(); end
 shell.window.closeButton:SetOnMouseUp(function() methods:Hide(); end);
 EditorRegistry.Register("CreatureInteractionEditor", methods);

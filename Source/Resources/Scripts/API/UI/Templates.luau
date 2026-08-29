@@ -115,6 +115,36 @@ function templatesAPI.RegisterTemplates()
         alpha = 0.08,
     });
 
+    UI.RegisterPanelTemplate("DangerButtonPanel",
+    {
+        color = vec.New(0.62, 0.20, 0.23),
+        alpha = 1.0,
+        cornerRadius = 2.0,
+        borderSize = 0.0,
+
+        onClickTemplate = "DangerButtonDownPanel",
+        onHoverTemplate = "DangerButtonHoveredPanel",
+        onUninteractableTemplate = "DangerButtonDisabledPanel",
+    });
+
+    UI.RegisterPanelTemplate("DangerButtonDownPanel",
+    {
+        color = vec.New(0.48, 0.13, 0.16),
+        alpha = 1.0,
+    });
+
+    UI.RegisterPanelTemplate("DangerButtonHoveredPanel",
+    {
+        color = vec.New(0.65, 0.25, 0.27),
+        alpha = 1.0,
+    });
+
+    UI.RegisterPanelTemplate("DangerButtonDisabledPanel",
+    {
+        color = vec.New(0.62, 0.20, 0.23),
+        alpha = 0.18,
+    });
+
     UI.RegisterTextTemplate("DefaultDebugText",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font

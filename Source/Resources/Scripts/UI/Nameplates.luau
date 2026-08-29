@@ -7,6 +7,7 @@ local nameplates =
 {
     entries = {},
     deadByUnitID = {},
+    questMaskByUnitID = {},
     localMoverUnitID = nil,
 };
 
@@ -24,6 +25,35 @@ local NAME_PALETTE = {
     friendly = FRIENDLY_UNIT_NAME_COLOR,
 };
 local DEAD_UNIT_NAME_COLOR = vec.New(0.5, 0.5, 0.5);
+local QUEST_AVAILABLE_COLOR = vec.New(1.0, 0.82, 0.0);
+local QUEST_PROGRESS_COLOR = vec.New(0.65, 0.65, 0.65);
+local QUEST_COMPLETE_COLOR = vec.New(1.0, 0.82, 0.0);
+local QUEST_FUTURE_COLOR = vec.New(0.5, 0.5, 0.5);
+
+local QUEST_MASK_FUTURE_OFFER = 1i;
+local QUEST_MASK_OFFERS = 2i;
+local QUEST_MASK_IN_PROGRESS = 4i;
+local QUEST_MASK_COMPLETABLE = 8i;
+
+local function RefreshQuestMarker(unitID : integer, nameplate : any)
+    local mask = Unit.GetQuestInteractionMask(unitID);
+    if nameplates.questMaskByUnitID[unitID] == mask then
+        return;
+    end
+
+    nameplates.questMaskByUnitID[unitID] = mask;
+    if integer.btest(mask, QUEST_MASK_COMPLETABLE) then
+        nameplate:SetQuestMarker("?", QUEST_COMPLETE_COLOR);
+    elseif integer.btest(mask, QUEST_MASK_OFFERS) then
+        nameplate:SetQuestMarker("!", QUEST_AVAILABLE_COLOR);
+    elseif integer.btest(mask, QUEST_MASK_IN_PROGRESS) then
+        nameplate:SetQuestMarker("?", QUEST_PROGRESS_COLOR);
+    elseif integer.btest(mask, QUEST_MASK_FUTURE_OFFER) then
+        nameplate:SetQuestMarker("!", QUEST_FUTURE_COLOR);
+    else
+        nameplate:SetQuestMarker("", QUEST_FUTURE_COLOR);
+    end
+end
 
 local function GetUnitNameColor(unitID : integer)
     if Unit.GetLocal() == unitID then
@@ -74,6 +104,15 @@ local function RegisterTemplates()
         borderSize = 0.0,
         borderColor = vec.New(0.0, 0.0, 0.0),
     });
+
+    UI.RegisterTextTemplate("NameplateQuestMarker",
+    {
+        font = "Data/Fonts/QTFrizQuad.otf",
+        size = 20.0,
+        color = QUEST_AVAILABLE_COLOR,
+        borderSize = 1.0,
+        borderColor = vec.New(0.0, 0.0, 0.0),
+    });
 end
 
 local function SetEnableNameplates(enabled : boolean)
@@ -113,6 +152,7 @@ local function OnGameUpdated(eventID : integer, data : any)
         local health, maxHealth = Unit.GetHealth(unitID);
         nameplate:SetHealthValues(math.ceil(health), math.ceil(maxHealth));
         RefreshUnitNameColor(unitID, nameplate);
+        RefreshQuestMarker(unitID, nameplate);
         nameplate:SetPosToUnit(unitID);
     end
 end
@@ -135,6 +175,8 @@ local function OnUnitAdd(eventID : integer, data : any)
     local health, maxHealth = Unit.GetHealth(data.unitID);
     nameplate:SetHealthValues(math.ceil(health), math.ceil(maxHealth));
     RefreshUnitNameColor(data.unitID, nameplate, true);
+    nameplates.questMaskByUnitID[data.unitID] = nil;
+    RefreshQuestMarker(data.unitID, nameplate);
     nameplates.entries[data.unitID] = nameplate;
     nameplate:SetPosToUnit(data.unitID);
 end
@@ -148,6 +190,7 @@ local function OnUnitRemove(eventID : integer, data : any)
     nameplate:Destroy();
     nameplates.entries[data.unitID] = nil;
     nameplates.deadByUnitID[data.unitID] = nil;
+    nameplates.questMaskByUnitID[data.unitID] = nil;
 end
 
 local function OnUnitReactionChanged(eventID : integer, data : any)

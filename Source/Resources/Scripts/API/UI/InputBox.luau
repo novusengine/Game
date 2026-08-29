@@ -60,20 +60,102 @@ usage:
     });
 ]]
 
--- Helper function to get the byte position from a character position in a UTF-8 string
-local function GetBytePositionFromCharacterPosition(s, charPos)
+local function GetBytePositionFromCharacterPosition(s : string, charPos : number) : number
     if charPos == 0 then
         return 1;
-    else
-        return utf8.offset(s, charPos + 1);
+    end
+
+    return utf8.offset(s, charPos + 1) or (#s + 1);
+end
+
+local function GetText(inputBoxTable) : string
+    local text = inputBoxTable.text;
+    return if type(text) == "string" then text else tostring(text);
+end
+
+local function GetTextLength(inputBoxTable) : number
+    return utf8.len(GetText(inputBoxTable)) or 0;
+end
+
+local function MeasureText(inputBoxTable, text : string) : vec
+    return UI.CalculateTextSize(text, inputBoxTable.textTemplate, inputBoxTable.button.text:GetFontSize());
+end
+
+local function MeasureTextAdvance(inputBoxTable, text : string) : number
+    return math.max(0, MeasureText(inputBoxTable, text).x - inputBoxTable.textMeasurementPaddingX);
+end
+
+local function GetCaretHeight(inputBoxTable) : number
+    return math.max(1, math.ceil(inputBoxTable.button.text:GetFontSize()));
+end
+
+local function GetLineHeight(inputBoxTable) : number
+    return math.max(1, MeasureText(inputBoxTable, "Ag\nAg").y - MeasureText(inputBoxTable, "Ag").y);
+end
+
+local function GetSelectionRange(inputBoxTable) : (number?, number?)
+    local anchor = inputBoxTable.selectionAnchor;
+    if anchor == nil or anchor == inputBoxTable.cursorPos then return nil, nil; end
+
+    return math.min(anchor, inputBoxTable.cursorPos), math.max(anchor, inputBoxTable.cursorPos);
+end
+
+local function HideSelection(inputBoxTable)
+    for _, panel in inputBoxTable.selectionPanels do
+        panel:SetVisible(false);
     end
 end
 
-local function RefreshText(inputBoxTable)
-    local text = inputBoxTable.text;
-    if (type(text) ~= "string") then
-        text = tostring(text);
+local function GetSelectionPanel(inputBoxTable, index : number) : Panel
+    local panel = inputBoxTable.selectionPanels[index];
+    if panel ~= nil then return panel; end
+
+    panel = inputBoxTable.button.root:NewPanel(vec.New(0, 0), vec.New(1, 1), 0i);
+    panel:SetColor(vec.New(0.18, 0.48, 0.90));
+    panel:SetAlpha(0.55);
+    panel:SetInteractable(false);
+    table.insert(inputBoxTable.selectionPanels, panel);
+    return panel;
+end
+
+local function GetWrappedVisualPosition(inputBoxTable, originalText : string, wrappedText : string, characterPosition : number) : (number, number)
+    local targetByteCount = GetBytePositionFromCharacterPosition(originalText, characterPosition) - 1;
+    local originalBytePosition = 1;
+    local wrappedBytePosition = 1;
+
+    while originalBytePosition <= targetByteCount and wrappedBytePosition <= #wrappedText do
+        local wrappedCharacter = wrappedText:sub(wrappedBytePosition, wrappedBytePosition);
+        local originalCharacter = originalText:sub(originalBytePosition, originalBytePosition);
+        if wrappedCharacter == "\n" and originalCharacter ~= "\n" then
+            wrappedBytePosition += 1;
+        else
+            wrappedBytePosition += 1;
+            originalBytePosition += 1;
+        end
     end
+
+    local wrappedPrefix = wrappedText:sub(1, wrappedBytePosition - 1);
+    local lineIndex = 1;
+    for _ in wrappedPrefix:gmatch("\n") do
+        lineIndex += 1;
+    end
+
+    local linePrefix = wrappedPrefix:match("([^\n]*)$") or "";
+    return lineIndex, MeasureTextAdvance(inputBoxTable, linePrefix);
+end
+
+local function GetWrappedLine(wrappedText : string, targetLine : number) : string
+    local lineIndex = 1;
+    for line in (wrappedText .. "\n"):gmatch("(.-)\n") do
+        if lineIndex == targetLine then return line; end
+        lineIndex += 1;
+    end
+
+    return "";
+end
+
+local function RefreshText(inputBoxTable)
+    local text = GetText(inputBoxTable);
 
     local cursorPos = inputBoxTable.cursorPos;
 
@@ -92,9 +174,10 @@ local function RefreshText(inputBoxTable)
         end
     end
     inputBoxTable.isShowingPlaceholder = isShowingPlaceholder;
+    inputBoxTable.caret:SetColor(inputBoxTable.button.text:GetColor());
+    inputBoxTable.textMeasurementPaddingX = MeasureText(inputBoxTable, "").x;
 
-    -- Calculate the total width of the text
-    local totalTextWidth = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate).x;
+    local totalTextWidth = MeasureText(inputBoxTable, displayText).x;
 
     -- Initialize variables for text clipping
     local startCharPos = 0;
@@ -103,13 +186,45 @@ local function RefreshText(inputBoxTable)
     local maxVisibleWidth = inputBoxTable.inputBoxWidth - textInsetX * 2;
 
     if inputBoxTable.multiline then
-        if inputBoxTable.cursorBlinkState and not isShowingPlaceholder then
-            local cursorBytePos = GetBytePositionFromCharacterPosition(displayText, cursorPos);
-            displayText = displayText:sub(1, cursorBytePos - 1) .. "|" .. displayText:sub(cursorBytePos);
+        if inputBoxTable.secure and not isShowingPlaceholder then
+            displayText = string.rep("*", utf8.len(displayText) or 0);
         end
+
         inputBoxTable.button:SetText(displayText);
         inputBoxTable.button.text:SetWrapWidth(maxVisibleWidth);
         inputBoxTable.button.text:SetAlpha(isShowingPlaceholder and 0.55 or 1.0);
+
+        HideSelection(inputBoxTable);
+        inputBoxTable.caret:SetVisible(false);
+        if isShowingPlaceholder then return; end
+
+        local wrappedText = UI.WrapText(displayText, inputBoxTable.textTemplate, maxVisibleWidth, inputBoxTable.button.text:GetFontSize());
+        local lineHeight = GetLineHeight(inputBoxTable);
+        local caretHeight = GetCaretHeight(inputBoxTable);
+        local caretLine, caretX = GetWrappedVisualPosition(inputBoxTable, displayText, wrappedText, cursorPos);
+        inputBoxTable.caret:SetAnchor(vec.New(0.0, 1.0));
+        inputBoxTable.caret:SetRelativePoint(vec.New(0.0, 1.0));
+        inputBoxTable.caret:SetPos(vec.New(textInsetX + caretX, -6 - (caretLine - 1) * lineHeight - (lineHeight - caretHeight) / 2));
+        inputBoxTable.caret:SetSize(vec.New(1, caretHeight));
+        inputBoxTable.caret:SetVisible(inputBoxTable.isFocused and inputBoxTable.cursorBlinkState);
+
+        local selectionStart, selectionEnd = GetSelectionRange(inputBoxTable);
+        if not inputBoxTable.isFocused or selectionStart == nil or selectionEnd == nil then return; end
+
+        local startLine, startX = GetWrappedVisualPosition(inputBoxTable, displayText, wrappedText, selectionStart);
+        local endLine, endX = GetWrappedVisualPosition(inputBoxTable, displayText, wrappedText, selectionEnd);
+        local panelIndex = 1;
+        for lineIndex = startLine, endLine do
+            local lineStartX = if lineIndex == startLine then startX else 0;
+            local lineEndX = if lineIndex == endLine then endX else MeasureTextAdvance(inputBoxTable, GetWrappedLine(wrappedText, lineIndex));
+            local panel = GetSelectionPanel(inputBoxTable, panelIndex);
+            panel:SetAnchor(vec.New(0.0, 1.0));
+            panel:SetRelativePoint(vec.New(0.0, 1.0));
+            panel:SetPos(vec.New(textInsetX + lineStartX, -6 - (lineIndex - 1) * lineHeight));
+            panel:SetSize(vec.New(math.max(1, lineEndX - lineStartX), lineHeight));
+            panel:SetVisible(true);
+            panelIndex += 1;
+        end
         return;
     end
 
@@ -123,7 +238,7 @@ local function RefreshText(inputBoxTable)
             local charBytePosStart = utf8.offset(text, i);
             local charBytePosEnd = (utf8.offset(text, i + 1) or (#text + 1)) - 1;
             local char = text:sub(charBytePosStart, charBytePosEnd);
-            local charWidth = UI.CalculateTextSize(char, inputBoxTable.textTemplate).x;
+            local charWidth = MeasureTextAdvance(inputBoxTable, char);
             table.insert(inputBoxTable.charWidths, charWidth);
             table.insert(cumulativeWidths, cumulativeWidth);
             cumulativeWidth = cumulativeWidth + charWidth;
@@ -182,8 +297,7 @@ local function RefreshText(inputBoxTable)
     inputBoxTable.startCharPos = startCharPos;
     inputBoxTable.endCharPos = endCharPos;
 
-    -- Calculate displayTextWidth using UI.CalculateTextSize
-    local displayTextWidth = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate).x;
+    local displayTextWidth = MeasureText(inputBoxTable, displayText).x;
 
     -- Get text alignment from inputBoxTable
     local buttonTextRelativePointX = inputBoxTable.buttonTextRelativePointX or 0.0;
@@ -199,37 +313,54 @@ local function RefreshText(inputBoxTable)
         local charBytePosStart = utf8.offset(displayText, i);
         local charBytePosEnd = (utf8.offset(displayText, i + 1) or (#displayText + 1)) - 1;
         local char = displayText:sub(charBytePosStart, charBytePosEnd);
-        local charWidth = UI.CalculateTextSize(char, inputBoxTable.textTemplate).x;
+        local charWidth = MeasureTextAdvance(inputBoxTable, char);
         table.insert(inputBoxTable.charPositions, cumulativeWidth);
         cumulativeWidth = cumulativeWidth + charWidth;
     end
     -- Add the end position
     table.insert(inputBoxTable.charPositions, cumulativeWidth);
 
-    -- Keep the caret in the same widget. Inputs that need vertical centering use a fixed,
-    -- bottom-anchored baseline so the taller caret glyph cannot move the text.
-    if inputBoxTable.cursorBlinkState then
-        local cursorBytePosInDisplayText = GetBytePositionFromCharacterPosition(displayText, cursorCharPos);
-        local textBeforeCursor = displayText:sub(1, cursorBytePosInDisplayText - 1);
-        local textAfterCursor = displayText:sub(cursorBytePosInDisplayText);
-        displayText = textBeforeCursor .. "|" .. textAfterCursor;
-    end
-
     inputBoxTable.button:SetText(displayText);
     inputBoxTable.button.text:SetAlpha(isShowingPlaceholder and 0.55 or 1.0);
+
+    local lineHeight = GetLineHeight(inputBoxTable);
+    local caretHeight = GetCaretHeight(inputBoxTable);
+    local caretX = textStartX + (inputBoxTable.charPositions[cursorCharPos + 1] or 0);
+    inputBoxTable.caret:SetAnchor(vec.New(0.0, 0.5));
+    inputBoxTable.caret:SetRelativePoint(vec.New(0.0, 0.5));
+    inputBoxTable.caret:SetPos(vec.New(caretX, 0));
+    inputBoxTable.caret:SetSize(vec.New(1, caretHeight));
+    inputBoxTable.caret:SetVisible(inputBoxTable.isFocused and inputBoxTable.cursorBlinkState and not isShowingPlaceholder);
+
+    HideSelection(inputBoxTable);
+    local selectionStart, selectionEnd = GetSelectionRange(inputBoxTable);
+    if not inputBoxTable.isFocused or selectionStart == nil or selectionEnd == nil then return; end
+
+    local visibleSelectionStart = math.max(selectionStart, startCharPos);
+    local visibleSelectionEnd = math.min(selectionEnd, endCharPos);
+    if visibleSelectionStart >= visibleSelectionEnd then return; end
+
+    local selectionX = textStartX + (inputBoxTable.charPositions[visibleSelectionStart - startCharPos + 1] or 0);
+    local selectionEndX = textStartX + (inputBoxTable.charPositions[visibleSelectionEnd - startCharPos + 1] or 0);
+    local panel = GetSelectionPanel(inputBoxTable, 1);
+    panel:SetAnchor(vec.New(0.0, 0.5));
+    panel:SetRelativePoint(vec.New(0.0, 0.5));
+    panel:SetPos(vec.New(selectionX, 0));
+    panel:SetSize(vec.New(math.max(1, selectionEndX - selectionX), lineHeight));
+    panel:SetVisible(true);
 end
 
 local function SetupInputBoxMethods(inputBoxTable)
     inputBoxTable.SetOnMouseDown = function(table, func)
-        table.button:SetOnMouseDown(func);
+        table.onMouseDown = func;
     end
 
     inputBoxTable.SetOnMouseUp = function(table, func)
-        table.button:SetOnMouseUp(func);
+        table.onMouseUp = func;
     end
 
     inputBoxTable.SetOnMouseHeld = function(table, func)
-        table.button:SetOnMouseHeld(func);
+        table.onMouseHeld = func;
     end
 
     inputBoxTable.SetOnSubmit = function(table, func)
@@ -270,111 +401,199 @@ local function SetupInputBoxMethods(inputBoxTable)
         if t.onTextChanged ~= nil then t.onTextChanged(t) end
     end
 
+    local function CaptureState(table)
+        return { text = GetText(table), cursorPos = table.cursorPos, selectionAnchor = table.selectionAnchor };
+    end
+
+    local function PushHistory(stack, state)
+        table.insert(stack, state);
+        if #stack > 100 then table.remove(stack, 1); end
+    end
+
+    local function RecordUndo(table)
+        PushHistory(table.undoStack, CaptureState(table));
+        table.redoStack = {};
+    end
+
+    local function RestoreState(table, state)
+        table.text = state.text;
+        table.cursorPos = state.cursorPos;
+        table.selectionAnchor = state.selectionAnchor;
+        table.timer = 0.0;
+        table.cursorBlinkState = true;
+        RefreshText(table);
+        FireTextChanged(table);
+    end
+
+    local function SanitizeInsertedText(table, text : string) : string
+        if not table.multiline then
+            text = text:gsub("[\r\n]", "");
+        end
+
+        if table.numericOnly then
+            text = text:gsub("[^%d]", "");
+        end
+
+        return text;
+    end
+
+    local function ReplaceRange(table, rangeStart : number, rangeEnd : number, replacement : string)
+        local rawReplacement = replacement;
+        replacement = SanitizeInsertedText(table, replacement);
+        if rawReplacement ~= "" and replacement == "" then return; end
+        if rangeStart == rangeEnd and replacement == "" then return; end
+
+        local text = GetText(table);
+        local startBytePosition = GetBytePositionFromCharacterPosition(text, rangeStart);
+        local endBytePosition = GetBytePositionFromCharacterPosition(text, rangeEnd);
+        RecordUndo(table);
+
+        table.text = text:sub(1, startBytePosition - 1) .. replacement .. text:sub(endBytePosition);
+        table.cursorPos = rangeStart + (utf8.len(replacement) or 0);
+        table.selectionAnchor = nil;
+        table.timer = 0.0;
+        table.cursorBlinkState = true;
+        RefreshText(table);
+        FireTextChanged(table);
+    end
+
+    local function ReplaceSelection(table, replacement : string)
+        local selectionStart, selectionEnd = GetSelectionRange(table);
+        ReplaceRange(table, selectionStart or table.cursorPos, selectionEnd or table.cursorPos, replacement);
+    end
+
+    local function GetCharacter(text : string, characterPosition : number) : string
+        if characterPosition < 0 or characterPosition >= (utf8.len(text) or 0) then return ""; end
+
+        local startBytePosition = GetBytePositionFromCharacterPosition(text, characterPosition);
+        local endBytePosition = GetBytePositionFromCharacterPosition(text, characterPosition + 1);
+        return text:sub(startBytePosition, endBytePosition - 1);
+    end
+
+    local function IsWordCharacter(character : string) : boolean
+        return character:match("[%w_]") ~= nil;
+    end
+
+    local function GetPreviousWordPosition(table) : number
+        local text = GetText(table);
+        local position = table.cursorPos;
+        while position > 0 and not IsWordCharacter(GetCharacter(text, position - 1)) do position -= 1; end
+        while position > 0 and IsWordCharacter(GetCharacter(text, position - 1)) do position -= 1; end
+        return position;
+    end
+
+    local function GetNextWordPosition(table) : number
+        local text = GetText(table);
+        local textLength = utf8.len(text) or 0;
+        local position = table.cursorPos;
+        while position < textLength and IsWordCharacter(GetCharacter(text, position)) do position += 1; end
+        while position < textLength and not IsWordCharacter(GetCharacter(text, position)) do position += 1; end
+        return position;
+    end
+
+    local function MoveCursor(table, position : number, isSelecting : boolean)
+        if isSelecting then
+            if table.selectionAnchor == nil then table.selectionAnchor = table.cursorPos; end
+        else
+            table.selectionAnchor = nil;
+        end
+
+        table.cursorPos = math.clamp(position, 0, GetTextLength(table));
+        table.timer = 0.0;
+        table.cursorBlinkState = true;
+        RefreshText(table);
+    end
+
     inputBoxTable.AddUnicodeToInput = function(table, unicode)
-        local char = utf8.char(unicode);
-        if inputBoxTable.numericOnly then
-            if not char:match("%d") then
-                return; -- Do not add non-digit characters
-            end
-        end
-        local cursorPos = inputBoxTable.cursorPos;
-        local text = inputBoxTable.text;
-        if (type(text) ~= "string") then
-            text = tostring(text);
-        end
-
-        local cursorBytePos = GetBytePositionFromCharacterPosition(text, cursorPos);
-        local textBeforeCursor = text:sub(1, cursorBytePos - 1);
-        local textAfterCursor = text:sub(cursorBytePos);
-        inputBoxTable.text = textBeforeCursor .. char .. textAfterCursor;
-
-        inputBoxTable.cursorPos = inputBoxTable.cursorPos + 1;
-
-        RefreshText(inputBoxTable);
-        FireTextChanged(inputBoxTable);
+        ReplaceSelection(table, utf8.char(unicode));
     end
 
-    inputBoxTable.Backspace = function()
-        local cursorPos = inputBoxTable.cursorPos;
-        if cursorPos > 0 then
-            local text = inputBoxTable.text;
-            if (type(text) ~= "string") then
-                text = tostring(text);
-            end
-
-            -- Get byte index of character at cursorPos
-            local cursorBytePos = GetBytePositionFromCharacterPosition(text, cursorPos);
-
-            -- Get byte index of character before cursorPos
-            local prevCursorBytePos = GetBytePositionFromCharacterPosition(text, cursorPos - 1);
-
-            -- Remove character before cursor
-            local textBefore = text:sub(1, prevCursorBytePos - 1);
-            local textAfter = text:sub(cursorBytePos);
-            inputBoxTable.text = textBefore .. textAfter;
-
-            -- Move cursor back one position
-            inputBoxTable.cursorPos = cursorPos - 1;
-
-            RefreshText(inputBoxTable);
-            FireTextChanged(inputBoxTable);
-        end
+    inputBoxTable.SelectAll = function(table)
+        table.selectionAnchor = 0;
+        table.cursorPos = GetTextLength(table);
+        table.timer = 0.0;
+        table.cursorBlinkState = true;
+        RefreshText(table);
     end
 
-    -- Delete Key Functionality
-    inputBoxTable.Delete = function()
-        local cursorPos = inputBoxTable.cursorPos;
-        local textLength = utf8.len(inputBoxTable.text);
-        if cursorPos < textLength then
-            local text = inputBoxTable.text;
+    inputBoxTable.Copy = function(table)
+        local selectionStart, selectionEnd = GetSelectionRange(table);
+        if selectionStart == nil or selectionEnd == nil then return; end
 
-            -- Get byte index of character at cursorPos
-            local cursorBytePos = GetBytePositionFromCharacterPosition(text, cursorPos);
+        local text = GetText(table);
+        local startBytePosition = GetBytePositionFromCharacterPosition(text, selectionStart);
+        local endBytePosition = GetBytePositionFromCharacterPosition(text, selectionEnd);
+        UI.SetClipboardText(text:sub(startBytePosition, endBytePosition - 1));
+    end
 
-            -- Get byte index of character after cursorPos
-            local nextCursorBytePos = GetBytePositionFromCharacterPosition(text, cursorPos + 1);
+    inputBoxTable.Cut = function(table)
+        local selectionStart, selectionEnd = GetSelectionRange(table);
+        if selectionStart == nil or selectionEnd == nil then return; end
 
-            -- Remove character at cursorPos
-            local textBefore = text:sub(1, cursorBytePos - 1);
-            local textAfter = text:sub(nextCursorBytePos);
-            inputBoxTable.text = textBefore .. textAfter;
+        table:Copy();
+        ReplaceRange(table, selectionStart, selectionEnd, "");
+    end
 
-            -- Cursor position remains the same
+    inputBoxTable.Paste = function(table)
+        ReplaceSelection(table, UI.GetClipboardText());
+    end
 
-            RefreshText(inputBoxTable);
-            FireTextChanged(inputBoxTable);
+    inputBoxTable.Undo = function(table)
+        local state = table.undoStack[#table.undoStack];
+        if state == nil then return; end
+        table.undoStack[#table.undoStack] = nil;
+
+        PushHistory(table.redoStack, CaptureState(table));
+        RestoreState(table, state);
+    end
+
+    inputBoxTable.Redo = function(table)
+        local state = table.redoStack[#table.redoStack];
+        if state == nil then return; end
+        table.redoStack[#table.redoStack] = nil;
+
+        PushHistory(table.undoStack, CaptureState(table));
+        RestoreState(table, state);
+    end
+
+    inputBoxTable.Backspace = function(table, byWord : boolean?)
+        local selectionStart, selectionEnd = GetSelectionRange(table);
+        if selectionStart ~= nil and selectionEnd ~= nil then
+            ReplaceRange(table, selectionStart, selectionEnd, "");
+        elseif table.cursorPos > 0 then
+            ReplaceRange(table, if byWord then GetPreviousWordPosition(table) else table.cursorPos - 1, table.cursorPos, "");
         end
     end
 
-    -- Home Key Functionality
-    inputBoxTable.Home = function()
-        inputBoxTable.cursorPos = 0;
-
-        inputBoxTable.timer = 0.0;
-        inputBoxTable.cursorBlinkState = true;
-
-        RefreshText(inputBoxTable);
+    inputBoxTable.Delete = function(table, byWord : boolean?)
+        local selectionStart, selectionEnd = GetSelectionRange(table);
+        if selectionStart ~= nil and selectionEnd ~= nil then
+            ReplaceRange(table, selectionStart, selectionEnd, "");
+        elseif table.cursorPos < GetTextLength(table) then
+            ReplaceRange(table, table.cursorPos, if byWord then GetNextWordPosition(table) else table.cursorPos + 1, "");
+        end
     end
 
-    -- End Key Functionality
-    inputBoxTable.End = function()
-        inputBoxTable.cursorPos = utf8.len(inputBoxTable.text);
+    inputBoxTable.Home = function(table, isSelecting : boolean?)
+        MoveCursor(table, 0, isSelecting or false);
+    end
 
-        inputBoxTable.timer = 0.0;
-        inputBoxTable.cursorBlinkState = true;
-
-        RefreshText(inputBoxTable);
+    inputBoxTable.End = function(table, isSelecting : boolean?)
+        MoveCursor(table, GetTextLength(table), isSelecting or false);
     end
 
     inputBoxTable.Submit = function()
+        local shouldUnfocus = true;
         if inputBoxTable.onSubmit then
-            local shouldUnfocus = inputBoxTable.onSubmit(inputBoxTable) or false;
-            if (shouldUnfocus) then
-                UI.UnfocusWidget(inputBoxTable.button.root);
-
-                inputBoxTable.cursorBlinkState = false;
-                RefreshText(inputBoxTable);
+            local submitResult = inputBoxTable:onSubmit();
+            if submitResult ~= nil then
+                shouldUnfocus = submitResult;
             end
+        end
+
+        if shouldUnfocus then
+            local focusedWidget = UI.GetFocusedWidget();
+            UI.UnfocusWidget(focusedWidget);
         end
     end
 
@@ -384,26 +603,24 @@ local function SetupInputBoxMethods(inputBoxTable)
         end
     end
 
-    inputBoxTable.Left = function()
-        if inputBoxTable.cursorPos > 0 then
-            inputBoxTable.cursorPos = inputBoxTable.cursorPos - 1;
-
-            inputBoxTable.timer = 0.0;
-            inputBoxTable.cursorBlinkState = true;
-
-            RefreshText(inputBoxTable);
+    inputBoxTable.Left = function(table, isSelecting : boolean?, byWord : boolean?)
+        local selectionStart = GetSelectionRange(table);
+        if not isSelecting and selectionStart ~= nil then
+            MoveCursor(table, selectionStart, false);
+            return;
         end
+
+        MoveCursor(table, if byWord then GetPreviousWordPosition(table) else table.cursorPos - 1, isSelecting or false);
     end
 
-    inputBoxTable.Right = function()
-        if inputBoxTable.cursorPos < utf8.len(inputBoxTable.text) then
-            inputBoxTable.cursorPos = inputBoxTable.cursorPos + 1;
-
-            inputBoxTable.timer = 0.0;
-            inputBoxTable.cursorBlinkState = true;
-
-            RefreshText(inputBoxTable);
+    inputBoxTable.Right = function(table, isSelecting : boolean?, byWord : boolean?)
+        local _, selectionEnd = GetSelectionRange(table);
+        if not isSelecting and selectionEnd ~= nil then
+            MoveCursor(table, selectionEnd, false);
+            return;
         end
+
+        MoveCursor(table, if byWord then GetNextWordPosition(table) else table.cursorPos + 1, isSelecting or false);
     end
 
     inputBoxTable.GetText = function(table)
@@ -411,11 +628,14 @@ local function SetupInputBoxMethods(inputBoxTable)
     end
 
     inputBoxTable.SetText = function(table, text)
-        table.text = text;
+        table.text = if type(text) == "string" then text else tostring(text);
 
         table.timer = 0.0;
         table.cursorBlinkState = false;
-        table.cursorPos = utf8.len(text);
+        table.cursorPos = utf8.len(table.text) or 0;
+        table.selectionAnchor = nil;
+        table.undoStack = {};
+        table.redoStack = {};
 
         RefreshText(table);
         FireTextChanged(table);
@@ -476,7 +696,12 @@ function inputBoxAPI.New(parent : Widget, position : vec, size : vec, layer : in
 
     inputBoxTable.timer = 0.0;
     inputBoxTable.cursorBlinkState = false;
-    inputBoxTable.cursorPos = utf8.len(defaultText);
+    inputBoxTable.cursorPos = utf8.len(defaultText) or 0;
+    inputBoxTable.selectionAnchor = nil;
+    inputBoxTable.selectionPanels = {};
+    inputBoxTable.undoStack = {};
+    inputBoxTable.redoStack = {};
+    inputBoxTable.isMouseSelecting = false;
     inputBoxTable.onSubmit = nil;
     inputBoxTable.onTab = nil;
     inputBoxTable.onFocusBegin = nil;
@@ -504,6 +729,10 @@ function inputBoxAPI.New(parent : Widget, position : vec, size : vec, layer : in
     end
     inputBoxTable.button:SetFocusable(true);
 
+    inputBoxTable.caret = inputBoxTable.button.root:NewPanel(vec.New(0, 0), vec.New(1, 1), 2i);
+    inputBoxTable.caret:SetInteractable(false);
+    inputBoxTable.caret:SetVisible(false);
+
     if inputBoxTable.multiline then
         inputBoxTable.button.root:SetClipChildren(true);
         inputBoxTable.button.text:SetAnchor(vec.New(0.0, 1.0));
@@ -515,53 +744,67 @@ function inputBoxAPI.New(parent : Widget, position : vec, size : vec, layer : in
         inputBoxTable.button.text:SetPos(vec.New(inputBoxTable.textInsetX, 0));
     end
 
-    inputBoxTable.button:SetOnMouseDown(function(eventID, widget, button, mouseX, mouseY)
+    local function GetCursorPositionFromMouse(mouseX : number) : number
         if inputBoxTable.multiline then
-            inputBoxTable.cursorPos = utf8.len(inputBoxTable.text);
-            RefreshText(inputBoxTable);
-            return;
+            return GetTextLength(inputBoxTable);
         end
 
         local buttonWorldPosX = inputBoxTable.button:GetWorldPosX();
         local localX = mouseX - buttonWorldPosX;
-
-        -- Ensure startCharPos and endCharPos are valid
         local startCharPos = inputBoxTable.startCharPos or 0;
-        local endCharPos = inputBoxTable.endCharPos or utf8.len(inputBoxTable.text);
+        local endCharPos = inputBoxTable.endCharPos or GetTextLength(inputBoxTable);
+        localX -= inputBoxTable.textStartX or 0;
 
-        local textStartX = inputBoxTable.textStartX or 0;
-
-        -- Adjust localX by subtracting textStartX due to alignment
-        localX = localX - textStartX;
-
-        -- Use charPositions to find the clicked character index
         local charPositions = inputBoxTable.charPositions or {};
         local newCursorPos = startCharPos;
         for i = 1, #charPositions - 1 do
             local pos1 = charPositions[i];
             local pos2 = charPositions[i + 1];
             if localX >= pos1 and localX < pos2 then
-                newCursorPos = startCharPos + i - 1;
+                newCursorPos = startCharPos + i - 1 + (if localX >= (pos1 + pos2) / 2 then 1 else 0);
                 break;
             end
         end
-        if localX >= (charPositions[#charPositions] or 0) then
-            newCursorPos = endCharPos;
+        if localX >= (charPositions[#charPositions] or 0) then newCursorPos = endCharPos; end
+
+        return math.clamp(newCursorPos, 0, GetTextLength(inputBoxTable));
+    end
+
+    inputBoxTable.button:SetOnMouseDown(function(eventID, widget, button, mouseX, mouseY)
+        if button == 0i then
+            inputBoxTable.cursorPos = GetCursorPositionFromMouse(mouseX);
+            inputBoxTable.selectionAnchor = inputBoxTable.cursorPos;
+            inputBoxTable.isMouseSelecting = true;
+            inputBoxTable.timer = 0.0;
+            inputBoxTable.cursorBlinkState = true;
         end
-
-        -- Ensure newCursorPos is within valid range
-        if newCursorPos < 0 then newCursorPos = 0 end
-        local textLength = utf8.len(inputBoxTable.text);
-        if newCursorPos > textLength then newCursorPos = textLength end;
-
-        inputBoxTable.cursorPos = newCursorPos;
         RefreshText(inputBoxTable);
-    end)
+        if inputBoxTable.onMouseDown ~= nil then inputBoxTable.onMouseDown(eventID, widget, button, mouseX, mouseY); end
+    end);
+
+    inputBoxTable.button:SetOnMouseHeld(function(eventID, widget, mouseX, mouseY)
+        if inputBoxTable.isMouseSelecting and not inputBoxTable.multiline then
+            inputBoxTable.cursorPos = GetCursorPositionFromMouse(mouseX);
+            inputBoxTable.timer = 0.0;
+            inputBoxTable.cursorBlinkState = true;
+            RefreshText(inputBoxTable);
+        end
+        if inputBoxTable.onMouseHeld ~= nil then inputBoxTable.onMouseHeld(eventID, widget, mouseX, mouseY); end
+    end);
+
+    inputBoxTable.button:SetOnMouseUp(function(eventID, widget, button, mouseX, mouseY)
+        if button == 0i then
+            inputBoxTable.isMouseSelecting = false;
+            if inputBoxTable.selectionAnchor == inputBoxTable.cursorPos then inputBoxTable.selectionAnchor = nil; end
+            RefreshText(inputBoxTable);
+        end
+        if inputBoxTable.onMouseUp ~= nil then inputBoxTable.onMouseUp(eventID, widget, button, mouseX, mouseY); end
+    end);
 
     inputBoxTable.button:SetOnFocusBegin(function(eventID, widget)
         inputBoxTable.isFocused = true;
-        inputBoxTable.timer = 1.0;
-        inputBoxTable.cursorBlinkState = false;
+        inputBoxTable.timer = 0.0;
+        inputBoxTable.cursorBlinkState = true;
         RefreshText(inputBoxTable);
         if inputBoxTable.onFocusBegin ~= nil then
             inputBoxTable.onFocusBegin(inputBoxTable);
@@ -596,9 +839,28 @@ function inputBoxAPI.New(parent : Widget, position : vec, size : vec, layer : in
             local isPressed = action == InputPhase.Pressed;
             local isRepeated = action == InputPhase.Repeated;
             local isShiftPressed = integer.btest(modifiers or InputModifier.None, InputModifier.Shift);
+            local isPrimaryModifierPressed = integer.btest(modifiers or InputModifier.None, InputModifier.Control) or integer.btest(modifiers or InputModifier.None, InputModifier.Super);
 
             if (isPressed) then
-                if (keyID == KeyValues.ESCAPE) then
+                if isPrimaryModifierPressed and keyID == KeyValues.A then
+                    inputBoxTable:SelectAll();
+                    return true;
+                elseif isPrimaryModifierPressed and keyID == KeyValues.C then
+                    inputBoxTable:Copy();
+                    return true;
+                elseif isPrimaryModifierPressed and keyID == KeyValues.X then
+                    inputBoxTable:Cut();
+                    return true;
+                elseif isPrimaryModifierPressed and keyID == KeyValues.V then
+                    inputBoxTable:Paste();
+                    return true;
+                elseif isPrimaryModifierPressed and keyID == KeyValues.Z then
+                    if isShiftPressed then inputBoxTable:Redo() else inputBoxTable:Undo(); end
+                    return true;
+                elseif isPrimaryModifierPressed and keyID == KeyValues.Y then
+                    inputBoxTable:Redo();
+                    return true;
+                elseif (keyID == KeyValues.ESCAPE) then
                     inputBoxTable:Unfocus();
                     return true;
                 elseif (keyID == KeyValues.ENTER) then
@@ -611,27 +873,27 @@ function inputBoxAPI.New(parent : Widget, position : vec, size : vec, layer : in
                 elseif (keyID == KeyValues.TAB) then
                     inputBoxTable.Tab();
                     return true;
-                elseif (keyID == KeyValues.HOME) then
-                    inputBoxTable:Home();
-                    return true;
-                elseif (keyID == KeyValues.END) then
-                    inputBoxTable:End();
-                    return true;
                 end
             end
 
             if (isPressed or isRepeated) then
                 if (keyID == KeyValues.BACKSPACE) then
-                    inputBoxTable:Backspace();
+                    inputBoxTable:Backspace(isPrimaryModifierPressed);
                     return true;
                 elseif (keyID == KeyValues.DELETE) then
-                    inputBoxTable:Delete();
+                    inputBoxTable:Delete(isPrimaryModifierPressed);
                     return true;
                 elseif (keyID == KeyValues.LEFT) then
-                    inputBoxTable:Left();
+                    inputBoxTable:Left(isShiftPressed, isPrimaryModifierPressed);
                     return true;
                 elseif (keyID == KeyValues.RIGHT) then
-                    inputBoxTable:Right();
+                    inputBoxTable:Right(isShiftPressed, isPrimaryModifierPressed);
+                    return true;
+                elseif (keyID == KeyValues.HOME) then
+                    inputBoxTable:Home(isShiftPressed);
+                    return true;
+                elseif (keyID == KeyValues.END) then
+                    inputBoxTable:End(isShiftPressed);
                     return true;
                 end
             end

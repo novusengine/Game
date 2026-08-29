@@ -17,6 +17,7 @@ export type Options =
     menuLayer : integer?,
     menuWidth : number?,
     itemHeight : number?,
+    itemFontSize : number?,
 }
 export type Dropdown =
 {
@@ -62,6 +63,7 @@ function dropdownAPI.New(parent : Widget, canvas : Widget, position : vec, size 
         layer = options.menuLayer,
         minWidth = options.menuWidth or size.x,
         itemHeight = options.itemHeight,
+        itemFontSize = options.itemFontSize,
     });
 
     function self:GetSelectedOption()

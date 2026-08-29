@@ -61,7 +61,7 @@ export type GossipMenuModelAPI =
 local MENU_FIELDS = { internalName = true, greetingTextID = true, flags = true };
 local OPTION_FIELDS =
 {
-    orderIndex = true,
+    priority = true,
     textID = true,
     icon = true,
     flags = true,
@@ -127,8 +127,8 @@ local function BuildDraft(snapshot : Snapshot) : Draft
         table.sort(optionIDs, function(leftID, rightID)
             local left = draft.optionsByID[leftID];
             local right = draft.optionsByID[rightID];
-            if left.orderIndex == right.orderIndex then return integer.lt(left.id, right.id); end
-            return integer.lt(left.orderIndex, right.orderIndex);
+            if left.priority == right.priority then return integer.lt(left.id, right.id); end
+            return integer.gt(left.priority, right.priority);
         end);
     end
     return draft;
@@ -304,13 +304,31 @@ function modelAPI.New(snapshot : Snapshot) : GossipMenuModel
             seen[optionID] = true;
         end
         if Equal(orderedOptionIDs, current) then return; end
-        local result = { };
-        for index = 1, #orderedOptionIDs do
-            local optionID = orderedOptionIDs[index];
-            result[index] = optionID;
-            draft.optionsByID[optionID].orderIndex = integer.create(index - 1);
+        local movedOptionID = orderedOptionIDs[1];
+        local movedDistance = -1;
+        for index, optionID in orderedOptionIDs do
+            local previousIndex = table.find(current, optionID) or index;
+            local distance = math.abs(previousIndex - index);
+            if distance > movedDistance then movedOptionID = optionID; movedDistance = distance; end
         end
-        draft.optionIDsByMenuID[menuID] = result;
+        local movedIndex = table.find(orderedOptionIDs, movedOptionID) or 1;
+        local higher = if movedIndex > 1 then draft.optionsByID[orderedOptionIDs[movedIndex - 1]].priority else nil;
+        local lower = if movedIndex < #orderedOptionIDs then draft.optionsByID[orderedOptionIDs[movedIndex + 1]].priority else nil;
+        local rebalance = false;
+        if higher == nil and integer.le(lower, 2147483547i) then
+            draft.optionsByID[movedOptionID].priority = integer.add(lower, 100i);
+        elseif lower == nil and integer.ge(higher, -2147483548i) then
+            draft.optionsByID[movedOptionID].priority = integer.sub(higher, 100i);
+        elseif higher ~= nil and lower ~= nil and integer.ge(integer.sub(higher, lower), 2i) then
+            local midpoint = integer.create(math.floor(integer.tonumber(integer.sub(higher, lower)) / 2));
+            draft.optionsByID[movedOptionID].priority = integer.add(lower, midpoint);
+        else
+            rebalance = true;
+        end
+        if rebalance then
+            for index, optionID in orderedOptionIDs do draft.optionsByID[optionID].priority = integer.create((#orderedOptionIDs - index) * 100); end
+        end
+        draft.optionIDsByMenuID[menuID] = Clone(orderedOptionIDs);
         RecomputeDirty();
     end
 

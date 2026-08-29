@@ -43,6 +43,23 @@ namespace
         AppendEmptyArtifact<MetaGen::Shared::ClientDB::CreatureTemplateDescriptorEditorRecord>(data, requestID, Artifact::CreatureTemplateDescriptor);
         AppendEmptyArtifact<MetaGen::Shared::ClientDB::CreatureTemplateInteractionEditorRecord>(data, requestID, Artifact::CreatureTemplateInteraction);
         AppendEmptyArtifact<MetaGen::Shared::ClientDB::CreatureTemplateGossipEditorRecord>(data, requestID, Artifact::CreatureTemplateGossip);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::CostEditorRecord>(data, requestID, Artifact::Cost);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::CostCurrencyComponentEditorRecord>(data, requestID, Artifact::CostCurrencyComponent);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::CostItemComponentEditorRecord>(data, requestID, Artifact::CostItemComponent);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::VendorListEditorRecord>(data, requestID, Artifact::VendorList);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::VendorListItemEditorRecord>(data, requestID, Artifact::VendorListItem);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::CreatureTemplateVendorEditorRecord>(data, requestID, Artifact::CreatureTemplateVendor);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestTemplateEditorRecord>(data, requestID, Artifact::QuestTemplate);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestPrerequisiteEditorRecord>(data, requestID, Artifact::QuestPrerequisite);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::CreatureTemplateQuestGiverEditorRecord>(data, requestID, Artifact::CreatureTemplateQuestGiver);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::CreatureTemplateQuestEditorRecord>(data, requestID, Artifact::CreatureTemplateQuest);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestObjectiveEditorRecord>(data, requestID, Artifact::QuestObjective);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestObjectiveTargetEditorRecord>(data, requestID, Artifact::QuestObjectiveTarget);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestRewardGroupEditorRecord>(data, requestID, Artifact::QuestRewardGroup);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestRewardItemEditorRecord>(data, requestID, Artifact::QuestRewardItem);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestRewardCurrencyEditorRecord>(data, requestID, Artifact::QuestRewardCurrency);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestRewardReputationEditorRecord>(data, requestID, Artifact::QuestRewardReputation);
+        AppendEmptyArtifact<MetaGen::Shared::ClientDB::QuestRewardExperienceEditorRecord>(data, requestID, Artifact::QuestRewardExperience);
         REQUIRE(data.CompleteSnapshot(requestID, true));
     }
 
@@ -56,12 +73,12 @@ namespace
         return payload;
     }
 
-    std::shared_ptr<Bytebuffer> MakeOptionPayload(u32 menuID, u16 orderIndex, u32 textID, u8 actionType)
+    std::shared_ptr<Bytebuffer> MakeOptionPayload(u32 menuID, i32 priority, u32 textID, u8 actionType)
     {
         std::shared_ptr<Bytebuffer> payload = Bytebuffer::BorrowRuntime(128);
         REQUIRE(payload);
         REQUIRE(payload->PutU32(menuID));
-        REQUIRE(payload->PutU16(orderIndex));
+        REQUIRE(payload->PutI32(priority));
         REQUIRE(payload->PutU32(textID));
         REQUIRE(payload->PutU16(4));
         REQUIRE(payload->PutU32(5));
@@ -94,6 +111,35 @@ namespace
         REQUIRE(payload->PutU8(locale));
         if (!value.empty())
             REQUIRE(payload->PutString(value) > 0);
+        return payload;
+    }
+
+    std::shared_ptr<Bytebuffer> MakeVendorItemPayload(u32 vendorListID, i32 priority, u32 itemTemplateID, u32 costID)
+    {
+        std::shared_ptr<Bytebuffer> payload = Bytebuffer::BorrowRuntime(64);
+        REQUIRE(payload);
+        REQUIRE(payload->PutU32(vendorListID));
+        REQUIRE(payload->PutI32(priority));
+        REQUIRE(payload->PutU32(itemTemplateID));
+        REQUIRE(payload->PutU32(1));
+        REQUIRE(payload->PutU32(costID));
+        REQUIRE(payload->PutU32(0));
+        REQUIRE(payload->PutU32(0));
+        REQUIRE(payload->PutU32(0));
+        REQUIRE(payload->PutU32(0));
+        return payload;
+    }
+
+    std::shared_ptr<Bytebuffer> MakeQuestObjectivePayload(u32 questID, i32 priority, u8 objectiveType, u32 requiredCount, u32 textID)
+    {
+        std::shared_ptr<Bytebuffer> payload = Bytebuffer::BorrowRuntime(32);
+        REQUIRE(payload);
+        REQUIRE(payload->PutU32(questID));
+        REQUIRE(payload->PutI32(priority));
+        REQUIRE(payload->PutU8(objectiveType));
+        REQUIRE(payload->PutU32(requiredCount));
+        REQUIRE(payload->PutU32(textID));
+        REQUIRE(payload->PutU32(0));
         return payload;
     }
 
@@ -143,14 +189,14 @@ TEST_CASE("Interaction editor applies canonical Gossip menu and option change se
     auto* option = options->TryGet<MetaGen::Shared::ClientDB::GossipMenuOptionEditorRecord>(77);
     REQUIRE(option);
     CHECK(option->menuID == 42);
-    CHECK(option->orderIndex == 3);
+    CHECK(option->priority == 3);
     CHECK(option->actionParameters[3] == 104);
 
     std::shared_ptr<Bytebuffer> optionUpdate = MakeOptionPayload(42, 1, 21, 7);
     REQUIRE(ReceiveOne(data, 4, Artifact::GossipMenuOption, MutationType::Update, 77, optionUpdate));
     option = options->TryGet<MetaGen::Shared::ClientDB::GossipMenuOptionEditorRecord>(77);
     REQUIRE(option);
-    CHECK(option->orderIndex == 1);
+    CHECK(option->priority == 1);
     CHECK(option->textID == 21);
 
     REQUIRE(ReceiveOne(data, 5, Artifact::GossipMenuOption, MutationType::Delete, 77));
@@ -206,6 +252,33 @@ TEST_CASE("Interaction editor applies canonical localized text change sets", "[I
     REQUIRE(data.ReceiveChangeSet(5, 2, deleteSet->GetDataPointer(), deleteSet->writtenData));
     CHECK(texts->TryGet<MetaGen::Shared::ClientDB::LocalizedTextEditorRecord>(20) == nullptr);
     CHECK(translations->TryGet<MetaGen::Shared::ClientDB::LocalizedTextTranslationEditorRecord>(translationRowID) == nullptr);
+}
+
+TEST_CASE("Interaction editor applies vendor and quest authoring change sets", "[InteractionEditor]")
+{
+    Editor::InteractionEditorData data;
+    LoadEmptyInteractionSnapshot(data);
+
+    REQUIRE(ReceiveOne(data, 1, Artifact::VendorListItem, MutationType::Create, 40, MakeVendorItemPayload(7, 50, 900, 3)));
+    auto* vendorItem = data.GetStorage(Artifact::VendorListItem)->TryGet<MetaGen::Shared::ClientDB::VendorListItemEditorRecord>(40);
+    REQUIRE(vendorItem);
+    CHECK(vendorItem->vendorListID == 7);
+    CHECK(vendorItem->priority == 50);
+    CHECK(vendorItem->costID == 3);
+
+    REQUIRE(ReceiveOne(data, 2, Artifact::QuestObjective, MutationType::Create, 80, MakeQuestObjectivePayload(12, 25, 1, 8, 100)));
+    auto* objective = data.GetStorage(Artifact::QuestObjective)->TryGet<MetaGen::Shared::ClientDB::QuestObjectiveEditorRecord>(80);
+    REQUIRE(objective);
+    CHECK(objective->questID == 12);
+    CHECK(objective->requiredCount == 8);
+
+    std::shared_ptr<Bytebuffer> deleteSet = Bytebuffer::BorrowRuntime(128);
+    REQUIRE(deleteSet);
+    AppendChange(*deleteSet, Artifact::VendorListItem, MutationType::Delete, 40);
+    AppendChange(*deleteSet, Artifact::QuestObjective, MutationType::Delete, 80);
+    REQUIRE(data.ReceiveChangeSet(3, 2, deleteSet->GetDataPointer(), deleteSet->writtenData));
+    CHECK(data.GetStorage(Artifact::VendorListItem)->TryGet<MetaGen::Shared::ClientDB::VendorListItemEditorRecord>(40) == nullptr);
+    CHECK(data.GetStorage(Artifact::QuestObjective)->TryGet<MetaGen::Shared::ClientDB::QuestObjectiveEditorRecord>(80) == nullptr);
 }
 
 TEST_CASE("Interaction editor rejects a malformed change set atomically", "[InteractionEditor]")

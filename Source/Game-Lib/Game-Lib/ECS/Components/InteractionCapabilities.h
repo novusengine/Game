@@ -8,5 +8,6 @@ namespace ECS::Components
     {
     public:
         MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum value = MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::None;
+        MetaGen::Shared::Interaction::QuestInteractionMaskEnum questMask = MetaGen::Shared::Interaction::QuestInteractionMaskEnum::None;
     };
 }

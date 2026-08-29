@@ -1,5 +1,5 @@
 --[[
-ContextMenu — right-click context menu. Build a description once with New,
+ContextMenu - right-click context menu. Build a description once with New,
 call Open(x, y) on a right-click handler, and the menu spawns at the cursor
 with a transparent full-screen shield behind it for click-outside dismissal.
 For dropdown controls, call OpenBelow(widget) to anchor the menu to the
@@ -42,6 +42,7 @@ export type Options =
     layer : integer?,
     minWidth : number?,
     itemHeight : number?,
+    itemFontSize : number?,
     inputPassthrough : Panel?,
     closeOnHoverOutside : boolean?,
     onClose : (() -> ())?,
@@ -88,6 +89,7 @@ function contextMenuAPI.New(parent : Widget, opts : Options?)
         _layer      = opts.layer or DEFAULT_LAYER,
         _minWidth   = opts.minWidth or ITEM_MIN_W,
         _itemHeight = opts.itemHeight or ITEM_H,
+        _itemFontSize = opts.itemFontSize,
         _inputPassthrough = opts.inputPassthrough,
         _closeOnHoverOutside = opts.closeOnHoverOutside,
         _onClose     = opts.onClose,
@@ -123,7 +125,7 @@ function contextMenuAPI.New(parent : Widget, opts : Options?)
     function self:SetItems(newItems)
         self._items = newItems or {}
         if self._menuPanel ~= nil then
-            -- Currently open — rebuild at the previous position.
+            -- Currently open - rebuild at the previous position.
             local position = self._menuPanel:GetPos()
             self:Close()
             self:Open(position.x, position.y)
@@ -149,7 +151,7 @@ function contextMenuAPI.New(parent : Widget, opts : Options?)
         end, self._inputPassthrough, self._closeOnHoverOutside)
 
         -- anchor(0,0)=parent bottom-left, relPoint(0,1)=menu top-left.
-        -- With pos=(x,y), the menu's top-left lands at canvas-world (x, y) — cursor position.
+        -- With pos=(x,y), the menu's top-left lands at canvas-world (x, y) - cursor position.
         self._menuPanel = self._parent:NewPanel(vec.New(x, y), vec.New(width, height), self._layer, "DebugDarkGrey")
         self._menuPanel:SetAnchor(vec.New(0.0, 0.0))
         self._menuPanel:SetRelativePoint(vec.New(0.0, 1.0))
@@ -189,6 +191,7 @@ function contextMenuAPI.New(parent : Widget, opts : Options?)
                 })
                 item:SetAnchor(vec.New(0.0, 1.0))
                 item:SetRelativePoint(vec.New(0.0, 1.0))
+                if self._itemFontSize ~= nil then item:SetFontSize(self._itemFontSize) end
                 item:SetHighlighted(it.selected == true)
 
                 if not enabled then

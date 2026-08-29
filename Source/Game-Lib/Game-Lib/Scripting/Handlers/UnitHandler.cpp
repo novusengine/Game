@@ -2,6 +2,7 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/AttachmentData.h"
+#include "Game-Lib/ECS/Components/InteractionCapabilities.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitAuraInfo.h"
@@ -431,6 +432,15 @@ namespace Scripting::Unit
         const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         zenith->Push(static_cast<u8>(ECS::Util::Faction::GetPresentationReaction(*registry, entity)));
+        return 1;
+    }
+
+    i32 UnitHandler::GetQuestInteractionMask(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        const auto* capabilities = registry->valid(entity) ? registry->try_get<ECS::Components::InteractionCapabilities>(entity) : nullptr;
+        zenith->Push(capabilities ? static_cast<u8>(capabilities->questMask) : 0);
         return 1;
     }
 

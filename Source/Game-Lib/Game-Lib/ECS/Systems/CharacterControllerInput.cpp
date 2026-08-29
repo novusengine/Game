@@ -380,15 +380,14 @@ namespace ECS::Systems::CharacterControllerInput
 
         const bool isRightClick = event.control == InputControl::Mouse(MouseButton::Right);
         const auto* interactionCapabilities = registry->try_get<Components::InteractionCapabilities>(targetEntity);
-        const bool canRequestGossip = isRightClick && interactionCapabilities &&
-            (interactionCapabilities->value & MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::Gossip) != MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::None;
+        const bool canRequestInteraction = isRightClick && interactionCapabilities && interactionCapabilities->value != MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::None;
 
         if (unit.targetEntity == targetEntity)
         {
             if (isRightClick)
             {
-                SetTarget(targetEntity, true, !canRequestGossip && ECS::Util::Faction::CanAttack(*registry, targetEntity));
-                if (canRequestGossip)
+                SetTarget(targetEntity, true, !canRequestInteraction && ECS::Util::Faction::CanAttack(*registry, targetEntity));
+                if (canRequestInteraction)
                     ECS::Util::Interaction::Open(*registry, targetEntity);
                 return InputReply::Consumed;
             }
@@ -396,9 +395,9 @@ namespace ECS::Systems::CharacterControllerInput
             return InputReply::Ignored;
         }
 
-        const bool startAutoAttack = isRightClick && !canRequestGossip && ECS::Util::Faction::CanAttack(*registry, targetEntity);
+        const bool startAutoAttack = isRightClick && !canRequestInteraction && ECS::Util::Faction::CanAttack(*registry, targetEntity);
         SetTarget(targetEntity, isRightClick, startAutoAttack);
-        if (canRequestGossip)
+        if (canRequestInteraction)
             ECS::Util::Interaction::Open(*registry, targetEntity);
 
         return InputReply::Consumed;

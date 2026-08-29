@@ -5,9 +5,9 @@ local Dropdown = require("@src/API/UI/Dropdown");
 local InputBox = require("@src/API/UI/InputBox");
 local InputField = require("@src/API/Editor/UI/InputField");
 local Modal = require("@src/API/UI/Modal");
+local ShapeSurfaceUtil = require("@src/API/UI/ShapeSurfaceUtil");
 local TextUtil = require("@src/API/UI/TextUtil");
 local VirtualList = require("@src/API/UI/VirtualList");
-local FrameManager = require("@src/API/Game/FrameManager");
 local GossipMenuController = require("@src/API/Editor/GossipMenuController");
 local GossipMenuModel = require("@src/API/Editor/GossipMenuModel");
 local EditorRegistry = require("@src/API/Editor/Registry");
@@ -55,6 +55,8 @@ local editor : any = {
         nodeResponsePaddingY = 4,
         nodeSeparatorHeight = 1,
         nodeBottomPadding = 8,
+        nodeSocketRadius = 5,
+        nodeSocketHitRadius = 10,
         nodeRowGap = 36,
         nodeColumnGap = 156,
         graphControlsSize = vec.New(256, 34),
@@ -102,8 +104,15 @@ local editor : any = {
         dragMenuID = nil,
         dragGrabOffset = vec.New(0, 0),
         responseDrag = nil,
+        connectionDrag = nil,
+        hoveredEdgeOptionID = nil,
+        hoveredSocketKind = nil,
+        hoveredSocketID = nil,
         pendingSnapshot = false,
         pendingGraphRebuild = false,
+        edgesDirty = true,
+        edgeSurface = nil,
+        edgeOverlaySurface = nil,
         pendingRootMenuCreation = nil,
         flowSave = nil,
         menuDuplicate = nil,
@@ -142,6 +151,8 @@ local editor : any = {
     },
     refs = {
         viewport = nil,
+        edges = nil,
+        edgeOverlay = nil,
         picker = nil,
         sidebarSearch = nil,
         sidebarList = nil,
@@ -567,58 +578,6 @@ local function GetViewportLocal(mousePosition : vec) : vec
     return vec.New(mousePosition.x - editor.refs.viewport:GetWorldPosX(), mousePosition.y - editor.refs.viewport:GetWorldPosY());
 end
 
-local function ClipSegmentToViewport(from : vec, to : vec) : (vec?, vec?)
-    local delta = to - from;
-    local first = 0.0;
-    local last = 1.0;
-    local function Clip(p : number, q : number) : boolean
-        if p == 0 then return q >= 0; end
-        local ratio = q / p;
-        if p < 0 then
-            if ratio > last then return false; end
-            if ratio > first then first = ratio; end
-        else
-            if ratio < first then return false; end
-            if ratio < last then last = ratio; end
-        end
-        return true;
-    end
-    if not Clip(-delta.x, from.x) or not Clip(delta.x, editor.geometry.viewportSize.x - from.x) or
-        not Clip(-delta.y, from.y) or not Clip(delta.y, editor.geometry.viewportSize.y - from.y) then return nil, nil; end
-    return from + delta * first, from + delta * last;
-end
-
-local function SegmentHitsRect(from : vec, to : vec, minimum : vec, maximum : vec) : boolean
-    local delta = to - from;
-    local first = 0.0;
-    local last = 1.0;
-    local function Clip(p : number, q : number) : boolean
-        if p == 0 then return q >= 0; end
-        local ratio = q / p;
-        if p < 0 then
-            if ratio > last then return false; end
-            if ratio > first then first = ratio; end
-        else
-            if ratio < first then return false; end
-            if ratio < last then last = ratio; end
-        end
-        return true;
-    end
-    return Clip(-delta.x, from.x - minimum.x) and Clip(delta.x, maximum.x - from.x) and
-        Clip(-delta.y, from.y - minimum.y) and Clip(delta.y, maximum.y - from.y);
-end
-
-local function SegmentClearOfOtherNodes(from : vec, to : vec, sourceID : integer, targetID : integer) : boolean
-    for _, menuID in editor.state.reachableMenus do
-        if menuID ~= sourceID and menuID ~= targetID then
-            local halfSize = editor.state.nodeSizes[menuID] / 2;
-            local center = GraphToLocal(editor.state.nodePositions[menuID]);
-            if SegmentHitsRect(from, to, center - halfSize, center + halfSize) then return false; end
-        end
-    end
-    return true;
-end
-
 local function ApplyNodePositions()
     if editor.state.model == nil then return; end
     for _, menuID in editor.state.reachableMenus do
@@ -630,38 +589,196 @@ local function ApplyNodePositions()
             nodeView.root:SetPos(GraphToLocal(position) - size / 2);
         end
     end
+    editor.state.edgesDirty = true;
 end
 
-local function DrawEdges()
-    if not editor.state.visible or editor.refs.viewport == nil or editor.state.model == nil or editor.state.localizedText.isOpen or FrameManager.IsRoleOpen("Modal") then return; end
-    local viewportWorld = vec.New(editor.refs.viewport:GetWorldPosX(), editor.refs.viewport:GetWorldPosY());
-    local drawnTargetOutlets : { [integer] : boolean } = { };
-    local function DrawOutlet(point : vec)
-        if point.x < 0 or point.y < 0 or point.x > editor.geometry.viewportSize.x or point.y > editor.geometry.viewportSize.y then return; end
-        local worldPoint = viewportWorld + point;
-        for offset = -2, 2 do UI.DrawLine2D(worldPoint + vec.New(-2, offset), worldPoint + vec.New(2, offset), editor.colors.edge); end
+local function GetMenuParameterIndex(option : any) : number?
+    local descriptor = FindDescriptor(option.actionType);
+    if descriptor == nil then return nil; end
+    for index, parameter in descriptor.parameters do
+        if parameter.kind == 2i then return index; end
     end
-    for _, edge in editor.state.reachableEdges do
-        local sourceDepth = editor.state.menuDepth[edge.from];
-        local targetDepth = editor.state.menuDepth[edge.to];
-        local sourceView = editor.state.nodeViews[edge.from];
-        local targetView = editor.state.nodeViews[edge.to];
-        local sourceButton = if sourceView ~= nil then sourceView:Get(`optionButton{edge.optionID}`) else nil;
-        local targetHeader = if targetView ~= nil then targetView:Get("header") else nil;
-        if sourceDepth ~= nil and targetDepth ~= nil and targetDepth > sourceDepth and sourceButton ~= nil and targetHeader ~= nil then
-            local scale = editor.state.model:GetZoom();
-            local fromPoint = vec.New(sourceButton.root:GetWorldPosX() + sourceButton.root:GetWidth() + editor.geometry.nodeResponseInset * scale,
-                sourceButton.root:GetWorldPosY() + sourceButton.root:GetHeight() / 2) - viewportWorld;
-            local toPoint = vec.New(targetHeader:GetWorldPosX(), targetHeader:GetWorldPosY()) - viewportWorld;
-            if not SegmentClearOfOtherNodes(fromPoint, toPoint, edge.from, edge.to) then continue; end
-            local clippedFrom, clippedTo = ClipSegmentToViewport(fromPoint, toPoint);
-            if clippedFrom ~= nil and clippedTo ~= nil and not SegmentHitsRect(clippedFrom, clippedTo, editor.geometry.graphControlsPosition, editor.geometry.graphControlsPosition + editor.geometry.graphControlsSize) then
-                UI.DrawLine2D(viewportWorld + clippedFrom, viewportWorld + clippedTo, editor.colors.edge);
-                DrawOutlet(fromPoint);
-                if not drawnTargetOutlets[edge.to] then DrawOutlet(toPoint); drawnTargetOutlets[edge.to] = true; end
+    return nil;
+end
+
+local function GetInputSocketPoint(menuID : integer) : vec?
+    local nodeView = editor.state.nodeViews[menuID];
+    local header = if nodeView ~= nil then nodeView:Get("header") else nil;
+    if header == nil then return nil; end
+    return vec.New(header:GetWorldPosX() - editor.refs.viewport:GetWorldPosX(), header:GetWorldPosY() - editor.refs.viewport:GetWorldPosY());
+end
+
+local function GetOutputSocketPoint(optionID : integer) : vec?
+    local option = FindOption(optionID);
+    local nodeView = if option ~= nil then editor.state.nodeViews[option.menuID] else nil;
+    local button = if nodeView ~= nil then nodeView:Get(`optionButton{optionID}`) else nil;
+    if button == nil then return nil; end
+    local scale = editor.state.model:GetZoom();
+    return vec.New(button.root:GetWorldPosX() + button.root:GetWidth() + editor.geometry.nodeResponseInset * scale - editor.refs.viewport:GetWorldPosX(),
+        button.root:GetWorldPosY() + button.root:GetHeight() / 2 - editor.refs.viewport:GetWorldPosY());
+end
+
+local function IsForwardConnection(sourceMenuID : integer, targetMenuID : integer) : boolean
+    local sourceDepth = editor.state.menuDepth[sourceMenuID];
+    local targetDepth = editor.state.menuDepth[targetMenuID];
+    return sourceDepth ~= nil and targetDepth ~= nil and targetDepth > sourceDepth;
+end
+
+local function FindInputSocket(point : vec) : integer?
+    for _, menuID in editor.state.reachableMenus do
+        local socketPoint = GetInputSocketPoint(menuID);
+        if socketPoint ~= nil and ShapeSurfaceUtil.IsPointInCircle(point, socketPoint, editor.geometry.nodeSocketHitRadius) then return menuID; end
+    end
+    return nil;
+end
+
+local function DrawSockets()
+    if editor.state.edgeOverlaySurface == nil or editor.state.model == nil then return; end
+    local radius = editor.geometry.nodeSocketRadius;
+    for _, menuID in editor.state.reachableMenus do
+        local inputPoint = GetInputSocketPoint(menuID);
+        if inputPoint ~= nil then
+            editor.state.edgeOverlaySurface:DrawCircleOutline(inputPoint, radius, 2.0, editor.colors.edge);
+            if editor.state.hoveredSocketKind == "input" and editor.state.hoveredSocketID == menuID then
+                editor.state.edgeOverlaySurface:DrawCircleOutline(inputPoint, radius + 3.0, 2.0, vec.New(1, 1, 1), 0.9);
+            end
+        end
+        for _, optionID in editor.state.model:GetOrderedOptionIDs(menuID) do
+            local option = FindOption(optionID);
+            local outputPoint = if option ~= nil and GetMenuParameterIndex(option) ~= nil then GetOutputSocketPoint(optionID) else nil;
+            if outputPoint == nil or option == nil then continue; end
+            local target, _, _ = GetActionTarget(option);
+            if target == nil or FindMenu(target) == nil then
+                editor.state.edgeOverlaySurface:DrawCircleOutline(outputPoint, radius, 2.0, editor.colors.edge);
+            elseif IsForwardConnection(option.menuID, target) then
+                editor.state.edgeOverlaySurface:DrawCircle(outputPoint, radius, editor.colors.edge);
+            else
+                editor.state.edgeOverlaySurface:DrawCircleOutline(outputPoint, radius, 2.0, editor.colors.warning);
+                editor.state.edgeOverlaySurface:DrawPolyline({
+                    outputPoint + vec.New(2.0, 3.0),
+                    outputPoint + vec.New(-2.0, 0),
+                    outputPoint + vec.New(2.0, -3.0),
+                }, 1.5, editor.colors.warning);
+            end
+            if editor.state.hoveredSocketKind == "output" and editor.state.hoveredSocketID == optionID then
+                editor.state.edgeOverlaySurface:DrawCircleOutline(outputPoint, radius + 3.0, 2.0, vec.New(1, 1, 1), 0.9);
             end
         end
     end
+end
+
+local function FindVisibleEdge(point : vec) : (any?, number?)
+    for edgeIndex = #editor.state.reachableEdges, 1, -1 do
+        local edge = editor.state.reachableEdges[edgeIndex];
+        if not IsForwardConnection(edge.from, edge.to) then continue; end
+        local fromPoint = GetOutputSocketPoint(edge.optionID);
+        local toPoint = GetInputSocketPoint(edge.to);
+        if fromPoint ~= nil and toPoint ~= nil and ShapeSurfaceUtil.IsPointNearWire(point, fromPoint, toPoint, 6.0) then return edge, edgeIndex; end
+    end
+    return nil, nil;
+end
+
+local function DrawConnectionOverlay(pointer : vec?)
+    if editor.state.edgeOverlaySurface == nil then return; end
+    editor.state.edgeOverlaySurface:Clear();
+    DrawSockets();
+    local drag = editor.state.connectionDrag;
+    if drag == nil and editor.state.hoveredEdgeOptionID ~= nil then
+        for _, edge in editor.state.reachableEdges do
+            if edge.optionID ~= editor.state.hoveredEdgeOptionID or not IsForwardConnection(edge.from, edge.to) then continue; end
+            local fromPoint = GetOutputSocketPoint(edge.optionID);
+            local toPoint = GetInputSocketPoint(edge.to);
+            if fromPoint ~= nil and toPoint ~= nil then ShapeSurfaceUtil.DrawWire(editor.state.edgeOverlaySurface, fromPoint, toPoint, { width = 4.0, color = vec.lerp(editor.colors.edge, vec.New(1, 1, 1), 0.45) }); end
+            break;
+        end
+    end
+    if drag == nil or pointer == nil then return; end
+    local fromPoint = GetOutputSocketPoint(drag.optionID);
+    if fromPoint == nil then return; end
+    ShapeSurfaceUtil.DrawWire(editor.state.edgeOverlaySurface, fromPoint, pointer, { width = 2.5, color = editor.colors.edge, alpha = 0.85, dashLength = 8.0, gapLength = 6.0 });
+    local targetMenuID = FindInputSocket(pointer);
+    local targetPoint = if targetMenuID ~= nil then GetInputSocketPoint(targetMenuID) else nil;
+    if targetPoint ~= nil then editor.state.edgeOverlaySurface:DrawCircleOutline(targetPoint, editor.geometry.nodeSocketRadius + 4.0, 2.0, vec.New(1, 1, 1), 0.9); end
+end
+
+local function SetSocketHovered(kind : string, id : integer, hovered : boolean)
+    if hovered then
+        editor.state.hoveredSocketKind = kind;
+        editor.state.hoveredSocketID = id;
+    elseif editor.state.hoveredSocketKind == kind and editor.state.hoveredSocketID == id then
+        editor.state.hoveredSocketKind = nil;
+        editor.state.hoveredSocketID = nil;
+    else
+        return;
+    end
+    DrawConnectionOverlay(nil);
+end
+
+local function UpdateEdgeHover(point : vec?)
+    if editor.state.connectionDrag ~= nil then return; end
+    local edge = if point ~= nil then FindVisibleEdge(point) else nil;
+    local optionID = if edge ~= nil then edge.optionID else nil;
+    if optionID == editor.state.hoveredEdgeOptionID then return; end
+    editor.state.hoveredEdgeOptionID = optionID;
+    DrawConnectionOverlay(nil);
+end
+
+local function BreakEdge(point : vec) : boolean
+    local edge, edgeIndex = FindVisibleEdge(point);
+    if edge == nil or edgeIndex == nil or editor.state.model == nil then return false; end
+    local option = editor.state.model:GetOptionDraft(edge.optionID);
+    local parameterIndex = if option ~= nil then GetMenuParameterIndex(option) else nil;
+    if option == nil or parameterIndex == nil then return false; end
+    local parameters = table.clone(option.actionParameters);
+    parameters[parameterIndex] = 0i;
+    editor.state.model:SetOptionFields(edge.optionID, { actionParameters = parameters });
+    table.remove(editor.state.reachableEdges, edgeIndex);
+    editor.state.hoveredEdgeOptionID = nil;
+    editor.state.edgesDirty = true;
+    editor.state.pendingGraphRebuild = true;
+    RefreshFlowActions();
+    DrawConnectionOverlay(nil);
+    return true;
+end
+
+local function BeginConnectionDrag(optionID : integer, mousePosition : vec)
+    editor.state.connectionDrag = { optionID = optionID };
+    DrawConnectionOverlay(GetViewportLocal(mousePosition));
+end
+
+local function PreviewConnectionDrag(mousePosition : vec)
+    if editor.state.connectionDrag == nil then return; end
+    DrawConnectionOverlay(GetViewportLocal(mousePosition));
+end
+
+local function CommitConnectionDrag(mousePosition : vec)
+    local drag = editor.state.connectionDrag;
+    editor.state.connectionDrag = nil;
+    if drag == nil or editor.state.model == nil then DrawConnectionOverlay(nil); return; end
+    local option = editor.state.model:GetOptionDraft(drag.optionID);
+    local targetMenuID = FindInputSocket(GetViewportLocal(mousePosition));
+    local parameterIndex = if option ~= nil then GetMenuParameterIndex(option) else nil;
+    if targetMenuID ~= nil and option ~= nil and parameterIndex ~= nil and option.actionParameters[parameterIndex] ~= targetMenuID then
+        local parameters = table.clone(option.actionParameters);
+        parameters[parameterIndex] = targetMenuID;
+        editor.state.model:SetOptionFields(drag.optionID, { actionParameters = parameters });
+        editor.state.pendingGraphRebuild = true;
+        RefreshFlowActions();
+    end
+    DrawConnectionOverlay(nil);
+end
+
+local function DrawEdges()
+    if editor.state.edgeSurface == nil or editor.refs.viewport == nil or editor.state.model == nil then return; end
+    editor.state.edgesDirty = false;
+    editor.state.edgeSurface:Clear();
+    for _, edge in editor.state.reachableEdges do
+        if not IsForwardConnection(edge.from, edge.to) then continue; end
+        local fromPoint = GetOutputSocketPoint(edge.optionID);
+        local toPoint = GetInputSocketPoint(edge.to);
+        if fromPoint ~= nil and toPoint ~= nil then ShapeSurfaceUtil.DrawWire(editor.state.edgeSurface, fromPoint, toPoint, { width = 2.0, color = editor.colors.edge }); end
+    end
+    DrawConnectionOverlay(nil);
 end
 
 local function RefreshSidebarSelection(revealSelection : boolean)
@@ -991,13 +1108,9 @@ local function DispatchNextFlowSave()
                 local option = editor.state.model:GetOptionDraft(task.id);
                 if option ~= nil then
                     local parameters = option.actionParameters;
-                    requestID = if editor.state.model:IsMenuOrderDirty(option.menuID)
-                        then InteractionEditor.ReorderGossipMenuOption(option.id, option.menuID, option.orderIndex, option.textID, option.icon, option.flags,
-                            option.visibilityConditionSetID, option.enabledConditionSetID, option.disabledReasonTextID, option.actionType,
-                            parameters[1], parameters[2], parameters[3], parameters[4])
-                        else InteractionEditor.UpdateGossipMenuOption(option.id, option.menuID, option.orderIndex, option.textID, option.icon, option.flags,
-                            option.visibilityConditionSetID, option.enabledConditionSetID, option.disabledReasonTextID, option.actionType,
-                            parameters[1], parameters[2], parameters[3], parameters[4]);
+                    requestID = InteractionEditor.UpdateGossipMenuOption(option.id, option.menuID, option.priority, option.textID, option.icon, option.flags,
+                        option.visibilityConditionSetID, option.enabledConditionSetID, option.disabledReasonTextID, option.actionType,
+                        parameters[1], parameters[2], parameters[3], parameters[4]);
                 end
             end
             editor.state.controller:Submit(requestID);
@@ -1101,19 +1214,10 @@ local function CreateResponse(menuID : integer)
         RefreshInspector();
         return;
     end
-    local order = 0;
-    for _, option in editor.state.snapshot.gossipMenuOptions do
-        if option.menuID == menuID then order = math.max(order, integer.tonumber(option.orderIndex) + 1); end
-    end
-    if order > 32767 then
-        editor.state.controller:SetStatus("This menu has exhausted the response-order range.", STATUS.Error);
-        RefreshInspector();
-        return;
-    end
     local parameters = { 0i, 0i, 0i, 0i };
     for index = 1, 4 do parameters[index] = action.parameters[index].minimum; end
     editor.state.controller:QueueSelection(menuID, nil);
-    editor.state.controller:Submit(InteractionEditor.CreateGossipMenuOption(menuID, integer.create(order), textOptions[1].value, 0i, 0i, 0i, 0i, 0i, action.type,
+    editor.state.controller:Submit(InteractionEditor.CreateGossipMenuOption(menuID, 0i, textOptions[1].value, 0i, 0i, 0i, 0i, 0i, action.type,
         parameters[1], parameters[2], parameters[3], parameters[4]));
     RefreshInspector();
 end
@@ -1164,13 +1268,8 @@ local function DuplicateResponse(optionID : integer)
     if not CanMutateSelection() then return; end
     local option = editor.state.model:GetOptionDraft(optionID);
     if option == nil then return; end
-    local order = 0;
-    for _, existing in editor.state.snapshot.gossipMenuOptions do
-        if existing.menuID == option.menuID then order = math.max(order, integer.tonumber(existing.orderIndex) + 1); end
-    end
-    if order > 32767 then editor.state.controller:SetStatus("This menu has exhausted the response-order range.", STATUS.Error); RefreshInspector(); return; end
     local parameters = option.actionParameters;
-    editor.state.controller:Submit(InteractionEditor.CreateGossipMenuOption(option.menuID, integer.create(order), option.textID, option.icon, option.flags,
+    editor.state.controller:Submit(InteractionEditor.CreateGossipMenuOption(option.menuID, option.priority, option.textID, option.icon, option.flags,
         option.visibilityConditionSetID, option.enabledConditionSetID, option.disabledReasonTextID, option.actionType,
         parameters[1], parameters[2], parameters[3], parameters[4]));
     RefreshInspector();
@@ -1226,7 +1325,6 @@ local function ContinueMenuDuplicate()
 
     if duplicate.cursor <= #duplicate.options then
         local option = duplicate.options[duplicate.cursor];
-        local orderIndex = integer.create(duplicate.cursor - 1);
         duplicate.cursor += 1;
         local parameters = table.clone(option.actionParameters);
         local descriptor = editor.state.controller:FindActionDescriptor(option.actionType);
@@ -1238,7 +1336,7 @@ local function ContinueMenuDuplicate()
         duplicate.active = true;
         editor.state.model:SetSelectedMenu(duplicate.createdMenuID);
         editor.state.controller:SelectMenu(duplicate.createdMenuID);
-        local requestID = InteractionEditor.CreateGossipMenuOption(duplicate.createdMenuID, orderIndex, option.textID, option.icon, option.flags,
+        local requestID = InteractionEditor.CreateGossipMenuOption(duplicate.createdMenuID, option.priority, option.textID, option.icon, option.flags,
             option.visibilityConditionSetID, option.enabledConditionSetID, option.disabledReasonTextID, option.actionType,
             parameters[1], parameters[2], parameters[3], parameters[4]);
         editor.state.controller:Submit(requestID);
@@ -1330,6 +1428,7 @@ local function PreviewGraphResponseDrag(mousePosition : vec, delta : vec)
         drag.layout:Refresh();
     end
     drag.surface:SetWorldPos(desiredWorld);
+    editor.state.edgesDirty = true;
 end
 
 local function GetInspectorResponseTargetIndex(list : any, activeRow : any, mousePosition : vec) : number
@@ -2052,6 +2151,34 @@ local function MakeResponseNode(menuID : integer, optionID : integer, contentWid
                 });
                 return surface;
             end,
+        }),
+        Declarative.Component({
+            id = `outputSocket{optionID}`,
+            position = vec.New(responseOffset + responseWidth + editor.geometry.nodeResponseInset * scale - editor.geometry.nodeSocketHitRadius, rowHeight / 2 - editor.geometry.nodeSocketHitRadius),
+            size = vec.New(editor.geometry.nodeSocketHitRadius * 2, editor.geometry.nodeSocketHitRadius * 2),
+            layer = 20i,
+            anchor = Declarative.Anchor.BottomLeft,
+            relativePoint = Declarative.Anchor.BottomLeft,
+            factory = function(parent, position, size, layer)
+                local socket = parent:NewPanel(position, size, layer, "DebugDarkGrey");
+                socket:SetAlpha(0);
+                socket:SetBorderSize(0);
+                if not isMenuReference then
+                    socket:SetInteractable(false);
+                    return socket;
+                end
+                socket:SetOnHoverBegin(function() SetSocketHovered("output", optionID, true); end);
+                socket:SetOnHoverEnd(function() SetSocketHovered("output", optionID, false); end);
+                Draggable.Attach(socket, socket, {
+                    button = 0i,
+                    moveTarget = false,
+                    threshold = 2,
+                    onBegin = function(_, mousePosition) SelectOption(menuID, optionID); BeginConnectionDrag(optionID, mousePosition); end,
+                    onMove = function(_, mousePosition) PreviewConnectionDrag(mousePosition); end,
+                    onEnd = function(_, mousePosition) CommitConnectionDrag(mousePosition); end,
+                });
+                return socket;
+            end,
         })
     );
 end
@@ -2079,22 +2206,42 @@ local function MakeNode(menuID : integer)
     return Declarative.Panel({
         id = `menu{menuID}`,
         size = nodeSize,
+        layer = 1i,
         template = "DebugDarkGrey",
         color = editor.colors.nodeFill,
         borderSize = 0,
-        clipChildren = true,
+        clipChildren = false,
         setup = function(panel) panel:SetOnMouseUp(function() SelectMenu(menuID); end); end,
     },
         Declarative.Panel({ id = "header", position = vec.New(0, nodeSize.y - headerHeight), size = vec.New(nodeSize.x, headerHeight), template = "DebugDarkGrey", color = if menuID == editor.state.rootMenuID then vec.New(0.20, 0.18, 0.13) else vec.New(0.12, 0.16, 0.20), borderSize = 0 },
             Declarative.Text(headerTitle, { id = "headerTitle", position = vec.New(headerInset, 0), width = headerTitleWidth, height = headerHeight, anchor = Declarative.Anchor.Left, relativePoint = Declarative.Anchor.Left, fontSize = ScaledFontSize(11), overflow = Declarative.TextOverflow.Truncate, template = "DefaultButtonText" }),
             Declarative.Text(`#{menuID}`, { position = vec.New(-headerInset, 0), width = headerIDWidth, height = headerHeight, anchor = Declarative.Anchor.Right, relativePoint = Declarative.Anchor.Right, fontSize = ScaledFontSize(9), color = editor.colors.muted, overflow = Declarative.TextOverflow.Truncate, template = "DefaultButtonText" })
         ),
+        Declarative.Component({
+            id = "inputSocket",
+            position = vec.New(-editor.geometry.nodeSocketHitRadius, nodeSize.y - headerHeight - editor.geometry.nodeSocketHitRadius),
+            size = vec.New(editor.geometry.nodeSocketHitRadius * 2, editor.geometry.nodeSocketHitRadius * 2),
+            layer = 20i,
+            anchor = Declarative.Anchor.BottomLeft,
+            relativePoint = Declarative.Anchor.BottomLeft,
+            factory = function(parent, position, size, layer)
+                local socket = parent:NewPanel(position, size, layer, "DebugDarkGrey");
+                socket:SetAlpha(0);
+                socket:SetBorderSize(0);
+                socket:SetOnHoverBegin(function() SetSocketHovered("input", menuID, true); end);
+                socket:SetOnHoverEnd(function() SetSocketHovered("input", menuID, false); end);
+                return socket;
+            end,
+        }),
         Declarative.Vertical({ id = "responsesLayout", position = vec.New(contentInset, editor.geometry.nodeBottomPadding * scale), size = vec.New(contentWidth, nodeSize.y - headerHeight - editor.geometry.nodeBottomPadding * scale), spacing = 0, padding = 0, template = "DebugDarkGrey", alpha = 0, borderSize = 0 }, table.unpack(bodyChildren)),
         Declarative.Panel({ id = "outline", position = vec.New(1, 1), size = outlineSize, layer = 10i, template = "DebugDarkGrey", alpha = 0, borderColor = if menuID == editor.state.rootMenuID then (if selected then editor.colors.rootSelectedBorder else editor.colors.rootBorder) elseif selected then editor.colors.selectedBorder else editor.colors.nodeBorder, borderSize = 1, interactable = false })
     );
 end
 
 RebuildNodes = function()
+    editor.state.hoveredEdgeOptionID = nil;
+    editor.state.hoveredSocketKind = nil;
+    editor.state.hoveredSocketID = nil;
     for _, nodeView in editor.state.nodeViews do nodeView:Destroy(); end
     editor.state.nodeViews = { };
     editor.state.nodePositions = { };
@@ -2232,6 +2379,7 @@ local view = Declarative.Build(editor.state.canvas,
             Declarative.Panel({ id = "viewport", width = editor.geometry.viewportSize.x, height = editor.geometry.viewportSize.y, template = "DebugDarkGrey", clipChildren = true, setup = function(panel)
                 editor.refs.viewport = panel;
                 panel:SetOnMouseDown(function(_, _, button, mouseX, mouseY)
+                    if button == 0i and BreakEdge(GetViewportLocal(UI.GetMousePos())) then return; end
                     if button ~= 2i or editor.state.model == nil then return; end
                     editor.state.panActive = true; editor.state.panMouseStart = vec.New(mouseX, mouseY); editor.state.panOffsetStart = editor.state.model:GetPanOffset();
                 end);
@@ -2251,7 +2399,21 @@ local view = Declarative.Build(editor.state.canvas,
                     RebuildNodes();
                     RefreshZoomText();
                 end);
+                panel:SetOnHoverHeld(function() UpdateEdgeHover(GetViewportLocal(UI.GetMousePos())); end);
+                panel:SetOnHoverEnd(function() UpdateEdgeHover(nil); end);
             end },
+            Declarative.Panel({ id = "edges", position = vec.New(0, 0), size = editor.geometry.viewportSize, layer = 0i, template = "TexturePanel", interactable = false, setup = function(panel)
+                editor.refs.edges = panel;
+                editor.state.edgeSurface = UI.GetShapeSurface("GossipFlowEditorEdges", editor.geometry.viewportSize);
+                editor.state.edgeSurface:Clear();
+                panel:SetBackground(editor.state.edgeSurface);
+            end }),
+            Declarative.Panel({ id = "edgeOverlay", position = vec.New(0, 0), size = editor.geometry.viewportSize, layer = 15i, template = "TexturePanel", interactable = false, setup = function(panel)
+                editor.refs.edgeOverlay = panel;
+                editor.state.edgeOverlaySurface = UI.GetShapeSurface("GossipFlowEditorEdgeOverlay", editor.geometry.viewportSize);
+                editor.state.edgeOverlaySurface:Clear();
+                panel:SetBackground(editor.state.edgeOverlaySurface);
+            end }),
             Declarative.Horizontal({ id = "graphControls", position = editor.geometry.graphControlsPosition, size = editor.geometry.graphControlsSize, layer = 20i, spacing = 4, padding = 4, template = "DebugDarkGrey", alpha = 0.94 },
                 Declarative.Button("Reset View", { id = "resetView", size = vec.New(82, 26), fontSize = 10, onClick = function() if editor.state.model ~= nil then editor.state.model:SetPanOffset(vec.New(0, 0)); editor.state.model:SetZoom(1); RebuildNodes(); RefreshZoomText(); end end }),
                 Declarative.Button("Auto Layout", { id = "autoLayout", size = vec.New(88, 26), fontSize = 10, onClick = function() if editor.state.model ~= nil then editor.state.model:ResetNodePositions(); RebuildNodes(); RefreshZoomText(); end end }),
@@ -2276,7 +2438,7 @@ editor.refs.flowDirtyText = view:Get("flowDirty");
 editor.refs.revertFlowButton = view:Get("revertFlow");
 editor.refs.applyFlowButton = view:Get("applyFlow");
 editor.refs.zoomText = view:Get("zoom");
-if dragHandle == nil or editor.refs.picker == nil or editor.refs.sidebarSearch == nil or editor.refs.sidebarList == nil or editor.refs.reachableCountText == nil or editor.refs.diagnosticsBanner == nil or editor.refs.diagnosticsText == nil or editor.refs.inspectorHost == nil or editor.refs.newRootButton == nil or editor.refs.flowDirtyText == nil or editor.refs.revertFlowButton == nil or editor.refs.applyFlowButton == nil or editor.refs.zoomText == nil or editor.refs.viewport == nil then error("GossipFlowEditor: declarative shell refs were not built"); end
+if dragHandle == nil or editor.refs.picker == nil or editor.refs.sidebarSearch == nil or editor.refs.sidebarList == nil or editor.refs.reachableCountText == nil or editor.refs.diagnosticsBanner == nil or editor.refs.diagnosticsText == nil or editor.refs.inspectorHost == nil or editor.refs.newRootButton == nil or editor.refs.flowDirtyText == nil or editor.refs.revertFlowButton == nil or editor.refs.applyFlowButton == nil or editor.refs.zoomText == nil or editor.refs.viewport == nil or editor.refs.edges == nil or editor.refs.edgeOverlay == nil then error("GossipFlowEditor: declarative shell refs were not built"); end
 Draggable.Attach(view.root, dragHandle);
 Draggable.Attach(view.root, view.root);
 
@@ -2591,6 +2753,8 @@ view.root:SetVisible(false);
 
 RegisterEvent(GameEvent.Updated, function()
     if not editor.state.visible then return; end
+    if editor.state.edgesDirty then DrawEdges(); end
+
     UpdateLocalizedTextSave();
     if editor.state.controller:Update() then
         if editor.state.responseDrag ~= nil then editor.state.pendingSnapshot = true; else ApplySnapshot(); end
@@ -2601,7 +2765,6 @@ RegisterEvent(GameEvent.Updated, function()
         editor.state.pendingGraphRebuild = false;
         RebuildNodes();
     end
-    DrawEdges();
 end);
 
 if editor.state.snapshot.dataState == "Ready" then ApplySnapshot(); else RefreshNavigation(false, false); RefreshInspector(); end

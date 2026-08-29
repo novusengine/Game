@@ -16,11 +16,11 @@ local MENU_ENTRIES : { MicroMenuEntry } =
         end,
 
         isAvailableCallback = function()
-            return false;
+            return true;
         end,
 
         onClickCallback = function()
-            -- TODO
+            FrameManager.Toggle("QuestLog");
         end,
     },
     

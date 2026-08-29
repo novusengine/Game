@@ -31,6 +31,20 @@ namespace Editor
 
             return true;
         }
+
+        template <typename Record, typename Populate>
+        void ApplyRecordChange(::ClientDB::Data& storage, u32 recordID, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType, Populate&& populate)
+        {
+            if (mutationType == MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum::Delete)
+            {
+                storage.Remove(recordID);
+                return;
+            }
+
+            Record record{};
+            populate(record);
+            storage.Replace(recordID, record);
+        }
     }
 
     InteractionEditorData::InteractionEditorData()
@@ -55,7 +69,24 @@ namespace Editor
             MatchesRecord<MetaGen::Shared::ClientDB::GossipMenuOptionEditorRecord>(storages[static_cast<u8>(Artifact::GossipMenuOption)]) &&
             MatchesRecord<MetaGen::Shared::ClientDB::CreatureTemplateDescriptorEditorRecord>(storages[static_cast<u8>(Artifact::CreatureTemplateDescriptor)]) &&
             MatchesRecord<MetaGen::Shared::ClientDB::CreatureTemplateInteractionEditorRecord>(storages[static_cast<u8>(Artifact::CreatureTemplateInteraction)]) &&
-            MatchesRecord<MetaGen::Shared::ClientDB::CreatureTemplateGossipEditorRecord>(storages[static_cast<u8>(Artifact::CreatureTemplateGossip)]);
+            MatchesRecord<MetaGen::Shared::ClientDB::CreatureTemplateGossipEditorRecord>(storages[static_cast<u8>(Artifact::CreatureTemplateGossip)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::CostEditorRecord>(storages[static_cast<u8>(Artifact::Cost)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::CostCurrencyComponentEditorRecord>(storages[static_cast<u8>(Artifact::CostCurrencyComponent)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::CostItemComponentEditorRecord>(storages[static_cast<u8>(Artifact::CostItemComponent)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::VendorListEditorRecord>(storages[static_cast<u8>(Artifact::VendorList)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::VendorListItemEditorRecord>(storages[static_cast<u8>(Artifact::VendorListItem)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::CreatureTemplateVendorEditorRecord>(storages[static_cast<u8>(Artifact::CreatureTemplateVendor)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestTemplateEditorRecord>(storages[static_cast<u8>(Artifact::QuestTemplate)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestPrerequisiteEditorRecord>(storages[static_cast<u8>(Artifact::QuestPrerequisite)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::CreatureTemplateQuestGiverEditorRecord>(storages[static_cast<u8>(Artifact::CreatureTemplateQuestGiver)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::CreatureTemplateQuestEditorRecord>(storages[static_cast<u8>(Artifact::CreatureTemplateQuest)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestObjectiveEditorRecord>(storages[static_cast<u8>(Artifact::QuestObjective)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestObjectiveTargetEditorRecord>(storages[static_cast<u8>(Artifact::QuestObjectiveTarget)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestRewardGroupEditorRecord>(storages[static_cast<u8>(Artifact::QuestRewardGroup)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestRewardItemEditorRecord>(storages[static_cast<u8>(Artifact::QuestRewardItem)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestRewardCurrencyEditorRecord>(storages[static_cast<u8>(Artifact::QuestRewardCurrency)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestRewardReputationEditorRecord>(storages[static_cast<u8>(Artifact::QuestRewardReputation)]) &&
+            MatchesRecord<MetaGen::Shared::ClientDB::QuestRewardExperienceEditorRecord>(storages[static_cast<u8>(Artifact::QuestRewardExperience)]);
     }
 
     bool InteractionEditorData::ApplyChangeSet(u16 changeCount, Bytebuffer& payload)
@@ -72,7 +103,9 @@ namespace Editor
             std::string primary;
             std::string secondary;
             std::string tertiary;
-            u32 values32[8] = {};
+            u64 values64[1] = {};
+            u32 values32[12] = {};
+            i32 signedValues32[2] = {};
             u16 values16[2] = {};
             u8 values8[2] = {};
             i64 parameters[4] = {};
@@ -121,8 +154,8 @@ namespace Editor
             else if (change.artifact == Artifact::GossipMenuOption)
             {
                 if (change.mutationType != MutationType::Delete &&
-                    (!changePayload.GetU32(change.values32[0]) || !changePayload.GetU16(change.values16[0]) || !changePayload.GetU32(change.values32[1]) ||
-                        !changePayload.GetU16(change.values16[1]) || !changePayload.GetU32(change.values32[2]) || !changePayload.GetU32(change.values32[3]) ||
+                    (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) || !changePayload.GetU32(change.values32[1]) ||
+                        !changePayload.GetU16(change.values16[0]) || !changePayload.GetU32(change.values32[2]) || !changePayload.GetU32(change.values32[3]) ||
                         !changePayload.GetU32(change.values32[4]) || !changePayload.GetU32(change.values32[5]) || !changePayload.GetU8(change.values8[0])))
                 {
                     return false;
@@ -135,6 +168,132 @@ namespace Editor
                 if (change.mutationType != MutationType::Delete && change.values32[0] == 0)
                     return false;
             }
+            else if (change.artifact == Artifact::Cost || change.artifact == Artifact::VendorList)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetString(change.primary) ||
+                    (change.artifact == Artifact::VendorList && !changePayload.GetU32(change.values32[0]))))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::CostCurrencyComponent)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU16(change.values16[0]) || !changePayload.GetU64(change.values64[0])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::CostItemComponent)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU32(change.values32[1]) || !changePayload.GetU32(change.values32[2])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::VendorListItem)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU32(change.values32[1]) || !changePayload.GetU32(change.values32[2]) || !changePayload.GetU32(change.values32[3]) ||
+                    !changePayload.GetU32(change.values32[4]) || !changePayload.GetU32(change.values32[5]) || !changePayload.GetU32(change.values32[6]) ||
+                    !changePayload.GetU32(change.values32[7])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::CreatureTemplateVendor)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetU32(change.values32[1])))
+                    return false;
+            }
+            else if (change.artifact == Artifact::QuestTemplate)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetString(change.primary) || !changePayload.GetU32(change.values32[0]) ||
+                    !changePayload.GetU32(change.values32[1]) || !changePayload.GetU32(change.values32[2]) || !changePayload.GetU32(change.values32[3]) ||
+                    !changePayload.GetU32(change.values32[4]) || !changePayload.GetU32(change.values32[5]) || !changePayload.GetU32(change.values32[6]) ||
+                    !changePayload.GetU32(change.values32[7]) || !changePayload.GetU32(change.values32[8]) || !changePayload.GetU16(change.values16[0]) ||
+                    !changePayload.GetU32(change.values32[9])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestPrerequisite)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetU32(change.values32[1])))
+                    return false;
+            }
+            else if (change.artifact == Artifact::CreatureTemplateQuestGiver)
+            {
+                if (change.mutationType != MutationType::Delete && !changePayload.GetU32(change.values32[0]))
+                    return false;
+            }
+            else if (change.artifact == Artifact::CreatureTemplateQuest)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetU32(change.values32[1]) ||
+                    !changePayload.GetU8(change.values8[0]) || !changePayload.GetI32(change.signedValues32[0]) || !changePayload.GetU32(change.values32[2]) ||
+                    !changePayload.GetU32(change.values32[3]) || !changePayload.GetU32(change.values32[4])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestObjective)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU8(change.values8[0]) || !changePayload.GetU32(change.values32[1]) || !changePayload.GetU32(change.values32[2]) ||
+                    !changePayload.GetU32(change.values32[3])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestObjectiveTarget)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU32(change.values32[1]) || !changePayload.GetU32(change.values32[2])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestRewardGroup)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU8(change.values8[0]) || !changePayload.GetU32(change.values32[1])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestRewardItem)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU32(change.values32[1]) || !changePayload.GetU32(change.values32[2]) || !changePayload.GetU32(change.values32[3])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestRewardCurrency)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU16(change.values16[0]) || !changePayload.GetU64(change.values64[0]) || !changePayload.GetU32(change.values32[1])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestRewardReputation)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU16(change.values16[0]) || !changePayload.GetI32(change.signedValues32[1]) || !changePayload.GetU32(change.values32[1])))
+                {
+                    return false;
+                }
+            }
+            else if (change.artifact == Artifact::QuestRewardExperience)
+            {
+                if (change.mutationType != MutationType::Delete && (!changePayload.GetU32(change.values32[0]) || !changePayload.GetI32(change.signedValues32[0]) ||
+                    !changePayload.GetU64(change.values64[0]) || !changePayload.GetU32(change.values32[1])))
+                {
+                    return false;
+                }
+            }
             else
             {
                 return false;
@@ -142,8 +301,10 @@ namespace Editor
 
             if (changePayload.GetActiveSize() != 0)
                 return false;
+
             changes.push_back(std::move(change));
         }
+
         if (payload.GetActiveSize() != 0)
             return false;
 
@@ -154,19 +315,23 @@ namespace Editor
             translationKeys.emplace_back(record.textID, record.locale);
             return true;
         });
+
         u64 nextTranslationRowID = translations->GetHeader().maxID;
         for (const StagedChange& change : changes)
         {
             if (change.artifact != Artifact::LocalizedTextTranslation)
                 continue;
+
             const std::pair<u32, u8> key = { change.values32[0], change.values8[0] };
             if (change.mutationType == MutationType::Delete)
             {
                 std::erase(translationKeys, key);
                 continue;
             }
+
             if (std::ranges::find(translationKeys, key) != translationKeys.end())
                 continue;
+
             if (nextTranslationRowID == std::numeric_limits<u32>::max())
                 return false;
             ++nextTranslationRowID;
@@ -212,6 +377,7 @@ namespace Editor
                         translations->Remove(rowID);
                     continue;
                 }
+
                 if (rowID == 0)
                     rowID = translations->GetHeader().maxID + 1;
 
@@ -240,25 +406,238 @@ namespace Editor
                 continue;
             }
 
-            ::ClientDB::Data* options = GetStorage(Artifact::GossipMenuOption);
-            if (change.mutationType == MutationType::Delete)
+            if (change.artifact == Artifact::GossipMenuOption)
             {
-                options->Remove(change.artifactID);
+                ::ClientDB::Data* options = GetStorage(Artifact::GossipMenuOption);
+                ApplyRecordChange<MetaGen::Shared::ClientDB::GossipMenuOptionEditorRecord>(*options, change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.menuID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.textID = change.values32[1];
+                    record.icon = change.values16[0];
+                    record.flags = change.values32[2];
+                    record.visibilityConditionSetID = change.values32[3];
+                    record.enabledConditionSetID = change.values32[4];
+                    record.disabledReasonTextID = change.values32[5];
+                    record.actionType = change.values8[0];
+                    std::ranges::copy(change.parameters, record.actionParameters.begin());
+                });
                 continue;
             }
 
-            MetaGen::Shared::ClientDB::GossipMenuOptionEditorRecord record = {};
-            record.menuID = change.values32[0];
-            record.orderIndex = change.values16[0];
-            record.textID = change.values32[1];
-            record.icon = change.values16[1];
-            record.flags = change.values32[2];
-            record.visibilityConditionSetID = change.values32[3];
-            record.enabledConditionSetID = change.values32[4];
-            record.disabledReasonTextID = change.values32[5];
-            record.actionType = change.values8[0];
-            std::ranges::copy(change.parameters, record.actionParameters.begin());
-            options->Replace(change.artifactID, record);
+            if (change.artifact == Artifact::Cost)
+            {
+                ::ClientDB::Data* storage = GetStorage(change.artifact);
+                ApplyRecordChange<MetaGen::Shared::ClientDB::CostEditorRecord>(*storage, change.artifactID, change.mutationType,
+                    [&](auto& record) { record.internalName = storage->AddString(change.primary); });
+                continue;
+            }
+
+            if (change.artifact == Artifact::CostCurrencyComponent)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::CostCurrencyComponentEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.costID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.currencyID = change.values16[0];
+                    record.amount = change.values64[0];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::CostItemComponent)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::CostItemComponentEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.costID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.itemTemplateID = change.values32[1];
+                    record.amount = change.values32[2];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::VendorList)
+            {
+                ::ClientDB::Data* storage = GetStorage(change.artifact);
+                ApplyRecordChange<MetaGen::Shared::ClientDB::VendorListEditorRecord>(*storage, change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.internalName = storage->AddString(change.primary);
+                    record.flags = change.values32[0];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::VendorListItem)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::VendorListItemEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.vendorListID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.itemTemplateID = change.values32[1];
+                    record.purchaseQuantity = change.values32[2];
+                    record.costID = change.values32[3];
+                    record.visibilityConditionSetID = change.values32[4];
+                    record.enabledConditionSetID = change.values32[5];
+                    record.disabledReasonTextID = change.values32[6];
+                    record.flags = change.values32[7];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::CreatureTemplateVendor)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::CreatureTemplateVendorEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.vendorListID = change.values32[0];
+                    record.flags = change.values32[1];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestTemplate)
+            {
+                ::ClientDB::Data* storage = GetStorage(change.artifact);
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestTemplateEditorRecord>(*storage, change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.internalName = storage->AddString(change.primary);
+                    record.titleTextID = change.values32[0];
+                    record.summaryTextID = change.values32[1];
+                    record.detailsTextID = change.values32[2];
+                    record.logTextID = change.values32[3];
+                    record.progressTextID = change.values32[4];
+                    record.completionTextID = change.values32[5];
+                    record.visibilityConditionSetID = change.values32[6];
+                    record.availabilityConditionSetID = change.values32[7];
+                    record.unavailableReasonTextID = change.values32[8];
+                    record.level = change.values16[0];
+                    record.flags = change.values32[9];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestPrerequisite)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestPrerequisiteEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.questID = change.values32[0];
+                    record.prerequisiteQuestID = change.values32[1];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::CreatureTemplateQuestGiver)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::CreatureTemplateQuestGiverEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType,
+                    [&](auto& record) { record.flags = change.values32[0]; });
+                continue;
+            }
+
+            if (change.artifact == Artifact::CreatureTemplateQuest)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::CreatureTemplateQuestEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.creatureTemplateID = change.values32[0];
+                    record.questID = change.values32[1];
+                    record.roleFlags = change.values8[0];
+                    record.priority = change.signedValues32[0];
+                    record.visibilityConditionSetID = change.values32[2];
+                    record.enabledConditionSetID = change.values32[3];
+                    record.flags = change.values32[4];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestObjective)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestObjectiveEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.questID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.objectiveType = change.values8[0];
+                    record.requiredCount = change.values32[1];
+                    record.textID = change.values32[2];
+                    record.flags = change.values32[3];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestObjectiveTarget)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestObjectiveTargetEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.objectiveID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.targetID = change.values32[1];
+                    record.contribution = change.values32[2];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestRewardGroup)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestRewardGroupEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.questID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.selectionCount = change.values8[0];
+                    record.flags = change.values32[1];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestRewardItem)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestRewardItemEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.rewardGroupID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.itemTemplateID = change.values32[1];
+                    record.quantity = change.values32[2];
+                    record.flags = change.values32[3];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestRewardCurrency)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestRewardCurrencyEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.rewardGroupID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.currencyID = change.values16[0];
+                    record.amount = change.values64[0];
+                    record.flags = change.values32[1];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestRewardReputation)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestRewardReputationEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.rewardGroupID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.factionID = change.values16[0];
+                    record.amount = change.signedValues32[1];
+                    record.flags = change.values32[1];
+                });
+                continue;
+            }
+
+            if (change.artifact == Artifact::QuestRewardExperience)
+            {
+                ApplyRecordChange<MetaGen::Shared::ClientDB::QuestRewardExperienceEditorRecord>(*GetStorage(change.artifact), change.artifactID, change.mutationType, [&](auto& record)
+                {
+                    record.rewardGroupID = change.values32[0];
+                    record.priority = change.signedValues32[0];
+                    record.amount = change.values64[0];
+                    record.flags = change.values32[1];
+                });
+                continue;
+            }
+
+            return false;
         }
 
         return true;

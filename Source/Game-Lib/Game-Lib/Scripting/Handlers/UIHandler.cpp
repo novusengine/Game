@@ -27,11 +27,14 @@
 
 #include <Input/InputSystem.h>
 
+#include <Renderer/Window.h>
+
 #include <MetaGen/Game/Lua/Lua.h>
 
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
 
+#include <GLFW/glfw3.h>
 #include <entt/entt.hpp>
 #include <lualib.h>
 #include <xxhash/xxhash64.h>
@@ -774,6 +777,29 @@ namespace Scripting::UI
         return 1;
     }
 
+    i32 UIHandler::GetClipboardText(Zenith* zenith)
+    {
+        GLFWwindow* window = ServiceLocator::GetGameRenderer()->GetWindow()->GetWindow();
+        const char* clipboardText = glfwGetClipboardString(window);
+        zenith->Push(clipboardText != nullptr ? clipboardText : "");
+
+        return 1;
+    }
+
+    i32 UIHandler::SetClipboardText(Zenith* zenith)
+    {
+        const char* text = zenith->CheckVal<const char*>(1);
+        if (text == nullptr)
+        {
+            luaL_error(zenith->state, "Expected text as parameter 1");
+        }
+
+        GLFWwindow* window = ServiceLocator::GetGameRenderer()->GetWindow()->GetWindow();
+        glfwSetClipboardString(window, text);
+
+        return 0;
+    }
+
     i32 UIHandler::DrawLine2D(Zenith* zenith)
     {
         const vec3 from = zenith->CheckVal<vec3>(1);
@@ -928,6 +954,15 @@ namespace Scripting::UI
 
         Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
         Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
+        f32 fontSize = textTemplate.size;
+        if (zenith->GetTop() >= 4 && !zenith->IsNil(4))
+        {
+            fontSize = zenith->CheckVal<f32>(4);
+            if (!(fontSize > 0.0f) || !std::isfinite(fontSize))
+            {
+                luaL_error(zenith->state, "Expected a positive finite font size as parameter 4");
+            }
+        }
 
         std::string textStr = text;
         if (wrapWidth == 0)
@@ -936,11 +971,11 @@ namespace Scripting::UI
         }
         else
         {
-            textStr = ECS::Util::UI::GenWrapText(text, font, textTemplate.size, textTemplate.borderSize, wrapWidth, textTemplate.wrapIndent);
+            textStr = ECS::Util::UI::GenWrapText(text, font, fontSize, textTemplate.borderSize, wrapWidth, textTemplate.wrapIndent);
             zenith->Push(textStr.c_str());
         }
 
-        vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
+        vec2 textSize = font->CalculateTextSize(textStr, fontSize, textTemplate.borderSize);
         zenith->Push(textSize);
 
         return 2;

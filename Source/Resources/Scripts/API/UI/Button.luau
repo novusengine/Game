@@ -76,7 +76,6 @@ local DEFAULT_BASE_COLOR = vec.New(0.095, 0.105, 0.12);
 local DEFAULT_HOVER_COLOR = vec.New(0.13, 0.20, 0.29);
 local DEFAULT_BASE_ALPHA = 1.0;
 local DEFAULT_HOVER_ALPHA = 1.0;
-local DEFAULT_DISABLED_ALPHA = 0.08;
 
 local function GetTextPrefix(value : string, characterCount : number) : string
     local endByte = utf8.offset(value, characterCount + 1);
@@ -108,13 +107,14 @@ function buttonAPI.New(parent : Widget, position : vec, size : vec, layer : inte
     local self = {
         root = root,
         text = text,
-        _baseColor = opts.color or (if usesDefaultVisualStyle then DEFAULT_BASE_COLOR else nil),
-        _hoverColor = opts.hoverColor or opts.color or (if usesDefaultVisualStyle then DEFAULT_HOVER_COLOR else nil),
+        _baseColor = opts.color,
+        _hoverColor = opts.hoverColor or opts.color,
         _highlightColor = opts.highlightColor or opts.hoverColor or opts.color or (if usesDefaultVisualStyle then DEFAULT_HOVER_COLOR else nil),
-        _baseAlpha = opts.alpha or (if usesDefaultVisualStyle then DEFAULT_BASE_ALPHA else nil),
-        _hoverAlpha = opts.hoverAlpha or (if usesDefaultVisualStyle then DEFAULT_HOVER_ALPHA else nil),
+        _baseAlpha = opts.alpha,
+        _hoverAlpha = opts.hoverAlpha,
         _highlightAlpha = opts.highlightAlpha or opts.hoverAlpha or (if usesDefaultVisualStyle then DEFAULT_HOVER_ALPHA else nil),
-        _disabledAlpha = opts.disabledAlpha or (if usesDefaultVisualStyle then DEFAULT_DISABLED_ALPHA else nil),
+        _disabledAlpha = opts.disabledAlpha,
+        _usesDefaultVisualStyle = usesDefaultVisualStyle,
         _highlighted = false,
         _hovered = false,
         _interactable = true,
@@ -215,6 +215,10 @@ function buttonAPI.New(parent : Widget, position : vec, size : vec, layer : inte
     end
     function self:SetHighlighted(value : boolean)
         self._highlighted = value;
+        if not value and self._interactable and self._baseColor == nil and self._usesDefaultVisualStyle then
+            root:SetColor(if self._hovered then DEFAULT_HOVER_COLOR else DEFAULT_BASE_COLOR);
+            root:SetAlpha(DEFAULT_BASE_ALPHA);
+        end
         ApplyVisualState();
     end
     function self:NewWidget(positionValue : vec, childLayer : integer) return root:NewWidget(positionValue, childLayer); end

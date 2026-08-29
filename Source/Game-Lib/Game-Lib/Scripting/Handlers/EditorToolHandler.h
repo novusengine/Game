@@ -128,7 +128,6 @@ namespace Scripting::Editor
         static i32 DeleteInteractionEditorGossipMenu(Zenith* zenith);
         static i32 CreateInteractionEditorGossipMenuOption(Zenith* zenith);
         static i32 UpdateInteractionEditorGossipMenuOption(Zenith* zenith);
-        static i32 ReorderInteractionEditorGossipMenuOption(Zenith* zenith);
         static i32 DeleteInteractionEditorGossipMenuOption(Zenith* zenith);
         static i32 CreateInteractionEditorCreatureTemplateInteraction(Zenith* zenith);
         static i32 UpdateInteractionEditorCreatureTemplateInteraction(Zenith* zenith);
@@ -136,6 +135,57 @@ namespace Scripting::Editor
         static i32 CreateInteractionEditorCreatureTemplateGossip(Zenith* zenith);
         static i32 UpdateInteractionEditorCreatureTemplateGossip(Zenith* zenith);
         static i32 DeleteInteractionEditorCreatureTemplateGossip(Zenith* zenith);
+        static i32 CreateInteractionEditorCost(Zenith* zenith);
+        static i32 UpdateInteractionEditorCost(Zenith* zenith);
+        static i32 DeleteInteractionEditorCost(Zenith* zenith);
+        static i32 CreateInteractionEditorCostCurrencyComponent(Zenith* zenith);
+        static i32 UpdateInteractionEditorCostCurrencyComponent(Zenith* zenith);
+        static i32 DeleteInteractionEditorCostCurrencyComponent(Zenith* zenith);
+        static i32 CreateInteractionEditorCostItemComponent(Zenith* zenith);
+        static i32 UpdateInteractionEditorCostItemComponent(Zenith* zenith);
+        static i32 DeleteInteractionEditorCostItemComponent(Zenith* zenith);
+        static i32 CreateInteractionEditorVendorList(Zenith* zenith);
+        static i32 UpdateInteractionEditorVendorList(Zenith* zenith);
+        static i32 DeleteInteractionEditorVendorList(Zenith* zenith);
+        static i32 CreateInteractionEditorVendorListItem(Zenith* zenith);
+        static i32 UpdateInteractionEditorVendorListItem(Zenith* zenith);
+        static i32 DeleteInteractionEditorVendorListItem(Zenith* zenith);
+        static i32 CreateInteractionEditorCreatureTemplateVendor(Zenith* zenith);
+        static i32 UpdateInteractionEditorCreatureTemplateVendor(Zenith* zenith);
+        static i32 DeleteInteractionEditorCreatureTemplateVendor(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestTemplate(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestTemplate(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestTemplate(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestPrerequisite(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestPrerequisite(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestPrerequisite(Zenith* zenith);
+        static i32 CreateInteractionEditorCreatureTemplateQuestGiver(Zenith* zenith);
+        static i32 UpdateInteractionEditorCreatureTemplateQuestGiver(Zenith* zenith);
+        static i32 DeleteInteractionEditorCreatureTemplateQuestGiver(Zenith* zenith);
+        static i32 CreateInteractionEditorCreatureTemplateQuest(Zenith* zenith);
+        static i32 UpdateInteractionEditorCreatureTemplateQuest(Zenith* zenith);
+        static i32 DeleteInteractionEditorCreatureTemplateQuest(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestObjective(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestObjective(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestObjective(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestObjectiveTarget(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestObjectiveTarget(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestObjectiveTarget(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestRewardGroup(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestRewardGroup(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestRewardGroup(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestRewardItem(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestRewardItem(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestRewardItem(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestRewardCurrency(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestRewardCurrency(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestRewardCurrency(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestRewardReputation(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestRewardReputation(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestRewardReputation(Zenith* zenith);
+        static i32 CreateInteractionEditorQuestRewardExperience(Zenith* zenith);
+        static i32 UpdateInteractionEditorQuestRewardExperience(Zenith* zenith);
+        static i32 DeleteInteractionEditorQuestRewardExperience(Zenith* zenith);
         static i32 TakeInteractionEditorMutationResult(Zenith* zenith);
 
         static i32 GetCreatureAIEditorState(Zenith* zenith);
@@ -284,7 +334,6 @@ namespace Scripting::Editor
         { "DeleteGossipMenu", EditorToolHandler::DeleteInteractionEditorGossipMenu, Scripting::LuaMethodFlags::DeveloperOnly },
         { "CreateGossipMenuOption", EditorToolHandler::CreateInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
         { "UpdateGossipMenuOption", EditorToolHandler::UpdateInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
-        { "ReorderGossipMenuOption", EditorToolHandler::ReorderInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
         { "DeleteGossipMenuOption", EditorToolHandler::DeleteInteractionEditorGossipMenuOption, Scripting::LuaMethodFlags::DeveloperOnly },
         { "CreateCreatureTemplateInteraction", EditorToolHandler::CreateInteractionEditorCreatureTemplateInteraction, Scripting::LuaMethodFlags::DeveloperOnly },
         { "UpdateCreatureTemplateInteraction", EditorToolHandler::UpdateInteractionEditorCreatureTemplateInteraction, Scripting::LuaMethodFlags::DeveloperOnly },
@@ -292,6 +341,57 @@ namespace Scripting::Editor
         { "CreateCreatureTemplateGossip", EditorToolHandler::CreateInteractionEditorCreatureTemplateGossip, Scripting::LuaMethodFlags::DeveloperOnly },
         { "UpdateCreatureTemplateGossip", EditorToolHandler::UpdateInteractionEditorCreatureTemplateGossip, Scripting::LuaMethodFlags::DeveloperOnly },
         { "DeleteCreatureTemplateGossip", EditorToolHandler::DeleteInteractionEditorCreatureTemplateGossip, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCost", EditorToolHandler::CreateInteractionEditorCost, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCost", EditorToolHandler::UpdateInteractionEditorCost, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCost", EditorToolHandler::DeleteInteractionEditorCost, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCostCurrencyComponent", EditorToolHandler::CreateInteractionEditorCostCurrencyComponent, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCostCurrencyComponent", EditorToolHandler::UpdateInteractionEditorCostCurrencyComponent, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCostCurrencyComponent", EditorToolHandler::DeleteInteractionEditorCostCurrencyComponent, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCostItemComponent", EditorToolHandler::CreateInteractionEditorCostItemComponent, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCostItemComponent", EditorToolHandler::UpdateInteractionEditorCostItemComponent, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCostItemComponent", EditorToolHandler::DeleteInteractionEditorCostItemComponent, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateVendorList", EditorToolHandler::CreateInteractionEditorVendorList, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateVendorList", EditorToolHandler::UpdateInteractionEditorVendorList, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteVendorList", EditorToolHandler::DeleteInteractionEditorVendorList, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateVendorListItem", EditorToolHandler::CreateInteractionEditorVendorListItem, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateVendorListItem", EditorToolHandler::UpdateInteractionEditorVendorListItem, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteVendorListItem", EditorToolHandler::DeleteInteractionEditorVendorListItem, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCreatureTemplateVendor", EditorToolHandler::CreateInteractionEditorCreatureTemplateVendor, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCreatureTemplateVendor", EditorToolHandler::UpdateInteractionEditorCreatureTemplateVendor, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCreatureTemplateVendor", EditorToolHandler::DeleteInteractionEditorCreatureTemplateVendor, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestTemplate", EditorToolHandler::CreateInteractionEditorQuestTemplate, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestTemplate", EditorToolHandler::UpdateInteractionEditorQuestTemplate, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestTemplate", EditorToolHandler::DeleteInteractionEditorQuestTemplate, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestPrerequisite", EditorToolHandler::CreateInteractionEditorQuestPrerequisite, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestPrerequisite", EditorToolHandler::UpdateInteractionEditorQuestPrerequisite, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestPrerequisite", EditorToolHandler::DeleteInteractionEditorQuestPrerequisite, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCreatureTemplateQuestGiver", EditorToolHandler::CreateInteractionEditorCreatureTemplateQuestGiver, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCreatureTemplateQuestGiver", EditorToolHandler::UpdateInteractionEditorCreatureTemplateQuestGiver, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCreatureTemplateQuestGiver", EditorToolHandler::DeleteInteractionEditorCreatureTemplateQuestGiver, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateCreatureTemplateQuest", EditorToolHandler::CreateInteractionEditorCreatureTemplateQuest, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateCreatureTemplateQuest", EditorToolHandler::UpdateInteractionEditorCreatureTemplateQuest, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteCreatureTemplateQuest", EditorToolHandler::DeleteInteractionEditorCreatureTemplateQuest, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestObjective", EditorToolHandler::CreateInteractionEditorQuestObjective, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestObjective", EditorToolHandler::UpdateInteractionEditorQuestObjective, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestObjective", EditorToolHandler::DeleteInteractionEditorQuestObjective, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestObjectiveTarget", EditorToolHandler::CreateInteractionEditorQuestObjectiveTarget, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestObjectiveTarget", EditorToolHandler::UpdateInteractionEditorQuestObjectiveTarget, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestObjectiveTarget", EditorToolHandler::DeleteInteractionEditorQuestObjectiveTarget, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestRewardGroup", EditorToolHandler::CreateInteractionEditorQuestRewardGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestRewardGroup", EditorToolHandler::UpdateInteractionEditorQuestRewardGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestRewardGroup", EditorToolHandler::DeleteInteractionEditorQuestRewardGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestRewardItem", EditorToolHandler::CreateInteractionEditorQuestRewardItem, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestRewardItem", EditorToolHandler::UpdateInteractionEditorQuestRewardItem, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestRewardItem", EditorToolHandler::DeleteInteractionEditorQuestRewardItem, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestRewardCurrency", EditorToolHandler::CreateInteractionEditorQuestRewardCurrency, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestRewardCurrency", EditorToolHandler::UpdateInteractionEditorQuestRewardCurrency, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestRewardCurrency", EditorToolHandler::DeleteInteractionEditorQuestRewardCurrency, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestRewardReputation", EditorToolHandler::CreateInteractionEditorQuestRewardReputation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestRewardReputation", EditorToolHandler::UpdateInteractionEditorQuestRewardReputation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestRewardReputation", EditorToolHandler::DeleteInteractionEditorQuestRewardReputation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateQuestRewardExperience", EditorToolHandler::CreateInteractionEditorQuestRewardExperience, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateQuestRewardExperience", EditorToolHandler::UpdateInteractionEditorQuestRewardExperience, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteQuestRewardExperience", EditorToolHandler::DeleteInteractionEditorQuestRewardExperience, Scripting::LuaMethodFlags::DeveloperOnly },
         { "TakeMutationResult", EditorToolHandler::TakeInteractionEditorMutationResult, Scripting::LuaMethodFlags::DeveloperOnly },
     };
 

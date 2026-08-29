@@ -1,6 +1,7 @@
 #include "Interaction.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/Database/CostSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Util/InteractionUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -22,14 +23,54 @@ namespace Scripting::Game
 
     namespace InteractionMethods
     {
+        i32 GetVersion(Zenith* zenith)
+        {
+            const entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+            zenith->Push(registry.ctx().get<ECS::Singletons::NetworkState>().interactionState.changeVersion);
+            return 1;
+        }
+
         i32 GetState(Zenith* zenith)
         {
             entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
             const auto& networkState = registry.ctx().get<ECS::Singletons::NetworkState>();
             const ECS::Singletons::InteractionState& state = networkState.interactionState;
+            const auto* costs = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().find<ECS::Singletons::CostSingleton>();
 
             zenith->CreateTable();
             zenith->AddTableField("version", state.changeVersion);
+
+            zenith->CreateTable();
+            zenith->AddTableField("revision", state.questLogRevision);
+            zenith->CreateTable();
+            i32 questLogIndex = 0;
+            for (const auto& quest : state.questLog)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("questID", quest.id);
+                zenith->AddTableField("state", static_cast<u8>(quest.state));
+                zenith->AddTableField("title", quest.title.c_str());
+                zenith->AddTableField("logText", quest.logText.c_str());
+                zenith->CreateTable();
+                i32 logObjectiveIndex = 0;
+                for (const auto& objective : quest.objectives)
+                {
+                    zenith->CreateTable();
+                    zenith->AddTableField("objectiveID", objective.id);
+                    zenith->AddTableField("text", objective.text.c_str());
+                    zenith->AddTableField("displayText", objective.displayText.c_str());
+                    zenith->AddTableField("progress", objective.progress);
+                    zenith->AddTableField("required", objective.required);
+                    zenith->AddTableField("optional", objective.optional);
+                    zenith->SetTableKey(++logObjectiveIndex);
+                }
+
+                zenith->SetTableKey("objectives");
+                zenith->SetTableKey(++questLogIndex);
+            }
+
+            zenith->SetTableKey("quests");
+            zenith->SetTableKey("questLog");
 
             if (state.activeSession)
             {
@@ -44,6 +85,8 @@ namespace Scripting::Game
                 zenith->AddTableField("revision", session.revision);
                 zenith->AddTableField("sourceUnitID", sourceUnitID);
                 zenith->AddTableField("surfaceType", static_cast<u8>(session.surfaceType));
+                zenith->AddTableField("questMask", static_cast<u8>(session.questMask));
+                zenith->AddTableField("heading", session.heading.c_str());
                 zenith->AddTableField("greeting", session.greeting.c_str());
 
                 zenith->CreateTable();
@@ -53,12 +96,83 @@ namespace Scripting::Game
                     zenith->CreateTable();
                     zenith->AddTableField("token", option.token);
                     zenith->AddTableField("icon", option.icon);
+                    zenith->AddTableField("kind", static_cast<u8>(option.kind));
                     zenith->AddTableField("enabled", option.enabled);
+                    zenith->AddTableField("itemTemplateID", option.itemTemplateID);
+                    zenith->AddTableField("quantity", option.quantity);
+                    zenith->AddTableField("costID", option.costID);
+                    zenith->AddTableField("costDataAvailable", option.costDataAvailable);
+                    zenith->CreateTable();
+                    i32 currencyComponentIndex = 0;
+                    for (const auto& component : option.costCurrencyComponents)
+                    {
+                        zenith->CreateTable();
+                        zenith->AddTableField("currencyID", component.currencyID);
+                        const char* currencyName = "Unknown currency";
+                        if (costs)
+                        {
+                            const auto currencyItr = costs->currencyNamesByID.find(component.currencyID);
+                            if (currencyItr != costs->currencyNamesByID.end())
+                                currencyName = currencyItr->second.c_str();
+                        }
+
+                        zenith->AddTableField("name", currencyName);
+                        zenith->AddTableField("amount", component.amount);
+                        zenith->SetTableKey(++currencyComponentIndex);
+                    }
+
+                    zenith->SetTableKey("costCurrencyComponents");
+                    zenith->CreateTable();
+                    i32 itemComponentIndex = 0;
+                    for (const auto& component : option.costItemComponents)
+                    {
+                        zenith->CreateTable();
+                        zenith->AddTableField("itemTemplateID", component.itemTemplateID);
+                        zenith->AddTableField("amount", component.amount);
+                        zenith->SetTableKey(++itemComponentIndex);
+                    }
+
+                    zenith->SetTableKey("costItemComponents");
                     zenith->AddTableField("text", option.text.c_str());
                     zenith->AddTableField("disabledReason", option.disabledReason.c_str());
                     zenith->SetTableKey(++optionIndex);
                 }
+
                 zenith->SetTableKey("options");
+
+                zenith->CreateTable();
+                i32 objectiveIndex = 0;
+                for (const auto& objective : session.objectives)
+                {
+                    zenith->CreateTable();
+                    zenith->AddTableField("text", objective.text.c_str());
+                    zenith->AddTableField("displayText", objective.displayText.c_str());
+                    zenith->AddTableField("progress", objective.progress);
+                    zenith->AddTableField("required", objective.required);
+                    zenith->AddTableField("optional", objective.optional);
+                    zenith->SetTableKey(++objectiveIndex);
+                }
+
+                zenith->SetTableKey("objectives");
+
+                zenith->CreateTable();
+                i32 rewardIndex = 0;
+                for (const auto& reward : session.rewards)
+                {
+                    zenith->CreateTable();
+                    zenith->AddTableField("groupID", reward.groupID);
+                    zenith->AddTableField("selectionID", reward.selectionID);
+                    zenith->AddTableField("type", static_cast<u8>(reward.type));
+                    zenith->AddTableField("resourceID", reward.resourceID);
+                    zenith->AddTableField("amount", reward.amount);
+                    zenith->AddTableField("amountNegative", reward.amountNegative);
+                    zenith->AddTableField("selectionCount", reward.selectionCount);
+                    zenith->AddTableField("flags", reward.flags);
+                    zenith->AddTableField("selected", session.selectedRewardSelectionIDs.contains(reward.selectionID));
+                    zenith->SetTableKey(++rewardIndex);
+                }
+
+                zenith->SetTableKey("rewards");
                 zenith->SetTableKey("activeSession");
             }
 
@@ -77,6 +191,14 @@ namespace Scripting::Game
                 zenith->AddTableField("revision", state.lastResultRevision);
                 zenith->AddTableField("result", static_cast<u8>(state.lastResult));
                 zenith->SetTableKey("lastResult");
+            }
+
+            if (state.lastQuestCommandResult != MetaGen::Shared::Interaction::InteractionResultEnum::Count)
+            {
+                zenith->CreateTable();
+                zenith->AddTableField("questID", state.lastQuestCommandQuestID);
+                zenith->AddTableField("result", static_cast<u8>(state.lastQuestCommandResult));
+                zenith->SetTableKey("lastQuestCommand");
             }
 
             return 1;
@@ -101,6 +223,34 @@ namespace Scripting::Game
         {
             entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
             zenith->Push(ECS::Util::Interaction::Close(registry, zenith->CheckVal<u64>(1)));
+            return 1;
+        }
+
+        i32 Purchase(Zenith* zenith)
+        {
+            entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+            zenith->Push(ECS::Util::Interaction::Purchase(registry, zenith->CheckVal<u64>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u64>(3), zenith->CheckVal<u32>(4)));
+            return 1;
+        }
+
+        i32 ToggleReward(Zenith* zenith)
+        {
+            entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+            zenith->Push(ECS::Util::Interaction::ToggleReward(registry, zenith->CheckVal<u32>(1)));
+            return 1;
+        }
+
+        i32 CompleteQuest(Zenith* zenith)
+        {
+            entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+            zenith->Push(ECS::Util::Interaction::CompleteQuest(registry, zenith->CheckVal<u64>(1), zenith->CheckVal<u32>(2), zenith->CheckVal<u64>(3)));
+            return 1;
+        }
+
+        i32 AbandonQuest(Zenith* zenith)
+        {
+            entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+            zenith->Push(ECS::Util::Interaction::AbandonQuest(registry, zenith->CheckVal<u32>(1)));
             return 1;
         }
     }

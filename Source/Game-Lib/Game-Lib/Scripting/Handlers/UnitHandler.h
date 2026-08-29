@@ -29,6 +29,7 @@ namespace Scripting::Unit
         static i32 GetAuras(Zenith* zenith);
         static i32 GetFactionID(Zenith* zenith);
         static i32 GetReaction(Zenith* zenith);
+        static i32 GetQuestInteractionMask(Zenith* zenith);
         static i32 CanAttack(Zenith* zenith);
         static i32 GetLocalReactionToUnit(Zenith* zenith);
         static i32 GetUnitReactionToLocalPlayer(Zenith* zenith);
@@ -56,6 +57,7 @@ namespace Scripting::Unit
         { "GetAuras", UnitHandler::GetAuras },
         { "GetFactionID", UnitHandler::GetFactionID },
         { "GetReaction", UnitHandler::GetReaction },
+        { "GetQuestInteractionMask", UnitHandler::GetQuestInteractionMask },
         { "CanAttack", UnitHandler::CanAttack },
         { "GetLocalReactionToUnit", UnitHandler::GetLocalReactionToUnit },
         { "GetUnitReactionToLocalPlayer", UnitHandler::GetUnitReactionToLocalPlayer },

@@ -34,6 +34,7 @@
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/CostSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/SpellSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/FactionUtil.h"
@@ -85,6 +86,7 @@
 #include <entt/entt.hpp>
 #include <imgui/ImGuiNotify.hpp>
 #include <libsodium/sodium.h>
+#include <robinhood/robinhood.h>
 
 #include <algorithm>
 #include <chrono>
@@ -856,14 +858,19 @@ namespace ECS::Systems
             case MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell:
                 notification = loaded ? "Spell editor data loaded from the server." : "The server rejected or failed the Spell editor snapshot.";
                 break;
+
             case MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Map:
                 notification = loaded ? "Map editor data loaded from the server." : "The server rejected or failed the Map editor snapshot.";
                 break;
+
             case MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Interaction:
                 notification = loaded ? "Interaction editor data loaded from the server." : "The server rejected or failed the Interaction editor snapshot.";
                 break;
-            default: break;
+
+            default:
+                break;
         }
+
         ImGui::InsertNotification({ loaded ? ImGuiToastType::Success : ImGuiToastType::Error, 3000, notification });
         return true;
     }
@@ -1156,38 +1163,158 @@ namespace ECS::Systems
     {
         constexpr u16 MAX_OPTIONS = 64;
         constexpr size_t MAX_TEXT_LENGTH = 4096;
+        constexpr size_t MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH = MAX_TEXT_LENGTH + 32;
 
         MetaGen::Shared::Packet::ServerInteractionSnapshotPacket packet;
-        if (!message.buffer->GetU64(packet.sessionID) || !message.buffer->GetU32(packet.revision) || !message.buffer->Deserialize(packet.sourceGUID) || !message.buffer->GetU8(packet.surfaceType) ||
-            !ReadBoundedString(*message.buffer, packet.greeting, MAX_TEXT_LENGTH) || !message.buffer->GetU16(packet.optionCount) ||
-            packet.sessionID == 0 || packet.revision == 0 || !packet.sourceGUID.IsValid() || packet.surfaceType >= static_cast<u8>(MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Count) ||
-            packet.optionCount > MAX_OPTIONS || (packet.greeting.empty() && packet.optionCount == 0))
-        {
+        const bool decodedIdentity = message.buffer->GetU64(packet.sessionID) && message.buffer->GetU32(packet.revision) && message.buffer->Deserialize(packet.sourceGUID);
+        const bool decodedMetadata = decodedIdentity && message.buffer->GetU8(packet.surfaceType) && message.buffer->GetU8(packet.questMask);
+        const bool decodedText = decodedMetadata && ReadBoundedString(*message.buffer, packet.heading, MAX_TEXT_LENGTH) && ReadBoundedString(*message.buffer, packet.greeting, MAX_TEXT_LENGTH);
+        const bool decodedCounts = decodedText && message.buffer->GetU16(packet.optionCount) && message.buffer->GetU16(packet.objectiveCount) && message.buffer->GetU16(packet.rewardCount);
+        if (!decodedCounts)
             return false;
-        }
+
+        const bool identityValid = packet.sessionID != 0 && packet.revision != 0 && packet.sourceGUID.IsValid();
+        const bool surfaceValid = packet.surfaceType < static_cast<u8>(MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Count);
+        const bool questMaskValid = (packet.questMask & ~static_cast<u8>(MetaGen::Shared::Interaction::QuestInteractionMaskEnum::All)) == 0;
+        const bool countsValid = packet.optionCount <= MAX_OPTIONS && packet.objectiveCount <= 16 && packet.rewardCount <= 64;
+        if (!identityValid || !surfaceValid || !questMaskValid || !countsValid || (packet.greeting.empty() && packet.optionCount == 0))
+            return false;
 
         Singletons::InteractionSessionState session{
             .id = packet.sessionID,
             .revision = packet.revision,
             .sourceGUID = packet.sourceGUID,
             .surfaceType = static_cast<MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum>(packet.surfaceType),
+            .questMask = static_cast<MetaGen::Shared::Interaction::QuestInteractionMaskEnum>(packet.questMask),
+            .heading = std::move(packet.heading),
             .greeting = std::move(packet.greeting)
         };
+
+        const Singletons::CostSingleton* costs = nullptr;
+        if (session.surfaceType == MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Vendor)
+        {
+            const auto& databaseContext = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx();
+            costs = databaseContext.find<Singletons::CostSingleton>();
+        }
 
         session.options.reserve(packet.optionCount);
         for (u16 i = 0; i < packet.optionCount; i++)
         {
             Singletons::InteractionOptionState option;
             u8 enabled = 0;
-            if (!message.buffer->GetU64(option.token) || !message.buffer->GetU16(option.icon) || !message.buffer->GetU8(enabled) || !ReadBoundedString(*message.buffer, option.text, MAX_TEXT_LENGTH) || !ReadBoundedString(*message.buffer, option.disabledReason, MAX_TEXT_LENGTH))
+            if (session.surfaceType == MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Vendor)
             {
-                return false;
+                const bool decodedItem = message.buffer->GetU64(option.token) && message.buffer->GetU32(option.itemTemplateID) && message.buffer->GetU32(option.quantity);
+                const bool decodedCost = decodedItem && message.buffer->GetU32(option.costID);
+                const bool decodedState = decodedCost && message.buffer->GetU8(enabled) && ReadBoundedString(*message.buffer, option.disabledReason, MAX_TEXT_LENGTH);
+                if (!decodedState || option.itemTemplateID == 0 || option.quantity == 0)
+                    return false;
             }
-            if (option.token == 0 || enabled > 1 || option.text.empty())
+            else
+            {
+                u8 kind = 0;
+                const bool decodedIdentity = message.buffer->GetU64(option.token) && message.buffer->GetU16(option.icon) && message.buffer->GetU8(kind) && message.buffer->GetU8(enabled);
+                const bool decodedText = decodedIdentity && ReadBoundedString(*message.buffer, option.text, MAX_TEXT_LENGTH);
+                const bool decodedDisabledReason = decodedText && ReadBoundedString(*message.buffer, option.disabledReason, MAX_TEXT_LENGTH);
+                if (!decodedDisabledReason || option.text.empty() || kind >= static_cast<u8>(MetaGen::Shared::Interaction::InteractionOptionKindEnum::Count))
+                    return false;
+
+                option.kind = static_cast<MetaGen::Shared::Interaction::InteractionOptionKindEnum>(kind);
+            }
+
+            if (option.token == 0 || enabled > 1)
                 return false;
 
             option.enabled = enabled == 1;
+            if (session.surfaceType == MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Vendor)
+            {
+                option.costDataAvailable = option.costID == 0;
+                if (costs)
+                {
+                    const auto currencyItr = costs->currencyComponentsByCostID.find(option.costID);
+                    const auto itemItr = costs->itemComponentsByCostID.find(option.costID);
+                    option.costDataAvailable = option.costDataAvailable || currencyItr != costs->currencyComponentsByCostID.end() || itemItr != costs->itemComponentsByCostID.end();
+                    if (currencyItr != costs->currencyComponentsByCostID.end())
+                    {
+                        option.costCurrencyComponents.reserve(currencyItr->second.size());
+                        for (const auto& component : currencyItr->second)
+                        {
+                            option.costCurrencyComponents.push_back({ component.currencyID, component.amount });
+                        }
+                    }
+
+                    if (itemItr != costs->itemComponentsByCostID.end())
+                    {
+                        option.costItemComponents.reserve(itemItr->second.size());
+                        for (const auto& component : itemItr->second)
+                        {
+                            option.costItemComponents.push_back({ component.itemTemplateID, component.amount });
+                        }
+                    }
+                }
+
+                option.enabled = option.enabled && option.costDataAvailable;
+            }
+
             session.options.push_back(std::move(option));
+        }
+
+        session.objectives.reserve(packet.objectiveCount);
+        for (u16 i = 0; i < packet.objectiveCount; i++)
+        {
+            Singletons::InteractionSessionState::QuestObjective objective;
+            u8 optional = 0;
+            const bool decodedText = ReadBoundedString(*message.buffer, objective.text, MAX_TEXT_LENGTH);
+            const bool decodedDisplayText = decodedText && ReadBoundedString(*message.buffer, objective.displayText, MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH);
+            const bool decodedProgress = decodedDisplayText && message.buffer->GetU32(objective.progress) && message.buffer->GetU32(objective.required) && message.buffer->GetU8(optional);
+            if (!decodedProgress)
+                return false;
+
+            const bool objectiveValid = !objective.text.empty() && !objective.displayText.empty() && objective.required != 0 && objective.progress <= objective.required && optional <= 1;
+            if (!objectiveValid)
+                return false;
+
+            objective.optional = optional == 1;
+
+            session.objectives.push_back(std::move(objective));
+        }
+
+        session.rewards.reserve(packet.rewardCount);
+        robin_hood::unordered_flat_set<u32> rewardSelectionIDs;
+        rewardSelectionIDs.reserve(packet.rewardCount);
+        for (u16 i = 0; i < packet.rewardCount; i++)
+        {
+            Singletons::InteractionSessionState::QuestReward reward;
+            u8 type = 0;
+            u8 amountNegative = 0;
+            const bool decodedIdentity = message.buffer->GetU32(reward.groupID) && message.buffer->GetU32(reward.selectionID) && message.buffer->GetU8(type) && message.buffer->GetU32(reward.resourceID);
+            const bool decodedValue = decodedIdentity && message.buffer->GetU64(reward.amount) && message.buffer->GetU8(amountNegative) && message.buffer->GetU8(reward.selectionCount) && message.buffer->GetU32(reward.flags);
+            if (!decodedValue)
+                return false;
+
+            const bool identityValid = reward.groupID != 0 && reward.selectionID != 0 && !rewardSelectionIDs.contains(reward.selectionID) && type < static_cast<u8>(MetaGen::Shared::Interaction::QuestRewardTypeEnum::Count);
+            const bool metadataValid = amountNegative <= 1 && reward.selectionCount <= 16 && (reward.flags & ~static_cast<u32>(MetaGen::Shared::Interaction::QuestRewardFlagsEnum::All)) == 0;
+            if (!identityValid || !metadataValid)
+                return false;
+
+            reward.type = static_cast<MetaGen::Shared::Interaction::QuestRewardTypeEnum>(type);
+            reward.amountNegative = amountNegative == 1;
+            if (reward.amountNegative && reward.type != MetaGen::Shared::Interaction::QuestRewardTypeEnum::Reputation)
+                return false;
+
+            rewardSelectionIDs.insert(reward.selectionID);
+            session.rewards.push_back(reward);
+        }
+
+        robin_hood::unordered_flat_map<u32, u8> selectedByGroup;
+        for (const auto& reward : session.rewards)
+        {
+            u8& selectedCount = selectedByGroup[reward.groupID];
+            if (reward.selectionCount != 0 && selectedCount < reward.selectionCount)
+            {
+                session.selectedRewardSelectionIDs.insert(reward.selectionID);
+                selectedCount++;
+            }
         }
 
         if (message.buffer->GetActiveSize() != 0)
@@ -1238,7 +1365,8 @@ namespace ECS::Systems
     bool HandleOnUnitInteractionUpdate(Network::SocketID, MetaGen::Shared::Packet::ServerUnitInteractionUpdatePacket& packet)
     {
         constexpr u8 VALID_CAPABILITIES = static_cast<u8>(MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::All);
-        if (!packet.guid.IsValid() || (packet.capabilities & static_cast<u8>(~VALID_CAPABILITIES)) != 0)
+        constexpr u8 VALID_QUEST_MASK = static_cast<u8>(MetaGen::Shared::Interaction::QuestInteractionMaskEnum::All);
+        if (!packet.guid.IsValid() || (packet.capabilities & static_cast<u8>(~VALID_CAPABILITIES)) != 0 || (packet.questMask & static_cast<u8>(~VALID_QUEST_MASK)) != 0)
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -1256,9 +1384,84 @@ namespace ECS::Systems
         }
         else
         {
-            registry->emplace_or_replace<Components::InteractionCapabilities>(entity, Components::InteractionCapabilities{ .value = static_cast<MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum>(packet.capabilities) });
+            registry->emplace_or_replace<Components::InteractionCapabilities>(entity, Components::InteractionCapabilities{ .value = static_cast<MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum>(packet.capabilities), .questMask = static_cast<MetaGen::Shared::Interaction::QuestInteractionMaskEnum>(packet.questMask) });
         }
 
+        return true;
+    }
+
+    bool HandleOnQuestLogSnapshot(Network::SocketID, Network::Message& message)
+    {
+        constexpr u8 MAX_QUESTS = 32;
+        constexpr u8 MAX_OBJECTIVES = 16;
+        constexpr size_t MAX_TEXT_LENGTH = 4096;
+        constexpr size_t MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH = MAX_TEXT_LENGTH + 32;
+        u64 revision = 0;
+        u8 questCount = 0;
+        if (!message.buffer->GetU64(revision) || !message.buffer->GetU8(questCount) || revision == 0 || questCount > MAX_QUESTS)
+            return false;
+
+        std::vector<Singletons::InteractionState::QuestLogEntry> entries;
+        entries.reserve(questCount);
+        for (u8 i = 0; i < questCount; i++)
+        {
+            auto& quest = entries.emplace_back();
+            u8 state = 0;
+            u8 objectiveCount = 0;
+            const bool decodedIdentity = message.buffer->GetU32(quest.id) && message.buffer->GetU8(state);
+            const bool decodedText = decodedIdentity && ReadBoundedString(*message.buffer, quest.title, MAX_TEXT_LENGTH) && ReadBoundedString(*message.buffer, quest.logText, MAX_TEXT_LENGTH);
+            const bool decodedMetadata = decodedText && message.buffer->GetU8(objectiveCount);
+            if (!decodedMetadata)
+                return false;
+
+            const bool questValid = quest.id != 0 && state < static_cast<u8>(MetaGen::Shared::Interaction::CharacterQuestStateEnum::Count) && !quest.title.empty() && objectiveCount <= MAX_OBJECTIVES;
+            if (!questValid)
+                return false;
+
+            quest.state = static_cast<MetaGen::Shared::Interaction::CharacterQuestStateEnum>(state);
+            quest.objectives.reserve(objectiveCount);
+            for (u8 objectiveIndex = 0; objectiveIndex < objectiveCount; objectiveIndex++)
+            {
+                auto& objective = quest.objectives.emplace_back();
+                u8 optional = 0;
+                const bool decodedIdentity = message.buffer->GetU32(objective.id);
+                const bool decodedText = decodedIdentity && ReadBoundedString(*message.buffer, objective.text, MAX_TEXT_LENGTH);
+                const bool decodedDisplayText = decodedText && ReadBoundedString(*message.buffer, objective.displayText, MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH);
+                const bool decodedProgress = decodedDisplayText && message.buffer->GetU32(objective.progress) && message.buffer->GetU32(objective.required) && message.buffer->GetU8(optional);
+                if (!decodedProgress)
+                    return false;
+
+                const bool identityValid = objective.id != 0 && !objective.text.empty() && !objective.displayText.empty();
+                const bool progressValid = objective.required != 0 && objective.progress <= objective.required && optional <= 1;
+                if (!identityValid || !progressValid)
+                    return false;
+
+                objective.optional = optional == 1;
+            }
+        }
+
+        if (message.buffer->GetActiveSize() != 0)
+            return false;
+
+        auto& state = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<Singletons::NetworkState>().interactionState;
+        if (revision < state.questLogRevision)
+            return true;
+
+        state.questLogRevision = revision;
+        state.questLog = std::move(entries);
+        state.Touch();
+        return true;
+    }
+
+    bool HandleOnQuestCommandResult(Network::SocketID, MetaGen::Shared::Packet::ServerQuestCommandResultPacket& packet)
+    {
+        if (packet.questID == 0 || packet.result >= static_cast<u8>(MetaGen::Shared::Interaction::InteractionResultEnum::Count))
+            return false;
+
+        auto& interactionState = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<Singletons::NetworkState>().interactionState;
+        interactionState.lastQuestCommandQuestID = packet.questID;
+        interactionState.lastQuestCommandResult = static_cast<MetaGen::Shared::Interaction::InteractionResultEnum>(packet.result);
+        interactionState.Touch();
         return true;
     }
 
@@ -1904,6 +2107,28 @@ namespace ECS::Systems
         return true;
     }
 
+    bool HandleOnItemUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerItemUpdatePacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+        const auto entityItr = networkState.networkIDToEntity.find(packet.guid);
+        if (entityItr == networkState.networkIDToEntity.end())
+        {
+            NC_LOG_WARNING("Network : Received ServerItemUpdate for non existing item ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        auto* item = registry->try_get<Components::Item>(entityItr->second);
+        if (!item)
+        {
+            NC_LOG_WARNING("Network : Received ServerItemUpdate for non item object ({0})", packet.guid.ToString());
+            return true;
+        }
+        item->count = packet.count;
+        item->durability = packet.durability;
+        return true;
+    }
+
     bool HandleOnContainerAdd(Network::SocketID socketID, MetaGen::Shared::Packet::ServerContainerAddPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -2478,7 +2703,9 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnCheatCommandResult);
 
             networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerInteractionSnapshotPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnInteractionSnapshot));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerQuestLogSnapshotPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnQuestLogSnapshot));
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnInteractionClose);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnQuestCommandResult);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnInteractionResult);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitInteractionUpdate);
 
@@ -2503,6 +2730,7 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitTeleport);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnItemAdd);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnItemUpdate);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnContainerAdd);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnContainerAddToSlot);

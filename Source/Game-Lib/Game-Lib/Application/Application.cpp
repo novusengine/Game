@@ -10,6 +10,7 @@
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
+#include "Game-Lib/ECS/Util/Database/CostUtil.h"
 #include "Game-Lib/ECS/Util/Database/CursorUtil.h"
 #include "Game-Lib/ECS/Util/Database/FactionUtil.h"
 #include "Game-Lib/ECS/Util/Database/IconUtil.h"
@@ -660,6 +661,7 @@ void Application::DatabaseReload()
     ECSUtil::Texture::Refresh();
     ECSUtil::Spell::Refresh();
     ECSUtil::Item::Refresh();
+    ECSUtil::Cost::Refresh();
     ECSUtil::UnitCustomization::Refresh();
     ECSUtil::Faction::Refresh();
     NC_LOG_INFO("Application : Database Reload Finish");
