@@ -28,6 +28,7 @@
 #include <FileFormat/Shared.h>
 
 #include <MetaGen/EnumTraits.h>
+#include <MetaGen/Shared/Localization/Localization.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 #include <MetaGen/Shared/Unit/Unit.h>
 
@@ -212,9 +213,7 @@ namespace Editor
                     {
                         if (networkState.client->Connect(CVAR_NetworkConnectIP.Get(), 4000))
                         {
-                            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{
-                                .accountName = accountName
-                            });
+                            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{ .accountName = accountName, .locale = static_cast<u8>(MetaGen::Shared::Localization::LocaleEnum::EnUS) });
                         }
                     }
                 }

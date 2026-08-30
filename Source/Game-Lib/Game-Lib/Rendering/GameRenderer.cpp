@@ -16,7 +16,6 @@
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
-#include "Terrain/TerrainManipulator.h"
 #include "Texture/TextureRenderer.h"
 #include "Model/ModelLoader.h"
 #include "Liquid/LiquidRenderer.h"
@@ -24,6 +23,7 @@
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
 #include "Skybox/SkyboxModelScene.h"
+#include "Shape/ShapeTextureRenderer.h"
 #include "Editor/EditorRenderer.h"
 #include "Effect/EffectRenderer.h"
 #include "Shadow/ShadowRenderer.h"
@@ -34,6 +34,7 @@
 #include "CullUtils.h"
 
 #include "Game-Lib/Editor/EditorHandler.h"
+#include "Game-Lib/Editor/TerrainEditSession.h"
 #include "Game-Lib/Editor/Viewport.h"
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/Application/EnttRegistries.h"
@@ -76,8 +77,11 @@
 #include <glm/geometric.hpp>
 #include "RenderUtils.h"
 
-#include <limits>
+#if defined(_WIN32)
+#include <Windows.h>
+#endif
 
+AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
 AutoCVar_Float CVAR_CursorRestoreGuardPeriod(CVarCategory::Client, "cursorRestoreGuardPeriod", "Time in milliseconds to reject stale cursor events after restoring a captured cursor", 100.0f, CVarFlags::EditFloatDrag);
 AutoCVar_Int CVAR_RenderAssetValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "renderAssetValidateGPUVectors",
                                                "if enabled ON START we will validate render asset GPUVector uploads", 0, CVarFlags::EditCheckbox);
@@ -145,6 +149,23 @@ InputModifier TranslateGlfwInputModifiers(i32 modifiers)
     return result;
 }
 
+PointerSource GetCurrentPointerSource()
+{
+#if defined(_WIN32)
+    // Windows promotes pen and touch input through GLFW's legacy mouse callbacks. Preserve the
+    // original device so consumers can choose whether mouse-specific behavior is appropriate.
+    constexpr ULONG_PTR POINTER_MESSAGE_SIGNATURE = 0xFF515700;
+    constexpr ULONG_PTR POINTER_MESSAGE_SIGNATURE_MASK = 0xFFFFFF00;
+    constexpr ULONG_PTR TOUCH_MESSAGE_MASK = 0x80;
+
+    const ULONG_PTR messageInfo = static_cast<ULONG_PTR>(GetMessageExtraInfo());
+    if ((messageInfo & POINTER_MESSAGE_SIGNATURE_MASK) == POINTER_MESSAGE_SIGNATURE)
+        return (messageInfo & TOUCH_MESSAGE_MASK) != 0 ? PointerSource::Touch : PointerSource::Pen;
+#endif
+
+    return PointerSource::Mouse;
+}
+
 void KeyCallback(GLFWwindow* /*window*/, i32 key, i32 /*scancode*/, i32 action, i32 modifiers)
 {
     if (key <= GLFW_KEY_UNKNOWN || key > GLFW_KEY_LAST)
@@ -163,13 +184,13 @@ void MouseCallback(GLFWwindow* /*window*/, i32 button, i32 action, i32 modifiers
     if (button < GLFW_MOUSE_BUTTON_1 || button > GLFW_MOUSE_BUTTON_LAST)
         return;
 
-    ServiceLocator::GetInputSystem()->QueueMouseButtonEvent(static_cast<MouseButton>(button), TranslateGlfwInputPhase(action), TranslateGlfwInputModifiers(modifiers));
+    ServiceLocator::GetInputSystem()->QueueMouseButtonEvent(static_cast<MouseButton>(button), TranslateGlfwInputPhase(action), TranslateGlfwInputModifiers(modifiers), GetCurrentPointerSource());
 }
 
 void CursorPositionCallback(GLFWwindow* /*window*/, f64 x, f64 y)
 {
     ZoneScopedN("Game Cursor Position Callback");
-    ServiceLocator::GetGameRenderer()->HandleCursorPosition(x, y);
+    ServiceLocator::GetGameRenderer()->HandleCursorPosition(x, y, GetCurrentPointerSource());
 }
 
 void ScrollCallback(GLFWwindow* /*window*/, f64 x, f64 y)
@@ -285,7 +306,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc, bool enableNsightGPUTrace)
 
     _terrainRenderer = new TerrainRenderer(_renderer, this, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _modelPlacementLoader, _liquidLoader);
-    _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
+    _terrainEditSession = new Editor::TerrainEditSession(*_terrainLoader, *_terrainRenderer, *_debugRenderer);
     _textureRenderer = new TextureRenderer(_renderer, this, _debugRenderer);
 
     _modelLoader->SetTerrainLoader(_terrainLoader);
@@ -295,6 +316,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc, bool enableNsightGPUTrace)
     _materialRenderer = new MaterialRenderer(_renderer, this, _terrainRenderer, _lightRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, this, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, this, _debugRenderer);
+    _shapeTextureRenderer = new ShapeTextureRenderer(_renderer, this);
     _canvasRenderer = new CanvasRenderer(_renderer, this, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer, this);
@@ -307,6 +329,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc, bool enableNsightGPUTrace)
 
 GameRenderer::~GameRenderer()
 {
+    EndPointerCapture();
     delete _unitInspection;
     delete _skyboxModelScene;
     delete _modelRenderSystem;
@@ -428,7 +451,6 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _mapLoader->Update(deltaTime);
     _terrainLoader->Update(deltaTime);
     _terrainRenderer->Update(deltaTime);
-    _terrainManipulator->Update(deltaTime);
     _modelPlacementLoader->Update();
     _modelLoader->Update(deltaTime);
     _liquidLoader->Update(deltaTime);
@@ -438,6 +460,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _lightRenderer->Update(deltaTime);
     _pixelQuery->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
+    _shapeTextureRenderer->Update(deltaTime);
     _canvasRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
@@ -657,6 +680,9 @@ f32 GameRenderer::Render()
     _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
 
+    // Renders dirty shape surfaces before the canvas pass samples them as panel backgrounds
+    _shapeTextureRenderer->AddShapePass(&renderGraph, _resources, _frameIndex);
+
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
 
@@ -764,12 +790,12 @@ bool GameRenderer::SetCursor(u64 nameHash, u32 imguiMouseCursor /*= 0*/)
     return true;
 }
 
-void GameRenderer::HandleCursorPosition(f64 x, f64 y)
+void GameRenderer::HandleCursorPosition(f64 x, f64 y, PointerSource pointerSource)
 {
     InputSystem* inputSystem = ServiceLocator::GetInputSystem();
     if (inputSystem->IsMouseCaptured())
     {
-        inputSystem->QueueCursorPositionEvent(static_cast<f32>(x), static_cast<f32>(y));
+        inputSystem->QueueCursorPositionEvent(static_cast<f32>(x), static_cast<f32>(y), pointerSource);
         return;
     }
 
@@ -795,7 +821,7 @@ void GameRenderer::HandleCursorPosition(f64 x, f64 y)
         }
     }
 
-    inputSystem->QueueCursorPositionEvent(position.x, position.y);
+    inputSystem->QueueCursorPositionEvent(position.x, position.y, pointerSource);
 }
 
 void GameRenderer::RestoreCursorPosition(const vec2& position)
@@ -812,6 +838,46 @@ void GameRenderer::RestoreCursorPosition(const vec2& position)
 void GameRenderer::CancelCursorRestore()
 {
     _cursorRestorePending = false;
+}
+
+bool GameRenderer::BeginPointerCapture()
+{
+    InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+    if (_pointerCaptureActive || inputSystem->IsMouseCaptured())
+        return false;
+
+    _pointerCapturePosition = inputSystem->GetMousePosition();
+    _pointerCapturePreviousMode = inputSystem->GetCursorMode();
+    _pointerCaptureActive = true;
+    CancelCursorRestore();
+
+    inputSystem->SetCursorMode(CursorMode::Captured);
+    glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+    glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    if (glfwRawMouseMotionSupported())
+        glfwSetInputMode(_window->GetWindow(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+
+    return true;
+}
+
+bool GameRenderer::EndPointerCapture()
+{
+    if (!_pointerCaptureActive)
+        return false;
+
+    if (glfwRawMouseMotionSupported())
+        glfwSetInputMode(_window->GetWindow(), GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+
+    glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+    RestoreCursorPosition(_pointerCapturePosition);
+
+    InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+    inputSystem->SetCursorMode(_pointerCapturePreviousMode);
+    if (_pointerCapturePreviousMode == CursorMode::Hardware)
+        glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+    _pointerCaptureActive = false;
+    return true;
 }
 
 const Renderer::ShaderEntry* GameRenderer::GetShaderEntry(u32 shaderNameHash, const std::string& debugName)

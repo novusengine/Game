@@ -35,7 +35,7 @@ namespace ECSUtil::Map
 
         mapStorage->Each([&mapSingleton, &mapStorage](u32 id, const MetaGen::Shared::ClientDB::MapRecord& map) -> bool
         {
-            const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
+            const std::string& mapInternalName = mapStorage->GetString(map.internalName);
             u32 nameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
 
             mapSingleton.mapInternalNameHashToID[nameHash] = id;
@@ -91,7 +91,7 @@ namespace ECSUtil::Map
 
         auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
 
-        map.nameInternal = mapStorage->AddString(internalName);
+        map.internalName = mapStorage->AddString(internalName);
         map.name = mapStorage->AddString(name);
         u32 mapID = mapStorage->Add(map);
 
@@ -111,7 +111,7 @@ namespace ECSUtil::Map
 
         const auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
 
-        const std::string& mapInternalName = mapStorage->GetString(map.name);
+        const std::string& mapInternalName = mapStorage->GetString(map.internalName);
         u32 internalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
 
         auto& mapSingleton = registry->ctx().get<MapSingleton>();
@@ -145,10 +145,10 @@ namespace ECSUtil::Map
             return false;
 
         auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
-        const std::string& previousInternalName = mapStorage->GetString(map.nameInternal);
-        u32 previousInternalNameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
+        const std::string& previousInternalName = mapStorage->GetString(map.internalName);
+        u32 previousInternalNameHash = StringUtils::fnv1a_32(previousInternalName.c_str(), previousInternalName.length());
 
-        map.name = mapStorage->AddString(name);
+        map.internalName = mapStorage->AddString(name);
 
         mapSingleton.mapInternalNameHashToID.erase(previousInternalNameHash);
         mapSingleton.mapInternalNameHashToID[internalNameHash] = mapID;

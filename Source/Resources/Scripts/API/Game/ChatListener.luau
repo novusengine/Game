@@ -1,6 +1,18 @@
 
+export type Listener = (message : string) -> (boolean, boolean)
+export type ChatListener =
+{
+    RegisterListener : (self : ChatListener, callback : Listener) -> (),
+    OnChat : (self : ChatListener, message : string) -> boolean,
+    SetDebug : (self : ChatListener, debug : boolean) -> (),
+}
+
 local ChatListenerMetatable = {
     RegisterListener = function(self, callback)
+        if (typeof(callback) ~= "function") then
+            error("ChatListener:RegisterListener expects a function, got " .. typeof(callback), 2);
+        end
+
         table.insert(self.listeners, callback);
         if (self.debug) then
             local src  = debug.info(2, "s"); -- where RegisterListener was called
@@ -24,8 +36,8 @@ local ChatListenerMetatable = {
 
             if (resultConsume) then
                 if (self.debug) then
-                    local src  = debug.info(2, "s"); -- where OnChat was called
-                    local line = debug.info(2, "l");
+                    local src  = debug.info(listener, "s");
+                    local line = debug.info(listener, "l");
                     local name = debug.info(listener, "n");
                     print(string.format(
                         "Chat listener '%s' consumed message from %s:%d",
@@ -45,13 +57,11 @@ local ChatListenerMetatable = {
 };
 ChatListenerMetatable.__index = ChatListenerMetatable;
 
-local chatListener = {
+local chatListener : ChatListener & { debug : boolean, listeners : { Listener } } = {
     debug = false, -- Default debug mode is off
     listeners = {}, -- List of registered chat listeners
-}
+} :: any
 
--- This might look ugly but it's needed to make the context global and not as a copy
-__global_chatListener = chatListener;
-setmetatable(__global_chatListener, ChatListenerMetatable);
+setmetatable(chatListener, ChatListenerMetatable);
 
-return __global_chatListener;
+return chatListener;

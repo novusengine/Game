@@ -1,59 +1,36 @@
-type Bag =
+export type Container =
 {
-    Events : Event,
-
     totalSlots : number,
-    freeSlots : number,
-    itemSlots : { BagSlot },
-    uiSlots : { UIBagSlot },
-    panel : Panel | nil,
-    panelData : { },
-
-    new : (parent : Canvas | Widget, slots : number, setupCallback : SetupCallback | nil, eventCallback : EventCallback | nil) -> Bag,
-
-    CanAdd : (container : Bag, itemID : number, count : number) -> boolean,
-    CanAddToSlot : (container : Bag, itemID : number, count : number, slotIndex : number, force : boolean) -> boolean,
-
-    Add : (container : Bag, itemID : number, count : number) -> boolean,
-    AddToSlot : (container : Bag, itemID : number, count : number, slotIndex : number, force : boolean) -> boolean,
-
-    CanRemoveFromSlot : (container : Bag, itemID : number, count : number, slotIndex : number, force : boolean) -> boolean,
-    RemoveFromSlot : (container : Bag, itemID : number, count : number, slotIndex : number, force : boolean) -> boolean,
-
-    CanMoveToSlot : (container : Bag, srcSlot : number, destSlot : number) -> boolean,
-    MoveToSlot : (container : Bag, srcSlot : number, destSlot : number) -> boolean,
-
-    CanSwapSlots : (container : Bag, srcSlot : number, destSlot : number) -> boolean,
-    SwapSlots : (container : Bag, srcSlot : number, destSlot : number) -> boolean,
-
-    HandleCursorCommit : (container : Bag, slotIndex : number) -> boolean,
-    UseItem : (container : Bag, slotIndex : number) -> boolean,
+    root : Panel?,
+    GetItemID : (self : Container, slotIndex : number) -> integer,
+    GetItemCount : (self : Container, slotIndex : number) -> number,
+    UseItem : (self : Container, slotIndex : number) -> boolean,
 }
 
-type PlayerContainersData =
+export type PlayerContainersData =
 {
-    equipment : Bag,
-    bags : { Bag },
-    bank : { Bag },
-    mail : Bag,
+    equipment : Container?,
+    bags : { Container },
+    bank : Container?,
+    mail : Container?,
 }
 
-type PlayerContainersAPI =
+export type PlayerContainersAPI =
 {
     containerData : PlayerContainersData,
 
-    GetEquipmentBag : () -> Bag,
-    ToggleEquipmentBag : () -> boolean,
-    GetBags : () -> { Bag },
-    GetBag : (bagIndex : number) -> Bag,
-    GetBankBag : () -> Bag,
-    GetMailBag : () -> Bag,
+    GetEquipmentBag : () -> Container?,
+    GetBags : () -> { Container },
+    GetBag : (bagIndex : number) -> Container?,
+    GetBankBag : () -> Container?,
+    GetMailBag : () -> Container?,
 
-    SetEquipmentBag : (bag : Bag) -> (),
-    SetBag : (bagIndex : number, bag : Bag) -> (),
+    SetEquipmentBag : (bag : Container) -> (),
+    SetBag : (bagIndex : number, bag : Container) -> (),
     RemoveBag : (bagIndex : number) -> (),
-    SetBankBag : (bag : Bag) -> (),
-    SetMailBag : (bag : Bag) -> ()
+    SetBankBag : (bag : Container) -> (),
+    SetMailBag : (bag : Container) -> (),
+    Subscribe : (callback : () -> ()) -> (() -> ()),
 }
 
 local playerContainerData =
@@ -67,19 +44,17 @@ local playerContainersAPI : PlayerContainersAPI =
 {
     containerData = playerContainerData
 }
+local changeCallbacks : { () -> () } = { }
+
+local function NotifyChanged()
+    local callbacks = table.clone(changeCallbacks)
+    for _, callback in callbacks do
+        callback()
+    end
+end
 
 function playerContainersAPI.GetEquipmentBag()
     return playerContainersAPI.containerData.equipment
-end
-
-function playerContainersAPI.ToggleEquipmentBag() : boolean
-    local equipmentBag = playerContainersAPI.containerData.equipment
-    if equipmentBag == nil or equipmentBag.panel == nil then
-        return false
-    end
-
-    equipmentBag.panel:SetVisible(not equipmentBag.panel:IsVisible())
-    return true
 end
 
 function playerContainersAPI.GetBags()
@@ -98,24 +73,40 @@ function playerContainersAPI.GetMailBag()
     return playerContainersAPI.containerData.mail
 end
 
-function playerContainersAPI.SetEquipmentBag(bag : Bag)
+function playerContainersAPI.SetEquipmentBag(bag : Container)
     playerContainersAPI.containerData.equipment = bag
+    NotifyChanged()
 end
 
-function playerContainersAPI.SetBag(bagIndex : number, bag : Bag)
+function playerContainersAPI.SetBag(bagIndex : number, bag : Container)
     playerContainersAPI.containerData.bags[bagIndex] = bag
+    NotifyChanged()
 end
 
 function playerContainersAPI.RemoveBag(bagIndex : number)
     playerContainersAPI.containerData.bags[bagIndex] = nil
+    NotifyChanged()
 end
 
-function playerContainersAPI.SetBankBag(bag : Bag)
+function playerContainersAPI.SetBankBag(bag : Container)
     playerContainersAPI.containerData.bank = bag
+    NotifyChanged()
 end
 
-function playerContainersAPI.SetMailBag(bag : Bag)
+function playerContainersAPI.SetMailBag(bag : Container)
     playerContainersAPI.containerData.mail = bag
+    NotifyChanged()
+end
+
+function playerContainersAPI.Subscribe(callback : () -> ()) : (() -> ())
+    table.insert(changeCallbacks, callback)
+
+    return function()
+        local index = table.find(changeCallbacks, callback)
+        if index ~= nil then
+            table.remove(changeCallbacks, index)
+        end
+    end
 end
 
 return playerContainersAPI

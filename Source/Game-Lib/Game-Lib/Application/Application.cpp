@@ -10,6 +10,7 @@
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
+#include "Game-Lib/ECS/Util/Database/CostUtil.h"
 #include "Game-Lib/ECS/Util/Database/CursorUtil.h"
 #include "Game-Lib/ECS/Util/Database/FactionUtil.h"
 #include "Game-Lib/ECS/Util/Database/IconUtil.h"
@@ -24,6 +25,7 @@
 #include "Game-Lib/Input/ImGuiInputBridge.h"
 #include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Input/InputPerformanceTest.h"
+#include "Game-Lib/Input/PenInput.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
@@ -131,6 +133,7 @@ Application::Application()
 Application::~Application()
 {
     delete _imguiInputBridge;
+    delete _penInput;
     delete _gameRenderer;
     delete _editorHandler;
     delete _inputPerformanceTest;
@@ -198,10 +201,7 @@ void Application::Cleanup()
         }
 
         i32 clientDBSaveMethod = CVAR_ClientDBSaveMethod.Get();
-        if (clientDBSaveMethod == 2
-            && _assetWriter
-            && enttRegistries->dbRegistry
-            && enttRegistries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
+        if (clientDBSaveMethod == 2 && _assetWriter && enttRegistries->dbRegistry && enttRegistries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
             SaveCDB();
     }
 
@@ -348,7 +348,7 @@ bool Application::Init(bool enableRenderDoc, bool enableNsightGPUTrace)
     ServiceLocator::SetEnttRegistries(&_registries);
 
     std::filesystem::path currentPath = std::filesystem::current_path();
-    std::filesystem::path pactPath = currentPath / "data/pact";
+    std::filesystem::path pactPath = currentPath / "Data/Pact";
     std::filesystem::path customOverlayPath = pactPath / "data/custom";
     std::filesystem::path stagingOverlayPath = pactPath / "data/staging";
 
@@ -372,13 +372,7 @@ bool Application::Init(bool enableRenderDoc, bool enableNsightGPUTrace)
     NC_LOG_INFO("Initialized PACT");
 
     _assetWriter = new Util::AssetWriter();
-    if (!_assetWriter->Init(Util::AssetWriterConfig
-    {
-        .diskRoot = currentPath / "Data",
-        .pactOverlayRoot = stagingOverlayPath,
-        .pactStorage = pactStorage,
-        .pactOverlayHandle = stagingOverlayHandle
-    }))
+    if (!_assetWriter->Init(Util::AssetWriterConfig{ .diskRoot = currentPath / "Data", .pactOverlayRoot = stagingOverlayPath, .pactStorage = pactStorage, .pactOverlayHandle = stagingOverlayHandle }))
     {
         return false;
     }
@@ -445,6 +439,8 @@ bool Application::Init(bool enableRenderDoc, bool enableNsightGPUTrace)
     Util::ClientDB::DiscoverAll();
 
     _gameRenderer = new GameRenderer(enableRenderDoc, enableNsightGPUTrace);
+    _penInput = new PenInput();
+    _penInput->Initialize(*_gameRenderer->GetWindow(), *_inputSystem);
     _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
 
     NC_LOG_INFO("EditorHandler : Initializing");
@@ -714,6 +710,7 @@ void Application::DatabaseReload()
     ECSUtil::Texture::Refresh();
     ECSUtil::Spell::Refresh();
     ECSUtil::Item::Refresh();
+    ECSUtil::Cost::Refresh();
     ECSUtil::UnitCustomization::Refresh();
     ECSUtil::Faction::Refresh();
     NC_LOG_INFO("Application : Database Reload Finish");

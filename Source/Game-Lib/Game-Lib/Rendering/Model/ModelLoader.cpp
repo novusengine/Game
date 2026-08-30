@@ -640,12 +640,11 @@ entt::entity ModelLoader::CreateModelEntity(const std::string& name)
 
 f32 ModelLoader::GetLoadingProgress() const
 {
-    u32 numModelsToLoad = _numTerrainModelsToLoad;
-    u32 min = _numTerrainModelsLoaded;
-    u32 max = glm::max(1u, numModelsToLoad);
+    const u32 numModelsToLoad = _numTerrainModelsToLoad;
+    if (numModelsToLoad == 0)
+        return 1.0f;
 
-    f32 terrainModelProgress = static_cast<f32>(min) / static_cast<f32>(max);
-    return terrainModelProgress;
+    return static_cast<f32>(_numTerrainModelsLoaded) / static_cast<f32>(numModelsToLoad);
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
@@ -1287,12 +1286,7 @@ void ModelLoader::EnqueueLoadResult(const LoadRequestInternal& request, bool suc
 {
     NC_ASSERT(request.requestID != ModelLoading::INVALID_MODEL_LOAD_REQUEST_ID, "ModelLoader cannot complete a request without a stable request ID");
 
-    _loadRequestResults.enqueue({
-        .requestID = request.requestID,
-        .request = request,
-        .success = success,
-        .isStatic = isStatic,
-    });
+    _loadRequestResults.enqueue({ .requestID = request.requestID, .request = request, .success = success, .isStatic = isStatic });
 }
 
 bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
@@ -1430,9 +1424,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
-
-                // Store the entity ID in the body so we can look it up later
-                body->SetUserData(static_cast<JPH::uint64>(entityID));
+                body->SetUserData(Jolt::PhysicsBodyUserData::Pack(entityID, Jolt::PhysicsSurfaceType::StaticModel, Jolt::PhysicsBodyFlags::CanSupport | Jolt::PhysicsBodyFlags::CanSnapTo | Jolt::PhysicsBodyFlags::CanStepOnto));
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
 
                 {
@@ -1593,5 +1585,11 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         }
     }
 
+    // TODO: AnimationV2 mark dynamically spawned models for animation initialization once ModelV2 owns entity animation state.
+    // {
+    //     std::scoped_lock lock(_animationMutex);
+    //     auto& animationInitData = registry->get_or_emplace<ECS::Components::AnimationInitData>(entityID);
+    //     animationInitData.flags.isDynamic = true;
+    // }
 
 }

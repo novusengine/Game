@@ -195,7 +195,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
                     Draw(resources, frameIndex, graphResources, commandList, drawParams);
                 };
 
-                params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+                params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
                 params.drawCallDataSize = sizeof(DrawCallData);
 
                 params.enableDrawing = CVAR_JoltDebugDrawOccluders.Get();
@@ -268,7 +268,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
                     Draw(resources, frameIndex, graphResources, commandList, drawParams);
                 };
 
-                params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+                params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
                 params.drawCallDataSize = sizeof(DrawCallData);
 
                 params.enableDrawing = CVAR_JoltDebugDrawOccluders.Get();

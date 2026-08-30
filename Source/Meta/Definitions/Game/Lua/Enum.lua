@@ -35,6 +35,7 @@ return D.Definitions
         D.Field("MapLoadFailed"),
         D.Field("ChatMessageReceived"),
         D.Field("LocalMoverChanged"),
+        D.Field("CombatLog"),
         D.Field("Count")
     }),
 

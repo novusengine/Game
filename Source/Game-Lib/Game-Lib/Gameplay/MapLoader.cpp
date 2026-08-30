@@ -87,7 +87,7 @@ void MapLoader::Update(f32 deltaTime)
         }
 
         const auto& currentMap = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
-        const std::string& mapInternalName = mapStorage->GetString(currentMap.nameInternal);
+        const std::string& mapInternalName = mapStorage->GetString(currentMap.internalName);
         CompleteTransitionTrace();
         FrameMarkStart("Map Load");
         TracyMessage(mapInternalName.data(), mapInternalName.size());

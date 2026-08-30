@@ -69,6 +69,7 @@ public:
     InputControl control;
     InputPhase phase = InputPhase::None;
     InputModifier modifiers = InputModifier::None;
+    PointerSource pointerSource = PointerSource::None;
     f32 value = 0.0f;
 };
 
@@ -368,8 +369,13 @@ private:
     struct PersistedBindingOverride
     {
     public:
+        // GCC rejects default member initializers on nested types when a member of the
+        // enclosing class needs them before the class is complete (gcc bug 96645), so
+        // initialize via the constructor instead
+        PersistedBindingOverride() : present(false) {}
+
         std::optional<InputBinding> binding;
-        bool present = false;
+        bool present;
     };
 
     using PersistedActionOverrides = std::array<PersistedBindingOverride, InputActionDesc::MAX_BINDINGS>;

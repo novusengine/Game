@@ -65,7 +65,11 @@ namespace Scripting::UI
 
         // UI functions
         static i32 GetCanvas(Zenith* zenith);
+        static i32 GetShapeSurface(Zenith* zenith);
         static i32 GetMousePos(Zenith* zenith);
+        static i32 GetClipboardText(Zenith* zenith);
+        static i32 SetClipboardText(Zenith* zenith);
+        static i32 DrawLine2D(Zenith* zenith);
         static i32 GetTextureSize(Zenith* zenith);
         static i32 IsSmoothUnitFrameBarsEnabled(Zenith* zenith);
         static i32 SetUnitPreview(Zenith* zenith);
@@ -108,6 +112,13 @@ namespace Scripting::UI
         static i32 SetInputContextActive(Zenith* zenith);
         static i32 IsInputContextActive(Zenith* zenith);
         static i32 GetInputContexts(Zenith* zenith);
+        static i32 IsMouseCaptured(Zenith* zenith);
+        static i32 GetPenPressure(Zenith* zenith);
+        static i32 IsPenInRange(Zenith* zenith);
+        static i32 IsPenInContact(Zenith* zenith);
+        static i32 GetPointerDelta(Zenith* zenith);
+        static i32 BeginPointerCapture(Zenith* zenith);
+        static i32 EndPointerCapture(Zenith* zenith);
         static i32 IsSoftwareCursorEnabled(Zenith* zenith);
         static i32 GetCursorState(Zenith* zenith);
 
@@ -141,7 +152,11 @@ namespace Scripting::UI
         { "RegisterSendMessageToChatCallback", UIHandler::RegisterSendMessageToChatCallback },
 
         { "GetCanvas", UIHandler::GetCanvas },
+        { "GetShapeSurface", UIHandler::GetShapeSurface },
         { "GetMousePos", UIHandler::GetMousePos },
+        { "GetClipboardText", UIHandler::GetClipboardText },
+        { "SetClipboardText", UIHandler::SetClipboardText },
+        { "DrawLine2D", UIHandler::DrawLine2D },
 
         // Utils
         { "GetTextureSize", UIHandler::GetTextureSize },
@@ -186,6 +201,13 @@ namespace Scripting::UI
         { "SetContextActive", UIHandler::SetInputContextActive },
         { "IsContextActive", UIHandler::IsInputContextActive },
         { "GetContexts", UIHandler::GetInputContexts },
+        { "IsMouseCaptured", UIHandler::IsMouseCaptured },
+        { "GetPenPressure", UIHandler::GetPenPressure },
+        { "IsPenInRange", UIHandler::IsPenInRange },
+        { "IsPenInContact", UIHandler::IsPenInContact },
+        { "GetPointerDelta", UIHandler::GetPointerDelta },
+        { "BeginPointerCapture", UIHandler::BeginPointerCapture },
+        { "EndPointerCapture", UIHandler::EndPointerCapture },
         { "IsSoftwareCursorEnabled", UIHandler::IsSoftwareCursorEnabled },
         { "GetCursorState", UIHandler::GetCursorState }
     };

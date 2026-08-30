@@ -50,10 +50,43 @@ namespace Util::Unit
     bool AddStat(ECS::Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType, f64 base, f64 current);
     bool SetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType, f64 base, f64 current);
 
+    bool SetAutoAttackVisualState(entt::registry& registry, entt::entity entity, bool enabled);
+
+#if 0
+    // TODO: AnimationV2 port legacy locomotion, combat, hand-pose, and equipment attachment helpers to ModelV2 controllers and skeleton attachments.
+    bool PlayAnimationRaw(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, u32 boneIndex, ::Animation::Defines::Type animationID, bool propagateToChildren = false, ::Animation::Defines::Flags flags = ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride blendOverride = ::Animation::Defines::BlendOverride::Auto, f32 speedModifier = 1.0f, ::Animation::Defines::SequenceInterruptCallback callback = nullptr);
+    bool PlayAnimation(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, ::Animation::Defines::Type animationID, bool propagateToChildren = false, ::Animation::Defines::Flags flags = ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride blendOverride = ::Animation::Defines::BlendOverride::Auto, f32 speedModifier = 1.0f, ::Animation::Defines::SequenceInterruptCallback callback = nullptr);
+    bool UpdateAnimationState(entt::registry& registry, entt::entity entity, ::ECS::Components::Model& model, f32 deltaTime);
+
+    bool IsHandClosed(entt::registry& registry, entt::entity entity, bool isOffHand);
+    bool CloseHand(entt::registry& registry, entt::entity entity, bool isOffHand);
+    bool OpenHand(entt::registry& registry, entt::entity entity, bool isOffHand);
+
+    bool AddHelm(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, GameDefine::UnitRace race, GameDefine::UnitGender gender, entt::entity& itemEntity);
+    bool AddShoulders(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity);
+    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity);
+
+    bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u64 modelHash = std::numeric_limits<u64>().max(), u8 modelVariant = 0);
+    bool RemoveItemFromAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment);
+#endif
     void EnableGeometryGroup(entt::registry& registry, entt::entity entity, const ::ECS::Components::Model& model, u32 groupID);
     void DisableGeometryGroups(entt::registry& registry, entt::entity entity, const ::ECS::Components::Model& model, u32 startGroupID, u32 endGroupID = 0);
     void DisableAllGeometryGroups(entt::registry& registry, entt::entity entity, const ::ECS::Components::Model& model);
     void RefreshGeometryGroups(entt::registry& registry, entt::entity entity, ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, const ::ECS::Components::Model& model);
     void RefreshSkinTexture(entt::registry& registry, entt::entity entity, ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, const ::ECS::Components::DisplayInfo& displayInfo, ::ECS::Components::UnitCustomization& unitCustomization, const ::ECS::Components::Model& model);
 
+#if 0
+    // TODO: AnimationV2 replace the legacy WoW animation-ID selection helpers with controller parameters and authored graph transitions.
+    ::Animation::Defines::Type GetIdleAnimation(bool isSwimming, bool stealthed);
+    ::Animation::Defines::Type GetMoveForwardAnimation(f32 speed, bool isSwimming, bool stealthed);
+    ::Animation::Defines::Type GetMoveBackwardAnimation(bool isSwimming);
+    ::Animation::Defines::Type GetMoveLeftAnimation(f32 speed, bool isSwimming, bool stealthed);
+    ::Animation::Defines::Type GetMoveRightAnimation(f32 speed, bool isSwimming, bool stealthed);
+
+    bool IsMainHandAttackAnimation(::Animation::Defines::Type animationType);
+    bool IsOffHandAttackAnimation(::Animation::Defines::Type animationType);
+    ::Animation::Defines::Type GetMainHandAttackAnimation(u8 weaponType);
+    ::Animation::Defines::Type GetOffHandAttackAnimation(u8 weaponType);
+    ::Animation::Defines::Type GetAttackReadyAnimation(u8 weaponType);
+#endif
 }

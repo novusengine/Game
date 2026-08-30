@@ -62,8 +62,10 @@ namespace
 
         i32 GetGlobalInteger(const char* name)
         {
+            // The counters are plain Lua numbers; Luau integers are a distinct type whose
+            // reads are strict, so read as number and cast host-side
             _zenith->GetGlobalKey(name);
-            const i32 value = _zenith->Get<i32>(-1);
+            const i32 value = static_cast<i32>(_zenith->Get<f64>(-1));
             _zenith->Pop();
             return value;
         }

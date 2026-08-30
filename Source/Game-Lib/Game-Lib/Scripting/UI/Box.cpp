@@ -16,14 +16,12 @@ namespace Scripting::UI
     {
         i32 CreateBox(Zenith* zenith)
         {
-            f32 minX = zenith->CheckVal<f32>(1);
-            f32 minY = zenith->CheckVal<f32>(2);
-            f32 maxX = zenith->CheckVal<f32>(3);
-            f32 maxY = zenith->CheckVal<f32>(4);
+            const vec3 min = zenith->CheckVal<vec3>(1);
+            const vec3 max = zenith->CheckVal<vec3>(2);
 
             ::UI::Box* box = zenith->PushUserData<::UI::Box>([](void* x) {});
-            box->min = vec2(minX, minY);
-            box->max = vec2(maxX, maxY);
+            box->min = vec2(min.x, min.y);
+            box->max = vec2(max.x, max.y);
 
             luaL_getmetatable(zenith->state, "BoxMetaTable");
             lua_setmetatable(zenith->state, -2);

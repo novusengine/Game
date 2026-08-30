@@ -30,6 +30,25 @@ namespace Util::CharacterController
         return vec3(value.GetX(), value.GetY(), value.GetZ());
     }
 
+    JPH::Vec3 GetPlanarVelocity(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity)
+    {
+        const JPH::Vec3 up = ToJolt(settings.up);
+        return velocity - up * velocity.Dot(up);
+    }
+
+    f32 GetVerticalSpeed(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity)
+    {
+        return velocity.Dot(ToJolt(settings.up));
+    }
+
+    JPH::Vec3 ComposeVelocity(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& planarVelocity, f32 verticalSpeed)
+    {
+        const JPH::Vec3 up = ToJolt(settings.up);
+        const JPH::Vec3 projectedPlanarVelocity = planarVelocity - up * planarVelocity.Dot(up);
+
+        return projectedPlanarVelocity + up * verticalSpeed;
+    }
+
     BoxPyramidShapeDimensions GetBoxPyramidShapeDimensionsFromCollision(f32 collisionWidth, f32 collisionHeight)
     {
         const f32 collisionHalfWidth = glm::max(0.0f, collisionWidth);
@@ -253,26 +272,86 @@ namespace Util::CharacterController
         return true;
     }
 
-    JPH::Vec3 ResolveGroundMovementNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings)
+    JPH::Vec3 GetWalkSupportNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings)
     {
+        if (!character || !IsOnGround(character))
+            return JPH::Vec3::sZero();
+
+        const JPH::Vec3 supportNormal = character->GetGroundNormal();
+
+        if (!IsWalkableGroundNormal(character, settings, supportNormal))
+            return JPH::Vec3::sZero();
+
+        return supportNormal;
+    }
+
+    bool TryGetBlockingContact(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& desiredVelocity, CharacterBlockingContact& outContact)
+    {
+        outContact = {};
+
+        if (!character)
+            return false;
+
         const JPH::Vec3 up = ToJolt(settings.up);
-        JPH::Vec3 groundNormal = character->GetGroundNormal();
-        f32 bestUpDot = IsWalkableGroundNormal(character, settings, groundNormal) ? groundNormal.Dot(up) : 0.0f;
+        const JPH::Vec3 desiredPlanarVelocity = GetPlanarVelocity(settings, desiredVelocity);
+        const f32 desiredSpeed = desiredPlanarVelocity.Length();
+        if (desiredSpeed <= 1.0e-6f)
+            return false;
+
+        const JPH::Vec3 desiredDirection = desiredPlanarVelocity / desiredSpeed;
+
+        bool foundContact = false;
+        f32 bestAlignment = 0.0f;
 
         for (const JPH::CharacterContact& contact : character->GetActiveContacts())
         {
-            if (!contact.mHadCollision || !IsWalkableGroundNormal(character, settings, contact.mSurfaceNormal))
+            if (!contact.mHadCollision || contact.mWasDiscarded)
                 continue;
 
-            const f32 upDot = contact.mSurfaceNormal.Dot(up);
-            if (upDot <= bestUpDot)
+            // Walkable contacts are support candidates, not movement blockers.
+            if (IsWalkableGroundNormal(character, settings, contact.mSurfaceNormal))
                 continue;
 
-            groundNormal = contact.mSurfaceNormal;
-            bestUpDot = upDot;
+            const JPH::Vec3 contactPlanarVelocity = GetPlanarVelocity(settings, contact.mLinearVelocity);
+            const JPH::Vec3 relativePlanarVelocity = desiredPlanarVelocity - contactPlanarVelocity;
+
+            // The character must be moving into the surface.
+            if (relativePlanarVelocity.Dot(contact.mSurfaceNormal) >= -1.0e-4f)
+            {
+                continue;
+            }
+
+            JPH::Vec3 planarSurfaceNormal = contact.mSurfaceNormal - up * contact.mSurfaceNormal.Dot(up);
+            const f32 planarNormalLength = planarSurfaceNormal.Length();
+            if (planarNormalLength <= 1.0e-6f)
+                continue;
+
+            planarSurfaceNormal /= planarNormalLength;
+
+            // Surface normals point away from the obstacle and toward the
+            // character. Negating the planar normal produces the direction
+            // toward and over the obstacle.
+            const JPH::Vec3 movementDirection = -planarSurfaceNormal;
+
+            const f32 alignment = movementDirection.Dot(desiredDirection);
+            if (alignment <= bestAlignment)
+                continue;
+
+            const JPH::Vec3 contactPosition = JPH::Vec3(contact.mPosition);
+            const JPH::Vec3 characterPosition = JPH::Vec3(character->GetPosition());
+
+            outContact.position = contactPosition;
+            outContact.surfaceNormal = contact.mSurfaceNormal;
+            outContact.contactVelocity = contact.mLinearVelocity;
+            outContact.movementDirection = movementDirection;
+            outContact.height = (contactPosition - characterPosition).Dot(up);
+            outContact.alignment = alignment;
+
+            bestAlignment = alignment;
+            foundContact = true;
         }
 
-        return groundNormal;
+        return foundContact;
     }
 
     JPH::Vec3 BuildGroundSlopeVelocity(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& planarVelocity, const JPH::Vec3Arg& groundNormal)
@@ -287,27 +366,6 @@ namespace Util::CharacterController
 
         const f32 slopeVerticalSpeed = -planarVelocity.Dot(groundNormal) / groundUpDot;
         return up * slopeVerticalSpeed;
-    }
-
-    void UpdateGroundSnapGrace(ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, bool isGrounded, f32 fixedDeltaTime)
-    {
-        if (isGrounded)
-        {
-            state.groundSnapGraceTimer = settings.groundSnapGraceTime;
-            return;
-        }
-
-        state.groundSnapGraceTimer = glm::max(0.0f, state.groundSnapGraceTimer - fixedDeltaTime);
-    }
-
-    bool ShouldSnapToGround(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& persistentVelocity, bool isFlying, bool justStartedJump)
-    {
-        if (isFlying || justStartedJump || settings.groundSnapDistance <= 0.0f || state.groundSnapGraceTimer <= 0.0f)
-            return false;
-
-        const JPH::Vec3 up = ToJolt(settings.up);
-        const f32 verticalSpeed = persistentVelocity.Dot(up);
-        return verticalSpeed <= 1.0e-3f && verticalSpeed >= -settings.groundSnapMaxDownVelocity;
     }
 
     bool ShouldPreserveSteepSlopeJumpVelocity(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity, bool isFlying, bool isJumping, bool justStartedJump)
@@ -362,5 +420,10 @@ namespace Util::CharacterController
     bool IsOnGround(const JPH::CharacterVirtual* character)
     {
         return character->GetGroundState() == JPH::CharacterVirtual::EGroundState::OnGround;
+    }
+
+    f32 CalculateContinuationDistance(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity)
+    {
+        return settings.fallCommitDistance;
     }
 }

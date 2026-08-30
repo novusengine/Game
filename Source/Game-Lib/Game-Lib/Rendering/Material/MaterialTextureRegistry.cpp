@@ -75,12 +75,14 @@ namespace MaterialLoading
         textureDesc.size = CHECKERBOARD.size();
         textureDesc.debugName = "Model Fallback Checkerboard";
 
-        const Renderer::TextureID texture = _renderer->CreateDataTextureIntoArray(textureDesc, _textureArray, _fallbackTextureIndex);
+        size_t fallbackTextureIndex = _fallbackTextureIndex;
+        const Renderer::TextureID texture = _renderer->CreateDataTextureIntoArray(textureDesc, _textureArray, fallbackTextureIndex);
         if (texture == Renderer::TextureID::Invalid())
         {
             NC_LOG_CRITICAL("MODEL_ASSET fallback_initialization_failed resource=texture reason=create_data_texture_failed");
             return false;
         }
+        _fallbackTextureIndex = static_cast<u32>(fallbackTextureIndex);
 
         _descriptorsDirty = true;
         return true;
@@ -117,7 +119,7 @@ namespace MaterialLoading
         textureDesc.size = file.GetSize();
         textureDesc.debugName = "Model Texture";
 
-        u32 arrayIndex = _fallbackTextureIndex;
+        size_t arrayIndex = _fallbackTextureIndex;
         Renderer::TextureID texture;
         {
             ZoneScopedN("Decode And Create Texture");
@@ -126,10 +128,11 @@ namespace MaterialLoading
         if (texture == Renderer::TextureID::Invalid())
             return RecordFailure(textureAssetID, ownerAssetID, "texture_decode_failed", optional);
 
-        _entries[textureAssetID] = {arrayIndex, false};
+        const u32 materialTextureIndex = static_cast<u32>(arrayIndex);
+        _entries[textureAssetID] = {materialTextureIndex, false};
         ++_stats.resolvedTextures;
         _descriptorsDirty = true;
-        return arrayIndex;
+        return materialTextureIndex;
     }
 
     u32 MaterialTextureRegistry::Resolve(Renderer::TextureID textureID)
@@ -137,7 +140,7 @@ namespace MaterialLoading
         if (textureID == Renderer::TextureID::Invalid())
             return _fallbackTextureIndex;
 
-        const u32 arrayIndex = _renderer->AddTextureToArray(textureID, _textureArray);
+        const u32 arrayIndex = static_cast<u32>(_renderer->AddTextureToArray(textureID, _textureArray));
         _descriptorsDirty = true;
         return arrayIndex;
     }

@@ -10,6 +10,8 @@
 #include <MetaGen/PacketList.h>
 #include <MetaGen/Game/Command/Command.h>
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/DatabaseEditor/DatabaseEditor.h>
+#include <MetaGen/Shared/Spell/Spell.h>
 
 #include <Network/Define.h>
 
@@ -61,7 +63,7 @@ namespace ECS
 
         namespace Spell
         {
-            bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID);
+            bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID, ObjectGUID targetGUID, const vec3& targetPosition);
         }
 
         namespace Chat
@@ -106,7 +108,6 @@ namespace ECS
             bool BuildCheatFactionReputationRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID);
             bool BuildCheatFactionReputationSetFlags(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, u16 flags);
             bool BuildCheatFactionReputationLock(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, bool locked);
-            bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map);
             bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddCommand& command);
             bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddHereCommand& command);
             bool BuildCheatGotoRemove(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoRemoveCommand& command);
@@ -115,10 +116,8 @@ namespace ECS
             bool BuildCheatGotoXYZ(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoXYZCommand& command);
             bool BuildCheatTriggerAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name, u16 flags, u16 mapID, const vec3& position, const vec3& extents);
             bool BuildCheatTriggerRemove(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID);
-            bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const MetaGen::Shared::ClientDB::SpellRecord& spell);
-            bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const MetaGen::Shared::ClientDB::SpellEffectsRecord& spellEffect);
-            bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const MetaGen::Shared::ClientDB::SpellProcDataRecord& spellProcData);
-            bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const MetaGen::Shared::ClientDB::SpellProcLinkRecord& spellProcLink);
+            bool BuildDatabaseEditorSnapshotRequest(std::shared_ptr<Bytebuffer>& buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor, u32 requestID);
+            bool BuildDatabaseEditorMutation(std::shared_ptr<Bytebuffer>& buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor, u8 artifact, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType, u32 requestID, const u8* bytes, u32 size);
             bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName);
             bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer);
             bool BuildCreatureMove(std::shared_ptr<Bytebuffer>& buffer);

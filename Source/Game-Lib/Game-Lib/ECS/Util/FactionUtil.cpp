@@ -93,10 +93,16 @@ namespace ECS::Util::Faction
         Reaction Presentation(const State::FactionState& state, const Components::UnitFaction& unitFaction)
         {
             const FactionRuntimeData& runtime = *state.runtime;
-            if (state.localPlayerFaction == NONE_FACTION_INDEX || unitFaction.factionIndex == NONE_FACTION_INDEX)
+            if (unitFaction.factionIndex == NONE_FACTION_INDEX)
                 return Reaction::Neutral;
 
             const State::PerceptionOverride* perception = FindPerception(state, unitFaction.factionIndex);
+            if (perception && HasPerceptionField(perception->activeFields, State::PerceptionOverrideFields::Reaction))
+                return perception->effectiveReaction;
+
+            if (state.localPlayerFaction == NONE_FACTION_INDEX)
+                return Reaction::Neutral;
+
             Reaction reaction = runtime.GetRelation(unitFaction.factionIndex, state.localPlayerFaction);
 
             if (perception && HasPerceptionField(perception->activeFields, State::PerceptionOverrideFields::Standing))
@@ -113,12 +119,7 @@ namespace ECS::Util::Faction
                 ? ReactionBounds::Unpack(unitFaction.playerReactionBounds)
                 : ReactionBounds::Unpack(NEUTRAL_REACTION_BOUNDS);
 
-            reaction = bounds.Clamp(reaction);
-
-            if (perception && HasPerceptionField(perception->activeFields, State::PerceptionOverrideFields::Reaction))
-                reaction = perception->effectiveReaction;
-
-            return reaction;
+            return bounds.Clamp(reaction);
         }
 
         bool HasAtWarFlag(const State::FactionState& state, FactionIndex targetFaction)

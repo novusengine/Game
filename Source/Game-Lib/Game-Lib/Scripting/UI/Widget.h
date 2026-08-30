@@ -13,7 +13,8 @@ namespace Scripting::UI
         Canvas,
         Panel,
         Text,
-        Widget
+        Widget,
+        ShapeSurface
     };
 
     struct Widget
@@ -80,6 +81,8 @@ namespace Scripting::UI
         i32 SetPosX(Zenith* zenith, Widget* widget);
         i32 SetPosY(Zenith* zenith, Widget* widget);
 
+        i32 ScreenToLocal(Zenith* zenith, Widget* widget);
+
         // TODO: Rename these to GetPos/SetPos, and the previous ones to GetLocalPos/SetLocalPos
         i32 GetWorldPos(Zenith* zenith, Widget* widget);
         i32 GetWorldPosX(Zenith* zenith, Widget* widget);
@@ -92,6 +95,9 @@ namespace Scripting::UI
         i32 SetPos3D(Zenith* zenith, Widget* widget);
 
         i32 ForceRefresh(Zenith* zenith, Widget* widget);
+
+        i32 GetLayer(Zenith* zenith, Widget* widget);
+        i32 SetLayer(Zenith* zenith, Widget* widget);
 
         // Layout system hooks: Lua-side LinearLayout/GridLayout register a 0-arg
         // refresh closure here; CanvasRenderer::Update fires it pre-frame for any
@@ -137,6 +143,8 @@ namespace Scripting::UI
         { "SetPosX", WidgetMethods::SetPosX },
         { "SetPosY", WidgetMethods::SetPosY },
 
+        { "ScreenToLocal", WidgetMethods::ScreenToLocal },
+
         { "GetWorldPos", WidgetMethods::GetWorldPos },
         { "GetWorldPosX", WidgetMethods::GetWorldPosX },
         { "GetWorldPosY", WidgetMethods::GetWorldPosY },
@@ -153,10 +161,17 @@ namespace Scripting::UI
         { "InvalidateLayout", WidgetMethods::InvalidateLayout }
     };
 
+    static LuaRegister<Widget> widgetLayerMethods[] =
+    {
+        { "GetLayer", WidgetMethods::GetLayer },
+        { "SetLayer", WidgetMethods::SetLayer }
+    };
+
     namespace WidgetInputMethods
     {
         i32 SetOnMouseDown(Zenith* zenith, Widget* widget);
         i32 SetOnMouseUp(Zenith* zenith, Widget* widget);
+        i32 SetOnMouseRelease(Zenith* zenith, Widget* widget);
         i32 SetOnMouseHeld(Zenith* zenith, Widget* widget);
         i32 SetOnMouseScroll(Zenith* zenith, Widget* widget);
 
@@ -175,6 +190,7 @@ namespace Scripting::UI
     {
         { "SetOnMouseDown", WidgetInputMethods::SetOnMouseDown },
         { "SetOnMouseUp", WidgetInputMethods::SetOnMouseUp },
+        { "SetOnMouseRelease", WidgetInputMethods::SetOnMouseRelease },
         { "SetOnMouseHeld", WidgetInputMethods::SetOnMouseHeld },
         { "SetOnMouseScroll", WidgetInputMethods::SetOnMouseScroll },
 

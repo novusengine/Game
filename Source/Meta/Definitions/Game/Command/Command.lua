@@ -33,14 +33,6 @@ return D.Definitions
     D.GameCommand("MapClearCommand", { "map clear" },
     {}),
 
-    D.GameCommand("MapSyncCommand", { "map sync" },
-    {
-        D.Field("mapID", Type.U32)
-    }),
-
-    D.GameCommand("MapSyncAllCommand", { "map sync all" },
-    {}),
-
     D.GameCommand("CharacterAddCommand", { "character add" },
     {
         D.Field("name", Type.STRING)
@@ -253,8 +245,5 @@ return D.Definitions
     D.GameCommand("SpellSyncCommand", { "spell sync" },
     {
         D.Field("spellID", Type.U32)
-    }),
-
-    D.GameCommand("SpellSyncAllCommand", { "spell sync all" },
-    {})
+    })
 }

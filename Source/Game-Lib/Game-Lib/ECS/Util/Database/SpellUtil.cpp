@@ -4,6 +4,7 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Spell/Spell.h>
 
 #include <entt/entt.hpp>
 
@@ -18,7 +19,7 @@ namespace ECSUtil::Spell
             ctx.emplace<ECS::Singletons::SpellSingleton>();
 
         auto& spellSingleton = ctx.get<ECS::Singletons::SpellSingleton>();
-        
+
         spellSingleton.spellIDToEffectList.clear();
 
         auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
@@ -31,10 +32,13 @@ namespace ECSUtil::Spell
             defaultSpell.name = storage->AddString("Unused");
             defaultSpell.description = storage->AddString("Unused");
             defaultSpell.auraDescription = storage->AddString("Unused");
+            defaultSpell.targetSelector = static_cast<u8>(MetaGen::Shared::Spell::SpellTargetSelectorEnum::None);
 
             storage->Replace(0, defaultSpell);
             storage->MarkDirty();
         }
+
+        clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellAuraRecord>();
 
         if (clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellEffectsRecord>())
         {
@@ -44,39 +48,9 @@ namespace ECSUtil::Spell
             defaultSpellEffect.spellID = 0;
             defaultSpellEffect.effectPriority = 0;
             defaultSpellEffect.effectType = 0;
-            defaultSpellEffect.effectValues = { 0 };
-            defaultSpellEffect.effectMiscValues = { 0 };
+            defaultSpellEffect.parameters = { 0 };
 
             storage->Replace(0, defaultSpellEffect);
-        }
-
-        if (clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellProcDataRecord>())
-        {
-            auto* storage = clientDBSingleton.Get(ClientDBHash::SpellProcData);
-
-            MetaGen::Shared::ClientDB::SpellProcDataRecord defaultSpellProcData;
-            defaultSpellProcData.phaseMask = 0;
-            defaultSpellProcData.typeMask = 0;
-            defaultSpellProcData.hitMask = 0;
-            defaultSpellProcData.flags = std::numeric_limits<u64>().max();
-            defaultSpellProcData.procsPerMinute = 0.0f;
-            defaultSpellProcData.chanceToProc = 0.0f;
-            defaultSpellProcData.internalCooldownMS = std::numeric_limits<u32>().max();
-            defaultSpellProcData.charges = 0;
-
-            storage->Replace(0, defaultSpellProcData);
-        }
-
-        if (clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellProcLinkRecord>())
-        {
-            auto* storage = clientDBSingleton.Get(ClientDBHash::SpellProcLink);
-
-            MetaGen::Shared::ClientDB::SpellProcLinkRecord defaultSpellProcLink;
-            defaultSpellProcLink.spellID = 0;
-            defaultSpellProcLink.effectMask = 0;
-            defaultSpellProcLink.procDataID = 0;
-
-            storage->Replace(0, defaultSpellProcLink);
         }
 
         auto* spellStorage = clientDBSingleton.Get(ClientDBHash::Spell);

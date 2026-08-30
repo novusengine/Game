@@ -14,8 +14,10 @@ namespace ECS
         u32 auraID;
 
         u32 spellID;
-        u64 expireTimestamp;
+        u64 expireTimestamp; // Zero represents an infinite duration.
         u16 stacks;
+        u8 disposition;
+        u8 dispelType;
     };
 
     namespace Components
@@ -25,7 +27,6 @@ namespace ECS
         public:
             std::vector<AuraInfo> auras;
             robin_hood::unordered_map<u32, u32> auraIDToAuraIndex;
-            robin_hood::unordered_map<u32, u32> spellIDToAuraIndex;
         };
     }
 }

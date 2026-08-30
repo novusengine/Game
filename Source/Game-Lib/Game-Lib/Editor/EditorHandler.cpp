@@ -8,7 +8,6 @@
 #include "NetworkedInfo.h"
 #include "PerformanceDiagnostics.h"
 #include "SkyboxSelector.h"
-#include "SpellEditor.h"
 #include "TerrainTools.h"
 #include "Viewport.h"
 
@@ -44,7 +43,6 @@ namespace Editor
         _editors.push_back(new SkyboxSelector);
         _editors.push_back(new EaseCurveTool());
         _editors.push_back(new ItemEditor());
-        _editors.push_back(new SpellEditor());
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);

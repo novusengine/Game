@@ -9,9 +9,12 @@
 #include <Gameplay/Network/Define.h>
 
 #include <MetaGen/PacketList.h>
+#include <MetaGen/Shared/Localization/Localization.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 
 #include <entt/entt.hpp>
+
+#include <algorithm>
 
 namespace ECS::Util::MessageBuilder
 {
@@ -70,6 +73,7 @@ namespace ECS::Util::MessageBuilder
             bool createPacketResult = CreatePacket(buffer, MetaGen::Shared::Packet::ClientConnectPacket::PACKET_ID, [&]()
             {
                 buffer->PutString(charName);
+                buffer->PutU8(static_cast<u8>(MetaGen::Shared::Localization::LocaleEnum::EnUS));
             });
 
             return createPacketResult;
@@ -103,7 +107,7 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        
+
         bool BuildUnitTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID targetGUID)
         {
             bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket::PACKET_ID, [&, targetGUID]()
@@ -133,11 +137,13 @@ namespace ECS::Util::MessageBuilder
 
     namespace Spell
     {
-        bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID)
+        bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID, ObjectGUID targetGUID, const vec3& targetPosition)
         {
-            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSpellCastPacket::PACKET_ID, [&, spellID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSpellCastPacket::PACKET_ID, [&, spellID, targetGUID, targetPosition]()
             {
                 buffer->PutU32(spellID);
+                buffer->Serialize(targetGUID);
+                buffer->Put(targetPosition);
             });
 
             return result;
@@ -528,26 +534,6 @@ namespace ECS::Util::MessageBuilder
             });
         }
 
-        bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map)
-        {
-            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, mapID]()
-            {
-                GameDefine::Database::Map mapTemplate =
-                {
-                    .id = mapID,
-                    .flags = 0,
-                    .internalName = mapStorage->GetString(map.nameInternal),
-                    .name = mapStorage->GetString(map.name),
-                    .type = map.instanceType,
-                    .maxPlayers = map.maxPlayers,
-                };
-
-                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::MapAdd);
-                GameDefine::Database::Map::Write(buffer.get(), mapTemplate);
-            });
-
-            return result;
-        }
         bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddCommand& command)
         {
             bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
@@ -641,77 +627,55 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const MetaGen::Shared::ClientDB::SpellRecord& spell)
+        bool BuildDatabaseEditorSnapshotRequest(std::shared_ptr<Bytebuffer>& buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor, u32 requestID)
         {
-            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellID]()
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                GameDefine::Database::Spell spellDefinition =
+                return buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                       buffer->Put(MetaGen::Shared::DatabaseEditor::DatabaseEditorActionEnum::Snapshot) &&
+                       buffer->Put(editor) && buffer->PutU32(requestID);
+            });
+        }
+
+        bool BuildDatabaseEditorMutation(std::shared_ptr<Bytebuffer>& buffer, MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor, u8 artifact, MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum mutationType, u32 requestID, const u8* bytes, u32 size)
+        {
+            constexpr u32 chunkCapacity = 1024;
+            using Action = MetaGen::Shared::DatabaseEditor::DatabaseEditorActionEnum;
+            using Phase = MetaGen::Shared::DatabaseEditor::DatabaseEditorTransferPhaseEnum;
+
+            bool writeSucceeded = true;
+            bool packetSucceeded = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                                 buffer->Put(Action::Mutation) && buffer->Put(Phase::Begin) &&
+                                 buffer->Put(editor) && buffer->PutU8(artifact) && buffer->Put(mutationType) &&
+                                 buffer->PutU32(requestID) && buffer->PutU32(size);
+            });
+            if (!packetSucceeded || !writeSucceeded)
+                return false;
+
+            for (u32 offset = 0; offset < size; offset += chunkCapacity)
+            {
+                const u16 chunkSize = static_cast<u16>(std::min(chunkCapacity, size - offset));
+                writeSucceeded = true;
+                packetSucceeded = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
                 {
-                    .id = spellID,
+                    writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                                     buffer->Put(Action::Mutation) && buffer->Put(Phase::Chunk) &&
+                                     buffer->PutU32(requestID) && buffer->PutU32(offset) &&
+                                     buffer->PutU16(chunkSize) && buffer->PutBytes(bytes + offset, chunkSize);
+                });
+                if (!packetSucceeded || !writeSucceeded)
+                    return false;
+            }
 
-                    .name = spellStorage->GetString(spell.name),
-                    .description = spellStorage->GetString(spell.description),
-                    .auraDescription = spellStorage->GetString(spell.auraDescription),
-                    .iconID = spell.iconID,
-
-                    .castTime = spell.castTime,
-                    .cooldown = spell.cooldown,
-                    .duration = spell.duration
-                };
-
-                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellSet);
-                GameDefine::Database::Spell::Write(buffer.get(), spellDefinition);
-            });
-
-            return result;
-        }
-        bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const MetaGen::Shared::ClientDB::SpellEffectsRecord& spellEffect)
-        {
-            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellEffectsID]()
+            writeSucceeded = true;
+            packetSucceeded = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                GameDefine::Database::SpellEffect spellEffectsDefinition =
-                {
-                    .id = spellEffectsID,
-                    .spellID = spellEffect.spellID,
-                    .effectPriority = spellEffect.effectPriority,
-                    .effectType = spellEffect.effectType,
-
-                    .effectValue1 = spellEffect.effectValues[0],
-                    .effectValue2 = spellEffect.effectValues[1],
-                    .effectValue3 = spellEffect.effectValues[2],
-
-                    .effectMiscValue1 = spellEffect.effectMiscValues[0],
-                    .effectMiscValue2 = spellEffect.effectMiscValues[1],
-                    .effectMiscValue3 = spellEffect.effectMiscValues[2]
-                };
-
-                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellEffectSet);
-                GameDefine::Database::SpellEffect::Write(buffer.get(), spellEffectsDefinition);
+                writeSucceeded = buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::DatabaseEditor) &&
+                                 buffer->Put(Action::Mutation) && buffer->Put(Phase::Commit) && buffer->PutU32(requestID);
             });
-
-            return result;
-        }
-        bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const MetaGen::Shared::ClientDB::SpellProcDataRecord& spellProcData)
-        {
-            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellProcDataID]()
-            {
-                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellProcDataSet);
-                buffer->PutU32(spellProcDataID);
-                buffer->Serialize(spellProcData);
-            });
-
-            return result;
-        }
-        bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const MetaGen::Shared::ClientDB::SpellProcLinkRecord& spellProcLink)
-        {
-            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellProcLinkID]()
-            {
-                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellProcLinkSet);
-                buffer->PutU32(spellProcLinkID);
-                buffer->Serialize(spellProcLink);
-            });
-
-            return result;
+            return packetSucceeded && writeSucceeded;
         }
         bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName)
         {

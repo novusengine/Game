@@ -49,9 +49,8 @@ enum class ClientDBHash : u64
     UnitCustomizationMaterial           = XXHash64::hashLiteral("clientdb/unitcustomizationmaterial.cdb"),
     UnitRaceCustomizationChoice         = XXHash64::hashLiteral("clientdb/unitracecustomizationchoice.cdb"),
     Spell                               = XXHash64::hashLiteral("clientdb/spell.cdb"),
+    SpellAura                           = XXHash64::hashLiteral("clientdb/spellaura.cdb"),
     SpellEffects                        = XXHash64::hashLiteral("clientdb/spelleffects.cdb"),
-    SpellProcData                       = XXHash64::hashLiteral("clientdb/spellprocdata.cdb"),
-    SpellProcLink                       = XXHash64::hashLiteral("clientdb/spellproclink.cdb"),
     Light                               = XXHash64::hashLiteral("clientdb/light.cdb"),
     LightData                           = XXHash64::hashLiteral("clientdb/lightdata.cdb"),
     LightParams                         = XXHash64::hashLiteral("clientdb/lightparams.cdb"),
@@ -59,7 +58,10 @@ enum class ClientDBHash : u64
     Icon                                = XXHash64::hashLiteral("clientdb/icon.cdb"),
     Faction                             = XXHash64::hashLiteral("clientdb/faction.cdb"),
     FactionRelation                     = XXHash64::hashLiteral("clientdb/factionrelation.cdb"),
-    FactionStanding                     = XXHash64::hashLiteral("clientdb/factionstanding.cdb")
+    FactionStanding                     = XXHash64::hashLiteral("clientdb/factionstanding.cdb"),
+    Currency                            = XXHash64::hashLiteral("clientdb/currency.cdb"),
+    CostCurrencyComponent               = XXHash64::hashLiteral("clientdb/cost_currency_component.cdb"),
+    CostItemComponent                   = XXHash64::hashLiteral("clientdb/cost_item_component.cdb")
 };
 
 struct ClientDBDefinition
@@ -69,7 +71,7 @@ public:
     std::string_view debugName;
 };
 
-inline constexpr std::array<ClientDBDefinition, 43> ClientDBHashes =
+inline constexpr std::array<ClientDBDefinition, 45> ClientDBHashes =
 {{
     { ClientDBHash::DisplayRegistration, "DisplayRegistration" },
     { ClientDBHash::DisplayParameter, "DisplayParameter" },
@@ -103,9 +105,8 @@ inline constexpr std::array<ClientDBDefinition, 43> ClientDBHashes =
     { ClientDBHash::UnitCustomizationMaterial, "UnitCustomizationMaterial" },
     { ClientDBHash::UnitRaceCustomizationChoice, "UnitRaceCustomizationChoice" },
     { ClientDBHash::Spell, "Spell" },
+    { ClientDBHash::SpellAura, "SpellAura" },
     { ClientDBHash::SpellEffects, "SpellEffects" },
-    { ClientDBHash::SpellProcData, "SpellProcData" },
-    { ClientDBHash::SpellProcLink, "SpellProcLink" },
     { ClientDBHash::Light, "Light" },
     { ClientDBHash::LightData, "LightData" },
     { ClientDBHash::LightParams, "LightParams" },
@@ -113,7 +114,10 @@ inline constexpr std::array<ClientDBDefinition, 43> ClientDBHashes =
     { ClientDBHash::Icon, "Icon" },
     { ClientDBHash::Faction, "Faction" },
     { ClientDBHash::FactionRelation, "FactionRelation" },
-    { ClientDBHash::FactionStanding, "FactionStanding" }
+    { ClientDBHash::FactionStanding, "FactionStanding" },
+    { ClientDBHash::Currency, "Currency" },
+    { ClientDBHash::CostCurrencyComponent, "CostCurrencyComponent" },
+    { ClientDBHash::CostItemComponent, "CostItemComponent" }
 }};
 
 inline bool HasClientDBRecordSuffix(std::string_view dbName)

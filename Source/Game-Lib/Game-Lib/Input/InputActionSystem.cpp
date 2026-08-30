@@ -6,6 +6,7 @@
 #include <xxhash/xxhash64.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <fstream>
 #include <limits>
@@ -45,10 +46,7 @@ namespace
         auto codeValue = value.find("code");
         auto modifiersValue = value.find("modifiers");
         auto modifierMatchValue = value.find("modifierMatch");
-        if (deviceValue == value.end() || !deviceValue->is_number_unsigned()
-            || codeValue == value.end() || !codeValue->is_number_unsigned()
-            || modifiersValue == value.end() || !modifiersValue->is_number_unsigned()
-            || modifierMatchValue == value.end() || !modifierMatchValue->is_number_unsigned())
+        if (deviceValue == value.end() || !deviceValue->is_number_unsigned() || codeValue == value.end() || !codeValue->is_number_unsigned() || modifiersValue == value.end() || !modifiersValue->is_number_unsigned() || modifierMatchValue == value.end() || !modifierMatchValue->is_number_unsigned())
         {
             return std::nullopt;
         }
@@ -563,8 +561,7 @@ InputBindingChangeResult InputActionSystem::SetBinding(InputActionHandle actionH
     if (binding)
         result.conflicts = FindBindingConflicts(actionHandle, bindingSlot, *binding);
 
-    if (action.info.bindings[bindingSlot] == binding
-        && (result.conflicts.empty() || policy == InputBindingConflictPolicy::Allow))
+    if (action.info.bindings[bindingSlot] == binding && (result.conflicts.empty() || policy == InputBindingConflictPolicy::Allow))
     {
         result.status = result.conflicts.empty() ? InputBindingChangeStatus::Applied : InputBindingChangeStatus::AppliedWithConflicts;
         return result;
@@ -975,8 +972,18 @@ void InputActionSystem::AddBindingReference(InputActionHandle action, u32 bindin
     Context& context = _contexts[_actions[action.index].info.context.index];
     std::vector<BindingReference>& references = context.bindingsByControl[controlIndex];
     const BindingReference reference = { action.index, static_cast<u8>(bindingSlot) };
-    const auto insertionPoint = std::lower_bound(references.begin(), references.end(), reference, [](const BindingReference& left, const BindingReference& right)
+    const auto insertionPoint = std::lower_bound(references.begin(), references.end(), reference, [this](const BindingReference& left, const BindingReference& right)
     {
+        const InputBinding& leftBinding = *_actions[left.actionIndex].info.bindings[left.bindingSlot];
+        const InputBinding& rightBinding = *_actions[right.actionIndex].info.bindings[right.bindingSlot];
+        if (leftBinding.modifierMatch != rightBinding.modifierMatch)
+            return leftBinding.modifierMatch < rightBinding.modifierMatch;
+
+        const u32 leftModifierCount = std::popcount(static_cast<u32>(leftBinding.modifiers));
+        const u32 rightModifierCount = std::popcount(static_cast<u32>(rightBinding.modifiers));
+        if (leftModifierCount != rightModifierCount)
+            return leftModifierCount > rightModifierCount;
+
         if (left.actionIndex != right.actionIndex)
             return left.actionIndex < right.actionIndex;
 
@@ -1075,8 +1082,7 @@ InputBindingChangeResult InputActionSystem::ApplyBindingChange(InputActionHandle
     if (binding)
         result.conflicts = FindBindingConflicts(actionHandle, bindingSlot, *binding);
 
-    if (action.info.bindings[bindingSlot] == binding
-        && (result.conflicts.empty() || policy == InputBindingConflictPolicy::Allow))
+    if (action.info.bindings[bindingSlot] == binding && (result.conflicts.empty() || policy == InputBindingConflictPolicy::Allow))
     {
         result.status = result.conflicts.empty() ? InputBindingChangeStatus::Applied : InputBindingChangeStatus::AppliedWithConflicts;
         return result;
@@ -1579,6 +1585,7 @@ InputReply InputActionSystem::HandleActionEvent(Action& action, InputActionHandl
     actionEvent.control = event.control;
     actionEvent.phase = event.phase;
     actionEvent.modifiers = event.modifiers;
+    actionEvent.pointerSource = event.pointerSource;
     actionEvent.value = value;
 
     InputReply result = action.info.defaultReply;

@@ -14,6 +14,15 @@ Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.D
     Solution.Util.SetIncludes(mod.Path)
     Solution.Util.SetDefines(defines)
 
+    if os.target() ~= "windows" then
+        -- premake's gmake backend generates no build target for Utility projects, so the
+        -- Shaders project's prebuild cook never runs there; cook after building the cooker instead
+        local shaderSourceDir = path.getabsolute(mod.Path .. "/../Shaders/Shaders")
+        local shaderOutputPath = (Solution.Projects.Current.BuildDir .. "/Data/Shaders")
+        postbuildmessage ("Compiling Shaders...")
+        postbuildcommands { "%{cfg.buildtarget.abspath} " .. shaderSourceDir .. " " .. shaderOutputPath }
+    end
+
     vpaths {
         ["/*"] = { "*.lua", "*.cpp" }
     }

@@ -28,6 +28,11 @@ namespace Scripting::UI
         i32 GetText(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
             zenith->Push(textComponent.text);
@@ -43,6 +48,8 @@ namespace Scripting::UI
             }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+                return 0;
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
 
@@ -66,6 +73,11 @@ namespace Scripting::UI
         i32 GetRawText(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
             zenith->Push(textComponent.rawText);
@@ -76,16 +88,26 @@ namespace Scripting::UI
         i32 GetSize(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
+
             const vec2& size = registry->get<ECS::Components::Transform2D>(text->entity).GetSize();
 
-            zenith->Push(size.x);
-            zenith->Push(size.y);
-            return 2;
+            zenith->Push(size);
+            return 1;
         }
 
         i32 GetFontSize(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
 
             ECS::Components::UI::TextTemplate& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             zenith->Push(textTemplate.size);
@@ -98,6 +120,8 @@ namespace Scripting::UI
             f32 size = zenith->CheckVal<f32>(2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+                return 0;
 
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             if (textTemplate.size == size)
@@ -121,6 +145,12 @@ namespace Scripting::UI
         i32 GetWidth(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
+
             const vec2& size = registry->get<ECS::Components::Transform2D>(text->entity).GetSize();
 
             zenith->Push(size.x);
@@ -130,6 +160,12 @@ namespace Scripting::UI
         i32 GetHeight(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
+
             const vec2& size = registry->get<ECS::Components::Transform2D>(text->entity).GetSize();
 
             zenith->Push(size.y);
@@ -139,6 +175,12 @@ namespace Scripting::UI
         i32 GetColor(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
+
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             zenith->Push(vec3(textTemplate.color.r, textTemplate.color.g, textTemplate.color.b));
 
@@ -150,6 +192,9 @@ namespace Scripting::UI
             vec3 color = zenith->CheckVal<vec3>(2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+                return 0;
+
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.color = Color(color.r, color.g, color.b, 1.0f);
             textTemplate.setFlags.color = true;
@@ -164,6 +209,9 @@ namespace Scripting::UI
             f32 alpha = zenith->CheckVal<f32>(2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+                return 0;
+
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.color.a = alpha;
             textTemplate.setFlags.color = true;
@@ -175,6 +223,12 @@ namespace Scripting::UI
         i32 GetWrapWidth(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
+
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             zenith->Push(textTemplate.wrapWidth);
 
@@ -187,6 +241,8 @@ namespace Scripting::UI
             wrapWidth = glm::max(0.0f, wrapWidth);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+                return 0;
 
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.wrapWidth = wrapWidth;
@@ -203,6 +259,11 @@ namespace Scripting::UI
         i32 GetWrapIndent(Zenith* zenith, Text* text)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+            {
+                zenith->Push();
+                return 1;
+            }
 
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             zenith->Push(static_cast<u32>(textTemplate.wrapIndent));
@@ -215,6 +276,8 @@ namespace Scripting::UI
             wrapIndent = glm::max(0u, wrapIndent);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            if (!registry->valid(text->entity))
+                return 0;
 
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.wrapIndent = wrapIndent;

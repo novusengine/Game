@@ -70,6 +70,7 @@ namespace Scripting
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataMapLoadFailed>(MetaGen::Game::Lua::GameEvent::MapLoadFailed);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataChatMessageReceived>(MetaGen::Game::Lua::GameEvent::ChatMessageReceived);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataLocalMoverChanged>(MetaGen::Game::Lua::GameEvent::LocalMoverChanged);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataCombatLog>(MetaGen::Game::Lua::GameEvent::CombatLog);
 
         zenith->RegisterEventType<MetaGen::Game::Lua::UnitEvent>();
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAdd>(MetaGen::Game::Lua::UnitEvent::Add);

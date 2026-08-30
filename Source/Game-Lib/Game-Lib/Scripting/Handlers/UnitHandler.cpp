@@ -1,5 +1,9 @@
 #include "UnitHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/InteractionCapabilities.h"
+// TODO: AnimationV2 restore the unit scripting paths that used legacy animation and equipment attachment components.
+// #include "Game-Lib/ECS/Components/AnimationData.h"
+// #include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitAuraInfo.h"
@@ -94,27 +98,20 @@ namespace Scripting::Unit
                 if (!replayedUnitIDs.insert(unitID).second)
                     return true;
 
-                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
-                    .unitID = unitID
-                });
+                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{ .unitID = unitID });
 
                 return true;
             });
         }
 
         // Resend LocalMoverChanged
-        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{
-            .moverID = entt::to_integral(characterSingleton.moverEntity)
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{ .moverID = entt::to_integral(characterSingleton.moverEntity) });
 
         if (gameRegistry->valid(characterSingleton.moverEntity))
         {
             if (auto* unit = gameRegistry->try_get<ECS::Components::Unit>(characterSingleton.moverEntity))
             {
-                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
-                    .unitID = entt::to_integral(characterSingleton.moverEntity),
-                    .targetID = entt::to_integral(unit->targetEntity)
-                });
+                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{ .unitID = entt::to_integral(characterSingleton.moverEntity), .targetID = entt::to_integral(unit->targetEntity) });
             }
         }
     }
@@ -133,14 +130,28 @@ namespace Scripting::Unit
         return 1;
     }
 
+    i32 UnitHandler::GetTarget(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        const auto& character = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+        entt::id_type targetID = std::numeric_limits<entt::id_type>().max();
+        if (registry->valid(character.moverEntity))
+        {
+            const auto* unit = registry->try_get<ECS::Components::Unit>(character.moverEntity);
+            if (unit && registry->valid(unit->targetEntity))
+                targetID = entt::to_integral(unit->targetEntity);
+        }
+
+        zenith->Push(targetID);
+        return 1;
+    }
+
     i32 UnitHandler::GetHovered(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::id_type unitID = std::numeric_limits<entt::id_type>().max();
         const auto* controllerState = registry->ctx().find<ECS::Singletons::CharacterControllerSingleton>();
-        if (controllerState
-            && registry->valid(controllerState->hoveredEntity)
-            && registry->all_of<ECS::Components::Unit>(controllerState->hoveredEntity))
+        if (controllerState && registry->valid(controllerState->hoveredEntity) && registry->all_of<ECS::Components::Unit>(controllerState->hoveredEntity))
             unitID = entt::to_integral(controllerState->hoveredEntity);
 
         zenith->Push(unitID);
@@ -150,6 +161,13 @@ namespace Scripting::Unit
     i32 UnitHandler::ClearTarget(Zenith* zenith)
     {
         zenith->Push(ECS::Systems::CharacterControllerInput::ClearTarget());
+        return 1;
+    }
+
+    i32 UnitHandler::SetTarget(Zenith* zenith)
+    {
+        const u32 unitID = zenith->CheckVal<u32>(1);
+        zenith->Push(ECS::Systems::CharacterControllerInput::SetTarget(static_cast<entt::entity>(unitID)));
         return 1;
     }
 
@@ -371,16 +389,20 @@ namespace Scripting::Unit
         if (auto* unitAuraInfo = registry->try_get<ECS::Components::UnitAuraInfo>(entityID))
         {
             u32 index = 1;
+            const u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
             for (const auto& auraInfo : unitAuraInfo->auras)
             {
-                u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-                f32 duration = auraInfo.expireTimestamp > currentTime ? static_cast<f32>(auraInfo.expireTimestamp - currentTime) / 1000.0f : 0.0f;
+                const f32 duration = auraInfo.expireTimestamp == 0
+                    ? -1.0f
+                    : (auraInfo.expireTimestamp > currentTime ? static_cast<f32>(auraInfo.expireTimestamp - currentTime) / 1000.0f : 0.0f);
 
                 zenith->CreateTable();
                 zenith->AddTableField("auraID", auraInfo.auraID);
                 zenith->AddTableField("spellID", auraInfo.spellID);
                 zenith->AddTableField("duration", duration);
                 zenith->AddTableField("stacks", auraInfo.stacks);
+                zenith->AddTableField("disposition", auraInfo.disposition);
+                zenith->AddTableField("dispelType", auraInfo.dispelType);
 
                 zenith->SetTableKey(index++);
             }
@@ -410,6 +432,15 @@ namespace Scripting::Unit
         const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         zenith->Push(static_cast<u8>(ECS::Util::Faction::GetPresentationReaction(*registry, entity)));
+        return 1;
+    }
+
+    i32 UnitHandler::GetQuestInteractionMask(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        const auto* capabilities = registry->valid(entity) ? registry->try_get<ECS::Components::InteractionCapabilities>(entity) : nullptr;
+        zenith->Push(capabilities ? static_cast<u8>(capabilities->questMask) : 0);
         return 1;
     }
 

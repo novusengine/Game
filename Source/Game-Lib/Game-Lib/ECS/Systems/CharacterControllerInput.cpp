@@ -2,23 +2,21 @@
 
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Components/InteractionCapabilities.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
-#include "Game-Lib/ECS/Components/UnitEquipment.h"
-#include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/CharacterControllerSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
-#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Util/FactionUtil.h"
+#include "Game-Lib/ECS/Util/InteractionUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Viewport.h"
-#include "Game-Lib/Gameplay/Database/Item.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
@@ -26,6 +24,7 @@
 #include "Game-Lib/Util/UnitUtil.h"
 
 #include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/Interaction/Interaction.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Input/InputSystem.h>
@@ -37,7 +36,6 @@
 #include <entt/entt.hpp>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
-#include <glm/trigonometric.hpp>
 #include <imgui.h>
 
 #include <algorithm>
@@ -109,14 +107,12 @@ namespace
     entt::entity FindUnitUnderCursor(entt::registry& registry, entt::entity moverEntity)
     {
         entt::registry::context& ctx = registry.ctx();
-        if (!ctx.contains<ECS::Singletons::ActiveCamera>()
-            || !ctx.contains<ECS::Singletons::NetworkState>())
+        if (!ctx.contains<ECS::Singletons::ActiveCamera>() || !ctx.contains<ECS::Singletons::NetworkState>())
             return entt::null;
 
         const auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
         auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
-        if (activeCamera.entity == entt::null || !registry.valid(activeCamera.entity)
-            || moverEntity == entt::null || !registry.valid(moverEntity) || !networkState.networkVisTree)
+        if (activeCamera.entity == entt::null || !registry.valid(activeCamera.entity) || moverEntity == entt::null || !registry.valid(moverEntity) || !networkState.networkVisTree)
             return entt::null;
 
         vec2 mousePosition;
@@ -245,6 +241,8 @@ namespace ECS::Systems::CharacterControllerInput
         }
     }
 
+#if 0
+    // TODO: AnimationV2 restore client-side weapon swing timing if attack cadence is not driven entirely by server attack events.
     void UpdateAutoAttack(entt::registry& registry, f32 deltaTime)
     {
         entt::registry::context& ctx = registry.ctx();
@@ -322,6 +320,7 @@ namespace ECS::Systems::CharacterControllerInput
             }))
             characterSingleton.secondaryAttackTimer = std::numeric_limits<f32>().max();
     }
+#endif
 
     bool ClearTarget()
     {
@@ -339,9 +338,7 @@ namespace ECS::Systems::CharacterControllerInput
         if (unit->targetEntity == entt::null)
             return true;
 
-        if (!Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
-            .targetGUID = ObjectGUID::Empty
-        }))
+        if (!Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{ .targetGUID = ObjectGUID::Empty }, MetaGen::Shared::Packet::ClientAutoAttackStatePacket{ .enabled = 0 }))
             return false;
 
         if (registry->valid(unit->targetEntity))
@@ -355,14 +352,72 @@ namespace ECS::Systems::CharacterControllerInput
         }
 
         unit->targetEntity = entt::null;
-        unit->isAutoAttacking = false;
-        characterSingleton.primaryAttackTimer = 0.0f;
-        characterSingleton.secondaryAttackTimer = 0.0f;
+        ::Util::Unit::SetAutoAttackVisualState(*registry, characterSingleton.moverEntity, false);
 
-        Scripting::Util::Zenith::GetGlobal()->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
-            .unitID = entt::to_integral(characterSingleton.moverEntity),
-            .targetID = entt::to_integral(unit->targetEntity)
-        });
+        // TODO: AnimationV2 clear any queued attack animation timing when the current target is removed.
+        // unit->isAutoAttacking = false;
+        // characterSingleton.primaryAttackTimer = 0.0f;
+        // characterSingleton.secondaryAttackTimer = 0.0f;
+
+        Scripting::Util::Zenith::GetGlobal()->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{ .unitID = entt::to_integral(characterSingleton.moverEntity), .targetID = entt::to_integral(unit->targetEntity) });
+        return true;
+    }
+
+    bool SetTarget(entt::entity targetEntity, bool updateAutoAttackState, bool autoAttackEnabled)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        entt::registry::context& ctx = registry->ctx();
+        auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+        auto& networkState = ctx.get<Singletons::NetworkState>();
+        if (!registry->valid(characterSingleton.moverEntity) || !registry->valid(targetEntity) || !registry->all_of<Components::Unit>(characterSingleton.moverEntity) || !registry->all_of<Components::Unit>(targetEntity))
+        {
+            return false;
+        }
+
+        auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
+        if (unit.targetEntity == targetEntity)
+        {
+            if (!updateAutoAttackState)
+                return true;
+
+            if (!Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientAutoAttackStatePacket{ .enabled = static_cast<u8>(autoAttackEnabled) }))
+            {
+                return false;
+            }
+
+            ::Util::Unit::SetAutoAttackVisualState(*registry, characterSingleton.moverEntity, autoAttackEnabled);
+            return true;
+        }
+
+        const ObjectGUID targetNetworkID = registry->get<Components::Unit>(targetEntity).networkID;
+        const bool targetUpdateSent = updateAutoAttackState
+            ? Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{ .targetGUID = targetNetworkID }, MetaGen::Shared::Packet::ClientAutoAttackStatePacket{ .enabled = static_cast<u8>(autoAttackEnabled) })
+            : Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{ .targetGUID = targetNetworkID });
+        if (!targetUpdateSent)
+            return false;
+
+        const auto* controllerState = ctx.find<Singletons::CharacterControllerSingleton>();
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+        if (registry->valid(unit.targetEntity))
+        {
+            if (auto* model = registry->try_get<Components::Model>(unit.targetEntity))
+            {
+                const f32 highlightIntensity = controllerState && controllerState->hoveredEntity == unit.targetEntity ? HOVER_HIGHLIGHT_INTENSITY : 1.0f;
+                modelLoader->SetModelHighlight(*model, highlightIntensity);
+            }
+        }
+
+        unit.targetEntity = targetEntity;
+        if (updateAutoAttackState)
+            ::Util::Unit::SetAutoAttackVisualState(*registry, characterSingleton.moverEntity, autoAttackEnabled);
+
+        if (targetEntity != characterSingleton.moverEntity)
+        {
+            if (auto* model = registry->try_get<Components::Model>(targetEntity))
+                modelLoader->SetModelHighlight(*model, TARGET_HIGHLIGHT_INTENSITY);
+        }
+
+        Scripting::Util::Zenith::GetGlobal()->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{ .unitID = entt::to_integral(characterSingleton.moverEntity), .targetID = entt::to_integral(targetEntity) });
         return true;
     }
 
@@ -375,13 +430,10 @@ namespace ECS::Systems::CharacterControllerInput
         entt::registry::context& ctx = registry->ctx();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
         auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
-        auto& networkState = ctx.get<Singletons::NetworkState>();
 
         if (characterSingleton.moverEntity == entt::null || activeCamera.entity == entt::null)
             return InputReply::Ignored;
 
-        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
 
         if (ctx.contains<Singletons::OrbitalCameraSettings>())
@@ -411,42 +463,27 @@ namespace ECS::Systems::CharacterControllerInput
         if (!registry->valid(targetEntity) || targetEntity == characterSingleton.moverEntity || !registry->all_of<Components::Unit>(targetEntity))
             return InputReply::Ignored;
 
-        const ObjectGUID targetNetworkID = registry->get<Components::Unit>(targetEntity).networkID;
+        const bool isRightClick = event.control == InputControl::Mouse(MouseButton::Right);
+        const auto* interactionCapabilities = registry->try_get<Components::InteractionCapabilities>(targetEntity);
+        const bool canRequestInteraction = isRightClick && interactionCapabilities && interactionCapabilities->value != MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::None;
 
         if (unit.targetEntity == targetEntity)
         {
-            if (event.control == InputControl::Mouse(MouseButton::Right))
+            if (isRightClick)
             {
-                unit.isAutoAttacking = ECS::Util::Faction::CanAttack(*registry, targetEntity);
+                SetTarget(targetEntity, true, !canRequestInteraction && ECS::Util::Faction::CanAttack(*registry, targetEntity));
+                if (canRequestInteraction)
+                    ECS::Util::Interaction::Open(*registry, targetEntity);
                 return InputReply::Consumed;
             }
 
             return InputReply::Ignored;
         }
 
-        if (Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
-            .targetGUID = targetNetworkID
-        }))
-        {
-            if (auto* model = registry->try_get<Components::Model>(unit.targetEntity))
-            {
-                const f32 highlightIntensity = controllerState && controllerState->hoveredEntity == unit.targetEntity ? HOVER_HIGHLIGHT_INTENSITY : 1.0f;
-                modelLoader->SetModelHighlight(*model, highlightIntensity);
-            }
-
-            unit.targetEntity = targetEntity;
-
-            if (auto* model = registry->try_get<Components::Model>(targetEntity))
-                modelLoader->SetModelHighlight(*model, TARGET_HIGHLIGHT_INTENSITY);
-
-            if (event.control == InputControl::Mouse(MouseButton::Right))
-                unit.isAutoAttacking = ECS::Util::Faction::CanAttack(*registry, targetEntity);
-
-            zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
-                .unitID = entt::to_integral(characterSingleton.moverEntity),
-                .targetID = entt::to_integral(targetEntity)
-            });
-        }
+        const bool startAutoAttack = isRightClick && !canRequestInteraction && ECS::Util::Faction::CanAttack(*registry, targetEntity);
+        SetTarget(targetEntity, isRightClick, startAutoAttack);
+        if (canRequestInteraction)
+            ECS::Util::Interaction::Open(*registry, targetEntity);
 
         return InputReply::Consumed;
     }

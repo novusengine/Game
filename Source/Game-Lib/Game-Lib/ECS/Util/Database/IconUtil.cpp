@@ -26,7 +26,7 @@ namespace ECSUtil::Icon
             iconStorage->Initialize<MetaGen::Shared::ClientDB::IconRecord>();
 
             MetaGen::Shared::ClientDB::IconRecord defaultIcon;
-            defaultIcon.texture = iconStorage->AddString("texture/interface/icons/inv_misc_questionmark.dds");
+            defaultIcon.texture = iconStorage->AddString("texture/unknown.png");
 
             iconStorage->Replace(0, defaultIcon);
         }

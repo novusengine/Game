@@ -11,6 +11,8 @@
 
 #include <robinhood/robinhood.h>
 
+#include <span>
+
 class DebugRenderer;
 class GameRenderer;
 class ShadowRenderer;
@@ -63,6 +65,12 @@ public:
 
     u32 AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos);
     u32 AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset);
+    bool HideChunk(u32 chunkDataIndex);
+    bool ReplaceChunk(u32 chunkDataIndex, u32 chunkHash, const Map::Chunk& chunk, ivec2 chunkGridPos);
+    bool UpdateChunkCells(u32 chunkDataIndex, const Map::Chunk& chunk, std::span<const u16> cellIDs);
+    bool UpdateChunkTextureLayers(u32 chunkDataIndex, const Map::Chunk& chunk, std::span<const u16> cellIDs);
+    bool CreateEditableAlphaMap(u32 chunkDataIndex, u64 alphaMapHash, std::span<const u8> rgbaData, Renderer::TextureID& outTextureID);
+    bool UploadEditableAlphaMapRegion(Renderer::TextureID textureID, u16 cellID, uvec2 offset, uvec2 extent, std::span<const u8> rgbaData);
 
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
@@ -77,6 +85,7 @@ public:
     inline u32 GetNumSurvivingGeometryTriangles(u32 viewID) { return GetNumSurvivingDrawCalls(viewID) * Terrain::CELL_NUM_TRIANGLES; }
 
 private:
+    bool ResolveTerrainTexture(u64 textureHash, u16& outArrayIndex);
     void CreatePermanentResources();
     void CreatePipelines();
     void InitDescriptorSets();
@@ -225,5 +234,4 @@ private:
     std::shared_mutex _addChunkMutex; // Unique lock for operations that can reallocate, shared_lock if it only reads/modifies existing data
     std::mutex _addChunkTextureMutex;
 
-    friend class TerrainManipulator;
 };

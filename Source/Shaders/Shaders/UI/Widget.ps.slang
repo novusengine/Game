@@ -11,7 +11,7 @@ struct WidgetDrawData
     float4 texCoord;            // Panel only
     float4 sliceCoords;         // Panel only
     float4 cornerRadiusAndBorder; // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
-    uint4 packed2; // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z/w: reserved
+    uint4 packed2; // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z: panel flags (bit0 hasAdditive, bit1 useNineSlice), w: reserved
 };
 
 struct WidgetMaskInfo
@@ -108,13 +108,25 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
     float2 sliceCoordMin = clamp(drawData.sliceCoords.xy, texCoordMin, texCoordMax);
     float2 sliceCoordMax = clamp(drawData.sliceCoords.zw, sliceCoordMin, texCoordMax);
 
-    uint packedTextureScaleToWidgetSize = drawData.packed1.w;
-    float2 scale = float2(f16tof32(packedTextureScaleToWidgetSize), f16tof32(packedTextureScaleToWidgetSize >> 16));
+    uint panelFlags = drawData.packed2.z;
 
-    float2 scaledUV = float2(
-        NineSliceAxis(input.uvAndScreenPos.x, scale.x, texCoordMin.x, texCoordMax.x, sliceCoordMin.x, sliceCoordMax.x),
-        NineSliceAxis(input.uvAndScreenPos.y, scale.y, texCoordMin.y, texCoordMax.y, sliceCoordMin.y, sliceCoordMax.y)
-    );
+    float2 scaledUV;
+    if ((panelFlags & 0x2u) != 0u) // uses nine-slice
+    {
+        uint packedTextureScaleToWidgetSize = drawData.packed1.w;
+        float2 scale = float2(f16tof32(packedTextureScaleToWidgetSize), f16tof32(packedTextureScaleToWidgetSize >> 16));
+
+        scaledUV = float2(
+            NineSliceAxis(input.uvAndScreenPos.x, scale.x, texCoordMin.x, texCoordMax.x, sliceCoordMin.x, sliceCoordMax.x),
+            NineSliceAxis(input.uvAndScreenPos.y, scale.y, texCoordMin.y, texCoordMax.y, sliceCoordMin.y, sliceCoordMax.y)
+        );
+    }
+    else
+    {
+        // Panel vertex UVs are baked in texcoord space by UpdatePanelVertices, so no remap is
+        // needed (NineSliceAxis with zero insets also reduces to the identity)
+        scaledUV = uv;
+    }
 
     uint textureIndex = drawData.packed1.x & 0xFFFF;
     uint additiveTextureIndex = drawData.packed1.x >> 16;
@@ -125,12 +137,15 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
     float4 color = _textures[textureIndex].Sample(_sampler, scaledUV);
     color *= colorMultiplier;
 
-    float4 additiveColor = _textures[additiveTextureIndex].Sample(_sampler, scaledUV);
-    float additiveIntensity = dot(additiveColor.rgb, float3(0.299, 0.587, 0.114)) * 2.5f;
-    additiveIntensity = saturate(additiveIntensity);
+    if ((panelFlags & 0x1u) != 0u) // has additive foreground
+    {
+        float4 additiveColor = _textures[additiveTextureIndex].Sample(_sampler, scaledUV);
+        float additiveIntensity = dot(additiveColor.rgb, float3(0.299, 0.587, 0.114)) * 2.5f;
+        additiveIntensity = saturate(additiveIntensity);
 
-    color.rgb += additiveColor.rgb;
-    color.a = max(color.a, additiveIntensity);
+        color.rgb += additiveColor.rgb;
+        color.a = max(color.a, additiveIntensity);
+    }
 
     float2 cornerRadius = drawData.cornerRadiusAndBorder.xy;
     float2 normalizedBorderSize = drawData.cornerRadiusAndBorder.zw;
@@ -238,19 +253,19 @@ float4 main(VertexOutput input) : SV_Target
 {
     WidgetDrawData drawData = _widgetDrawDatas[input.drawDataID];
 
-    // Shared clip-region discard. Index 0 is the "no clip" sentinel (0,0,1,1).
+    // Shared clip-region discard; unclipped widgets (index 0) skip the buffer read entirely
     float2 screenPos = input.uvAndScreenPos.zw;
     uint clipBoundsIndex = drawData.packed2.x;
-    float4 clipRect = _widgetClipRects[clipBoundsIndex];
     if (clipBoundsIndex != 0)
     {
+        float4 clipRect = _widgetClipRects[clipBoundsIndex];
         float2 clipPixelMin = round(clipRect.xy * _constants.viewportSize);
         float2 clipPixelMax = max(round(clipRect.zw * _constants.viewportSize), clipPixelMin + 1.0f);
         clipRect = float4(clipPixelMin, clipPixelMax) / float4(_constants.viewportSize, _constants.viewportSize);
-    }
-    if (ShouldDiscard(screenPos, clipRect.xy, clipRect.zw))
-    {
-        discard;
+        if (ShouldDiscard(screenPos, clipRect.xy, clipRect.zw))
+        {
+            discard;
+        }
     }
 
     uint type = drawData.packed0.x;
@@ -265,21 +280,30 @@ float4 main(VertexOutput input) : SV_Target
         color = ShadeText(drawData, input);
     }
 
-    // Shared clipMask. Index 0 is the sentinel (full region + default-white texture
-    // at index 0), so widgets without a mask trivially pass.
+    // Shared clipMask; unmasked widgets (index 0) skip the info read and the mask sample
     uint maskBoundsIndex = drawData.packed2.y;
-    WidgetMaskInfo maskInfo = _widgetMaskInfo[maskBoundsIndex];
-    float2 clipMaskRegionMin = float2(f16tof32(maskInfo.regionMinXY), f16tof32(maskInfo.regionMinXY >> 16));
-    float2 clipMaskRegionMax = float2(f16tof32(maskInfo.regionMaxXY), f16tof32(maskInfo.regionMaxXY >> 16));
-    float2 maskUV = (screenPos - clipMaskRegionMin) / (clipMaskRegionMax - clipMaskRegionMin);
-    float clipMask = _textures[maskInfo.textureIndex].Sample(_sampler, maskUV).a;
-    if (clipMask < 0.5f)
+    if (maskBoundsIndex != 0)
+    {
+        WidgetMaskInfo maskInfo = _widgetMaskInfo[maskBoundsIndex];
+        float2 clipMaskRegionMin = float2(f16tof32(maskInfo.regionMinXY), f16tof32(maskInfo.regionMinXY >> 16));
+        float2 clipMaskRegionMax = float2(f16tof32(maskInfo.regionMaxXY), f16tof32(maskInfo.regionMaxXY >> 16));
+        float2 maskUV = (screenPos - clipMaskRegionMin) / (clipMaskRegionMax - clipMaskRegionMin);
+        float clipMask = _textures[maskInfo.textureIndex].Sample(_sampler, maskUV).a;
+        if (clipMask < 0.5f)
+        {
+            discard;
+        }
+        // Panel colors are converted to premultiplied alpha above. Text colors are already
+        // premultiplied by their MSDF coverage in ShadeText, so the clip mask must scale both.
+        color *= clipMask;
+    }
+
+    // Fully transparent fragments contribute nothing through ONE/INV_SRC_ALPHA blending; skip
+    // the blend/bandwidth cost (large transparent regions of RT and shape backgrounds)
+    if (max(color.a, max(color.r, max(color.g, color.b))) < 1.0f / 255.0f)
     {
         discard;
     }
-    // Panel colors are converted to premultiplied alpha above. Text colors are already
-    // premultiplied by their MSDF coverage in ShadeText, so the clip mask must scale both.
-    color *= clipMask;
 
     return saturate(color);
 }

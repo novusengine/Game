@@ -17,6 +17,7 @@ namespace Scripting::Unit
 
     public: // Registered Functions
         static i32 GetLocal(Zenith* zenith);
+        static i32 GetTarget(Zenith* zenith);
         static i32 GetHovered(Zenith* zenith);
         static i32 GetName(Zenith* zenith);
         static i32 GetHealth(Zenith* zenith);
@@ -28,6 +29,7 @@ namespace Scripting::Unit
         static i32 GetAuras(Zenith* zenith);
         static i32 GetFactionID(Zenith* zenith);
         static i32 GetReaction(Zenith* zenith);
+        static i32 GetQuestInteractionMask(Zenith* zenith);
         static i32 CanAttack(Zenith* zenith);
         static i32 GetLocalReactionToUnit(Zenith* zenith);
         static i32 GetUnitReactionToLocalPlayer(Zenith* zenith);
@@ -35,6 +37,7 @@ namespace Scripting::Unit
         static i32 GetPersistentStanding(Zenith* zenith);
         static i32 GetEffectiveStanding(Zenith* zenith);
         static i32 ClearTarget(Zenith* zenith);
+        static i32 SetTarget(Zenith* zenith);
 
         static i32 SetWidgetToNamePos(Zenith* zenith);
     };
@@ -42,6 +45,7 @@ namespace Scripting::Unit
     static LuaRegister<> unitGlobalMethods[] =
     {
         { "GetLocal", UnitHandler::GetLocal },
+        { "GetTarget", UnitHandler::GetTarget },
         { "GetHovered", UnitHandler::GetHovered },
         { "GetName", UnitHandler::GetName },
         { "GetHealth", UnitHandler::GetHealth },
@@ -53,6 +57,7 @@ namespace Scripting::Unit
         { "GetAuras", UnitHandler::GetAuras },
         { "GetFactionID", UnitHandler::GetFactionID },
         { "GetReaction", UnitHandler::GetReaction },
+        { "GetQuestInteractionMask", UnitHandler::GetQuestInteractionMask },
         { "CanAttack", UnitHandler::CanAttack },
         { "GetLocalReactionToUnit", UnitHandler::GetLocalReactionToUnit },
         { "GetUnitReactionToLocalPlayer", UnitHandler::GetUnitReactionToLocalPlayer },
@@ -60,6 +65,7 @@ namespace Scripting::Unit
         { "GetPersistentStanding", UnitHandler::GetPersistentStanding },
         { "GetEffectiveStanding", UnitHandler::GetEffectiveStanding },
         { "ClearTarget", UnitHandler::ClearTarget },
+        { "SetTarget", UnitHandler::SetTarget },
 
         { "SetWidgetToNamePos", UnitHandler::SetWidgetToNamePos }
     };

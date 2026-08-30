@@ -50,8 +50,6 @@ public:
     static bool HandleCheatResurrect(GameConsole* gameConsole, MetaGen::Game::Command::CheatResurrectCommand& command);
     static bool HandleCheatCast(GameConsole* gameConsole, MetaGen::Game::Command::CheatCastCommand& command);
     static bool HandleCheatPathGenerate(GameConsole* gameConsole, MetaGen::Game::Command::CheatPathGenerateCommand& command);
-    static bool HandleMapSync(GameConsole* gameConsole, MetaGen::Game::Command::MapSyncCommand& command);
-    static bool HandleMapSyncAll(GameConsole* gameConsole, MetaGen::Game::Command::MapSyncAllCommand& command);
     static bool HandleGotoAdd(GameConsole* gameConsole, MetaGen::Game::Command::GotoAddCommand& command);
     static bool HandleGotoAddHere(GameConsole* gameConsole, MetaGen::Game::Command::GotoAddHereCommand& command);
     static bool HandleGotoRemove(GameConsole* gameConsole, MetaGen::Game::Command::GotoRemoveCommand& command);
@@ -61,7 +59,6 @@ public:
     static bool HandleTriggerAdd(GameConsole* gameConsole, MetaGen::Game::Command::TriggerAddCommand& command);
     static bool HandleTriggerRemove(GameConsole* gameConsole, MetaGen::Game::Command::TriggerRemoveCommand& command);
     static bool HandleSpellSync(GameConsole* gameConsole, MetaGen::Game::Command::SpellSyncCommand& command);
-    static bool HandleSpellSyncAll(GameConsole* gameConsole, MetaGen::Game::Command::SpellSyncAllCommand& command);
     static bool HandleCreatureAddScript(GameConsole* gameConsole, MetaGen::Game::Command::CreatureAddScriptCommand& command);
     static bool HandleCreatureRemoveScript(GameConsole* gameConsole, MetaGen::Game::Command::CreatureRemoveScriptCommand& command);
     static bool HandleCreatureMove(GameConsole* gameConsole, MetaGen::Game::Command::CreatureMoveCommand& command);

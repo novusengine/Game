@@ -6,6 +6,8 @@
 
 #include <FileFormat/Novus/ShaderPack/ShaderPack.h>
 
+#include <Input/InputTypes.h>
+
 #include <robinhood/robinhood.h>
 
 namespace Renderer
@@ -18,18 +20,23 @@ namespace Novus
     class Window;
 }
 
+namespace Editor
+{
+    class TerrainEditSession;
+}
+
 struct GLFWwindow;
 struct GLFWimage;
 struct GLFWcursor;
 struct ImGuiStyle;
 class TerrainRenderer;
 class TerrainLoader;
-class TerrainManipulator;
 class TextureRenderer;
 class ModelLoader;
 class MapLoader;
 class MaterialRenderer;
 class SkyboxRenderer;
+class ShapeTextureRenderer;
 class EditorRenderer;
 class DebugRenderer;
 class LightRenderer;
@@ -111,9 +118,12 @@ public:
     bool SetCursor(u64 nameHash, u32 imguiMouseCursor = 0);
     u32 GetCursorRevision() const { return _cursorRevision; }
     const std::string& GetCursorTexturePath() const { return _cursorTexturePath; }
-    void HandleCursorPosition(f64 x, f64 y);
+    void HandleCursorPosition(f64 x, f64 y, PointerSource pointerSource);
     void RestoreCursorPosition(const vec2& position);
     void CancelCursorRestore();
+    bool BeginPointerCapture();
+    bool EndPointerCapture();
+    bool IsPointerCaptureActive() const { return _pointerCaptureActive; }
 
     Renderer::Renderer* GetRenderer() { return _renderer; }
 
@@ -129,13 +139,13 @@ public:
     TextureRenderer* GetTextureRenderer() { return _textureRenderer; }
     SkyboxRenderer* GetSkyboxRenderer() { return _skyboxRenderer; }
     u8 GetFrameIndex() const { return _frameIndex; }
+    ShapeTextureRenderer* GetShapeTextureRenderer() { return _shapeTextureRenderer; }
 
     LiquidLoader* GetLiquidLoader() { return _liquidLoader; }
     MapLoader* GetMapLoader() { return _mapLoader; }
     ModelLoader* GetModelLoader() { return _modelLoader; }
     TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
-
-    TerrainManipulator* GetTerrainManipulator() { return _terrainManipulator; }
+    Editor::TerrainEditSession* GetTerrainEditSession() { return _terrainEditSession; }
 
     RenderResources& GetRenderResources() { return _resources; }
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
@@ -202,9 +212,12 @@ private:
     u8 _frameIndex = 0;
     vec2 _lastWindowSize = vec2(1, 1);
     vec2 _cursorRestorePosition = vec2(0.0f);
+    vec2 _pointerCapturePosition = vec2(0.0f);
     f64 _cursorRestoreDeadline = 0.0;
     bool _cursorRestorePending = false;
     bool _lockedCullingDepthPyramidValid = false;
+    bool _pointerCaptureActive = false;
+    CursorMode _pointerCapturePreviousMode = CursorMode::Hardware;
     RenderResources _resources;
 
     Renderer::ComputePipelineID _allDescriptorSetComputePipeline;
@@ -213,7 +226,7 @@ private:
     // Sub Renderers
     TerrainRenderer* _terrainRenderer = nullptr;
     TerrainLoader* _terrainLoader = nullptr;
-    TerrainManipulator* _terrainManipulator = nullptr;
+    Editor::TerrainEditSession* _terrainEditSession = nullptr;
 
     TextureRenderer* _textureRenderer = nullptr;
 
@@ -231,6 +244,7 @@ private:
     LightRenderer* _lightRenderer = nullptr;
     JoltDebugRenderer* _joltDebugRenderer = nullptr;
     EditorRenderer* _editorRenderer = nullptr;
+    ShapeTextureRenderer* _shapeTextureRenderer = nullptr;
     CanvasRenderer* _canvasRenderer = nullptr;
     UIRenderer* _uiRenderer = nullptr;
     EffectRenderer* _effectRenderer = nullptr;

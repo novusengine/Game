@@ -64,7 +64,11 @@ export type GridLayoutOpts =
     alpha : number?,
 }
 
-local gridLayoutAPI = {}
+export type GridLayoutAPI =
+{
+    New : (parent : Widget, position : vec, size : vec, layer : integer, options : GridLayoutOpts?) -> any,
+}
+local gridLayoutAPI : GridLayoutAPI = {}
 
 local function trySetWidth(raw, w)
     local fn = raw.SetWidth
@@ -126,9 +130,9 @@ local function PlaceChild(item, co, originX, originY, cellW, cellH, childW, chil
         item.proxy._innerLayout:RefreshLocal()
     end
 
-    raw:SetAnchor(0.0, 1.0)
-    raw:SetRelativePoint(0.0, 1.0)
-    raw:SetPos(originX + offX, -(originY + offY))
+    raw:SetAnchor(vec.New(0.0, 1.0))
+    raw:SetRelativePoint(vec.New(0.0, 1.0))
+    raw:SetPos(vec.New(originX + offX, -(originY + offY)))
 end
 
 local function DoRefresh(self)
@@ -193,7 +197,8 @@ local function DoRefresh(self)
     end
     local n = #activeItems
 
-    local containerW, containerH = self.panel:GetSize()
+    local containerSize = self.root:GetSize()
+    local containerW, containerH = containerSize.x, containerSize.y
     local innerW = containerW - pl - pr
     local innerH = containerH - pt - pb
 
@@ -228,7 +233,7 @@ local function DoRefresh(self)
     if heightMode == "shrink" then newH = gridH
     elseif heightMode == "auto" and gridH > containerH then newH = gridH end
     if math.abs(newW - containerW) > 0.5 or math.abs(newH - containerH) > 0.5 then
-        self.panel:SetSize(newW, newH)
+        self.root:SetSize(vec.New(newW, newH))
         containerW, containerH = newW, newH
         innerW = containerW - pl - pr
         innerH = containerH - pt - pb
@@ -268,7 +273,8 @@ local function DoRefresh(self)
         local originX = pl + groupOffsetX + col * (cellW + spacingX)
         local originY = pt + groupOffsetY + row * (cellH + spacingY)
 
-        local childW, childH = item.raw:GetSize()
+        local childSize = item.raw:GetSize()
+        local childW, childH = childSize.x, childSize.y
         local thisAlignH = (co and co.cellAlignH) or alignH
         local thisAlignV = (co and co.cellAlignV) or alignV
         PlaceChild(item, co, originX, originY, cellW, cellH, childW, childH, thisAlignH, thisAlignV)
@@ -278,11 +284,11 @@ local function DoRefresh(self)
     self._measuredHeight = gridH
 end
 
-function gridLayoutAPI.NewGridLayout(parent, posX, posY, sizeX, sizeY, layer, opts)
+function gridLayoutAPI.New(parent : Widget, position : vec, size : vec, layer : integer, opts : GridLayoutOpts?)
     opts = opts or {}
 
     local panelTemplate = opts.panelTemplate or "DialogBox"
-    local panel = parent:NewPanel(posX, posY, sizeX, sizeY, layer or 0, panelTemplate)
+    local panel = parent:NewPanel(position, size, layer or 0i, panelTemplate)
     if opts.alpha ~= nil then panel:SetAlpha(opts.alpha) end
 
     local layoutTable = LayoutCommon.MakeBaseLayout(panel, opts, DoRefresh)

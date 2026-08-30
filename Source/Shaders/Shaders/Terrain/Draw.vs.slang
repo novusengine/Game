@@ -36,7 +36,7 @@ struct VSOutput
     uint instanceID : TEXCOORD0;
 #endif
 #if SVSM_PASS
-    float4 clipDistances : SV_ClipDistance; // Fixed-function culls fragments outside the draw's clip rect
+    float clipDistances[4] : SV_ClipDistance; // Fixed-function culls fragments outside the draw's clip rect
 #endif
 };
 
@@ -53,7 +53,10 @@ VSOutput main(VSInput input)
         const float NaN = asfloat(0b01111111100000000000000000000000);
         output.position = float4(NaN, NaN, NaN, NaN);
 #if SVSM_PASS
-        output.clipDistances = float4(-1.0f, -1.0f, -1.0f, -1.0f);
+        output.clipDistances[0] = -1.0f;
+        output.clipDistances[1] = -1.0f;
+        output.clipDistances[2] = -1.0f;
+        output.clipDistances[3] = -1.0f;
 #endif
         return output;
     }
@@ -70,7 +73,11 @@ VSOutput main(VSInput input)
     output.instanceID = instanceData.globalCellID;
 #endif
 #if SVSM_PASS
-    output.clipDistances = SVSMRectClipDistances(vertex.position, _constants.viewIndex - 1, _constants.svsmRectIndex, _cameras[0].eyePosition.xyz, _svsmData);
+    float4 clipDistances = SVSMRectClipDistances(vertex.position, _constants.viewIndex - 1, _constants.svsmRectIndex, _cameras[0].eyePosition.xyz, _svsmData);
+    output.clipDistances[0] = clipDistances.x;
+    output.clipDistances[1] = clipDistances.y;
+    output.clipDistances[2] = clipDistances.z;
+    output.clipDistances[3] = clipDistances.w;
 #endif
 
     return output;

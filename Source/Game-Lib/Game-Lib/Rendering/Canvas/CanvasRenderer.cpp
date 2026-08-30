@@ -331,12 +331,14 @@ void CanvasRenderer::Update(f32 deltaTime)
     uiRegistry->view<DirtyChildClipper>().each([&](entt::entity entity)
     {
         ZoneScopedN("CanvasRenderer::PropagateChildClipper");
-        auto& clipper = uiRegistry->get<Clipper>(entity);
-
         transformSystem2D.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
         {
             auto& childClipper = uiRegistry->get<Clipper>(childEntity);
-            childClipper.clipRegionOverrideEntity = (clipper.clipChildren) ? entity : entt::null;
+            // Re-resolve from the transform ancestry instead of assigning this
+            // source to every descendant. This keeps the nearest nested clipper
+            // when multiple DirtyChildClipper sources are processed together.
+            childClipper.clipRegionOverrideEntity = ECS::Util::UI::GetClippingAncestor(uiRegistry, childEntity);
+            ECS::Util::UI::RecomputeClipSlots(uiRegistry, childEntity);
 
             uiRegistry->emplace_or_replace<DirtyWidgetData>(childEntity);
         });
@@ -352,8 +354,7 @@ void CanvasRenderer::Update(f32 deltaTime)
         // pairs DirtyWidgetTransform with DirtyWidgetData so the transform pass above reserves it
         // first; this guards any path that bakes data without a transform (one identity frame, then
         // the queued transform sets the matrix).
-        if (widget.type != WidgetType::Canvas && widget.gpuMatrixSlot == -1 &&
-            widget.worldTransformIndex == std::numeric_limits<u32>().max())
+        if (widget.type != WidgetType::Canvas && widget.gpuMatrixSlot == -1 && widget.worldTransformIndex == std::numeric_limits<u32>().max())
         {
             widget.gpuMatrixSlot = static_cast<i32>(ReserveMatrixSlot());
             uiRegistry->emplace_or_replace<DirtyWidgetTransform>(entity);
@@ -824,7 +825,7 @@ void CanvasRenderer::CreatePermanentResources()
     dataTextureDesc.data = new u8[4]{ 255, 255, 255, 255 }; // White, because UI color is multiplied with this
     dataTextureDesc.debugName = "UIDebugTexture";
 
-    u32 arrayIndex = 0;
+    size_t arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
 
     Renderer::DataTextureDesc additiveDataTextureDesc;
@@ -1060,12 +1061,18 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
     const Renderer::FontMetrics& metrics = font->metrics;
 
     f32 fontSize = textTemplate.size;
+    const f32 lineAdvance = fontSize * static_cast<f32>(metrics.lineHeight);
+    const f32 glyphHeight = fontSize * static_cast<f32>(metrics.ascenderY - metrics.descenderY);
+    const f32 lineLeading = std::max(0.0f, lineAdvance - glyphHeight);
+
+    // Center the font's ascender/descender box inside the measured line box. Widget anchors then
+    // position every string consistently while glyph vertices continue to use baseline coordinates.
+    const f32 baselineFromBottom = -fontSize * static_cast<f32>(metrics.descenderY) + lineLeading * 0.5f;
 
     utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
     utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
 
-    f32 textLineHeightOffset = (fontSize * static_cast<f32>(metrics.lineHeight)) * text.numCharsNewLine;
-    vec2 penPos = vec2(0.0f, textLineHeightOffset);// fontScale* metrics.ascenderY);
+    vec2 penPos = vec2(0.0f, baselineFromBottom + lineAdvance * text.numCharsNewLine);
 
     u32 vertexIndex = static_cast<u32>(text.gpuVertexIndex);
     for (; it != endIt; it++)
@@ -1082,7 +1089,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
         if (c == '\n')
         {
             penPos.x = 0.0f;
-            penPos.y -= fontSize * static_cast<f32>(metrics.lineHeight);
+            penPos.y -= lineAdvance;
             continue;
         }
 
@@ -1180,8 +1187,8 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     drawData.cornerRadiusAndBorder = vec4(cornerRadius, normalizedBorderSize);
 
     // Update textures
-    u16 textureIndex = 0;
-    u16 additiveTextureIndex = 1;
+    size_t textureIndex = 0;
+    size_t additiveTextureIndex = 1;
 
     if (panelTemplate.setFlags.backgroundRT)
     {
@@ -1249,6 +1256,12 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     drawData.texCoord = vec4(texCoordMin, texCoordMax);
     drawData.sliceCoords = vec4(sliceCoordMin, sliceCoordMax);
 
+    // Per-panel feature flags so the pixel shader can skip work most panels don't use;
+    // stamped into packed2 together with the clip/mask indices below
+    u32 panelFlags = 0;
+    panelFlags |= !panelTemplate.foreground.empty() ? 0x1u : 0u;                          // has additive foreground
+    panelFlags |= glm::any(glm::greaterThan(sliceInsets, vec4(0.0f))) ? 0x2u : 0u;        // uses nine-slice
+
     // Clipping. Resolution happens on the GPU via _widgetClipRects / _widgetMaskInfo;
     // we only stamp the slot indexes here. The slot contents are owned by the clip
     // source (the ancestor with clipChildren=true, or self if hasClipMaskTexture).
@@ -1266,7 +1279,7 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
                 maskBoundsIndex = ancestorClipper.maskBufferIndex;
         }
 
-        drawData.packed2 = uvec4(clipBoundsIndex, maskBoundsIndex, 0u, 0u);
+        drawData.packed2 = uvec4(clipBoundsIndex, maskBoundsIndex, panelFlags, 0u);
     }
 
     // packed0.z = screen-matrix slot (0 = identity sentinel); packed0.w = 3D worldpos index (-1 = none).
@@ -1334,7 +1347,7 @@ void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Compon
 
     Renderer::TextureID fontTextureID = font->GetTextureID();
 
-    u32 fontTextureIndex;
+    size_t fontTextureIndex;
 
     auto textureIt = _textureIDToFontTexturesIndex.find(static_cast<Renderer::TextureID::type>(fontTextureID));
     if (textureIt != _textureIDToFontTexturesIndex.end())
@@ -1474,7 +1487,7 @@ vec2 CanvasRenderer::PixelSizeToNDC(const vec2& pixelSize, const vec2& screenSiz
     return vec2(2.0 * pixelSize.x / screenSize.x, 2.0 * pixelSize.y / screenSize.y);
 }
 
-u32 CanvasRenderer::AddTexture(Renderer::TextureID textureID)
+size_t CanvasRenderer::AddTexture(Renderer::TextureID textureID)
 {
     Renderer::TextureID::type typedID = static_cast<Renderer::TextureID::type>(textureID);
     if (_textureIDToIndex.contains(typedID))
@@ -1484,18 +1497,18 @@ u32 CanvasRenderer::AddTexture(Renderer::TextureID textureID)
     }
 
     // Add texture
-    u32 textureIndex = _renderer->AddTextureToArray(textureID, _textures);
+    size_t textureIndex = _renderer->AddTextureToArray(textureID, _textures);
 
     _textureIDToIndex[typedID] = textureIndex;
     return textureIndex;
 }
 
-u32 CanvasRenderer::LoadTextureByPath(std::string_view path)
+size_t CanvasRenderer::LoadTextureByPath(std::string_view path)
 {
     return LoadTexture(path);
 }
 
-u32 CanvasRenderer::LoadTexture(std::string_view path)
+size_t CanvasRenderer::LoadTexture(std::string_view path)
 {
     u64 textureNameHash = Util::AssetPath::Hash(path);
 
@@ -1517,7 +1530,7 @@ u32 CanvasRenderer::LoadTexture(std::string_view path)
     textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
     textureDesc.size = fileHandle.GetSize();
 
-    u32 textureIndex;
+    size_t textureIndex;
     _renderer->LoadDataTextureIntoArray(textureDesc, _textures, textureIndex);
 
     _textureNameHashToIndex[textureNameHash] = textureIndex;
@@ -1545,6 +1558,7 @@ u8 CanvasRenderer::ResolvePriority(entt::registry* registry, entt::entity entity
     {
         return 1; // Focus tier. Drag/modal/tooltip slots reserved for future systems.
     }
+
     return 0;
 }
 
@@ -1570,6 +1584,7 @@ void CanvasRenderer::RebuildCanvasOrder(entt::registry* registry)
     {
         if (a.layer != b.layer) 
             return a.layer < b.layer;
+
         return a.iterSeenIndex < b.iterSeenIndex;
     });
 

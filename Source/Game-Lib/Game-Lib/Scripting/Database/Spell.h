@@ -17,12 +17,14 @@ namespace Scripting::Database
         i32 GetSpellInfo(Zenith* zenith);
         i32 GetIconInfo(Zenith* zenith);
         i32 CastByID(Zenith* zenith);
+        i32 CastAtPosition(Zenith* zenith);
     };
 
     static LuaRegister<> spellGlobalFunctions[] =
     {
         { "GetSpellInfo", SpellMethods::GetSpellInfo },
         { "GetIconInfo", SpellMethods::GetIconInfo },
-        { "CastByID", SpellMethods::CastByID }
+        { "CastByID", SpellMethods::CastByID },
+        { "CastAtPosition", SpellMethods::CastAtPosition }
     };
 }

@@ -47,8 +47,6 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleCheatKill);
     RegisterCommand(GameConsoleCommands::HandleCheatResurrect);
     RegisterCommand(GameConsoleCommands::HandleCheatCast);
-    RegisterCommand(GameConsoleCommands::HandleMapSync);
-    RegisterCommand(GameConsoleCommands::HandleMapSyncAll);
     RegisterCommand(GameConsoleCommands::HandleGotoAdd);
     RegisterCommand(GameConsoleCommands::HandleGotoAddHere);
     RegisterCommand(GameConsoleCommands::HandleGotoRemove);
@@ -58,7 +56,6 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleTriggerAdd);
     RegisterCommand(GameConsoleCommands::HandleTriggerRemove);
     RegisterCommand(GameConsoleCommands::HandleSpellSync);
-    RegisterCommand(GameConsoleCommands::HandleSpellSyncAll);
     RegisterCommand(GameConsoleCommands::HandleCreatureAddScript);
     RegisterCommand(GameConsoleCommands::HandleCreatureRemoveScript);
     RegisterCommand(GameConsoleCommands::HandleCheatPathGenerate);

@@ -17,6 +17,7 @@ class ImGuiInputBridge;
 class InputActionSystem;
 class InputPerformanceTest;
 class InputSystem;
+class PenInput;
 class GameRenderer;
 class ModelLoader;
 
@@ -72,6 +73,7 @@ private:
     InputActionSystem* _inputActionSystem = nullptr;
     InputPerformanceTest* _inputPerformanceTest = nullptr;
     ImGuiInputBridge* _imguiInputBridge = nullptr;
+    PenInput* _penInput = nullptr;
     GameRenderer* _gameRenderer = nullptr;
 
     Editor::EditorHandler* _editorHandler = nullptr;

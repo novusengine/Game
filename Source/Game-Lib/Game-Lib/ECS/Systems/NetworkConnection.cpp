@@ -12,6 +12,7 @@
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/Item.h"
+#include "Game-Lib/ECS/Components/InteractionCapabilities.h"
 #include "Game-Lib/ECS/Components/ProximityTrigger.h"
 #include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Components/Unit.h"
@@ -31,14 +32,22 @@
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
-#include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/CostSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/SpellSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/FactionUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/ProximityTriggerUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
-#include "Game-Lib/ECS/Util/Database/ItemUtil.h"
+#include "Game-Lib/ECS/Util/Database/SpellUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
+#include "Game-Lib/Editor/SpellEditorBackend.h"
+#include "Game-Lib/Editor/CreatureAIEditorBackend.h"
+#include "Game-Lib/Editor/MapEditorBackend.h"
+#include "Game-Lib/Editor/MapEditorData.h"
+#include "Game-Lib/Editor/InteractionEditorBackend.h"
+#include "Game-Lib/Editor/InteractionEditorData.h"
+#include "Game-Lib/Editor/SpellEditorData.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
@@ -61,8 +70,12 @@
 
 #include <MetaGen/EnumTraits.h>
 #include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 #include <MetaGen/Shared/CombatLog/CombatLog.h>
+#include <MetaGen/Shared/DatabaseEditor/DatabaseEditor.h>
+#include <MetaGen/Shared/Interaction/Interaction.h>
 #include <MetaGen/Shared/Packet/Packet.h>
+#include <MetaGen/Shared/Spell/Spell.h>
 #include <MetaGen/Shared/Unit/Unit.h>
 
 #include <Scripting/LuaManager.h>
@@ -71,26 +84,130 @@
 #include <entt/entt.hpp>
 #include <imgui/ImGuiNotify.hpp>
 #include <libsodium/sodium.h>
+#include <robinhood/robinhood.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <limits>
 #include <numeric>
+#include <utility>
 
 AutoCVar_Int CVAR_NetworkDirectRemoteUnitPosition(CVarCategory::Network, "directRemoteUnitPosition", "Applies remote unit movement packet positions directly instead of interpolating", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
 
 namespace ECS::Systems
 {
+    static u64 CalculateAuraExpirationTimestamp(f32 duration)
+    {
+        if (duration == -1.0f)
+            return 0;
+
+        const u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        if (!std::isfinite(duration) || duration <= 0.0f)
+            return currentTime;
+
+        const f64 durationMilliseconds = static_cast<f64>(duration) * 1000.0;
+        const f64 maximumDurationMilliseconds = static_cast<f64>(std::numeric_limits<u64>::max() - currentTime);
+        if (durationMilliseconds >= maximumDurationMilliseconds)
+            return std::numeric_limits<u64>::max();
+
+        return currentTime + static_cast<u64>(durationMilliseconds);
+    }
+
+    enum class AutoAttackWeaponSlot
+    {
+        None,
+        MainHand,
+        OffHand
+    };
+
+    static AutoAttackWeaponSlot GetAutoAttackWeaponSlot(u32 spellID)
+    {
+        entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& dbContext = dbRegistry->ctx();
+        auto& clientDBSingleton = dbContext.get<Singletons::ClientDBSingleton>();
+        auto& spellSingleton = dbContext.get<Singletons::SpellSingleton>();
+
+        const std::vector<u32>* effectList = ECSUtil::Spell::GetSpellEffectList(spellSingleton, spellID);
+        if (!effectList || effectList->empty())
+            return AutoAttackWeaponSlot::None;
+
+        auto* effectStorage = clientDBSingleton.Get(ClientDBHash::SpellEffects);
+        const auto& effect = effectStorage->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(effectList->front());
+        if (static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(effect.effectType) != MetaGen::Shared::Spell::SpellEffectTypeEnum::WeaponDamage)
+            return AutoAttackWeaponSlot::None;
+
+        constexpr i32 MAIN_HAND_WEAPON_SLOT = 1;
+        constexpr i32 OFF_HAND_WEAPON_SLOT = 2;
+        if (effect.parameters[1] == MAIN_HAND_WEAPON_SLOT)
+            return AutoAttackWeaponSlot::MainHand;
+        if (effect.parameters[1] == OFF_HAND_WEAPON_SLOT)
+            return AutoAttackWeaponSlot::OffHand;
+
+        return AutoAttackWeaponSlot::None;
+    }
+
+    static u32 GetEquippedItemIDForAnimation(const Components::UnitEquipment& equipment, MetaGen::Shared::Unit::ItemEquipSlotEnum slot)
+    {
+        const u32 slotIndex = static_cast<u32>(slot);
+        const u32 itemID = equipment.equipmentSlotToItemID[slotIndex];
+        return itemID != 0 ? itemID : equipment.equipmentSlotToVisualItemID[slotIndex];
+    }
+
+    static bool QueueUnitAttackAnimation(entt::registry& registry, entt::entity entity, AutoAttackWeaponSlot weaponSlot)
+    {
+#if 0
+        // TODO: AnimationV2 queue weapon-specific main-hand and off-hand attack clips through the ModelV2 controller.
+        if (weaponSlot == AutoAttackWeaponSlot::None)
+            return false;
+
+        auto* unit = registry.try_get<Components::Unit>(entity);
+        auto* equipment = registry.try_get<Components::UnitEquipment>(entity);
+        auto* model = registry.try_get<Components::Model>(entity);
+        if (!unit || !equipment || !model)
+            return false;
+
+        const auto equipmentSlot = weaponSlot == AutoAttackWeaponSlot::OffHand
+            ? MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand
+            : MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand;
+        const u32 itemID = GetEquippedItemIDForAnimation(*equipment, equipmentSlot);
+        if (weaponSlot == AutoAttackWeaponSlot::OffHand && itemID == 0)
+            return false;
+
+        entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
+        auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+        const auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(itemID);
+
+        if (!ServiceLocator::GetGameRenderer()->GetModelLoader()->GetModelInfo(model->modelHash))
+            return false;
+
+        unit->attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
+        if (weaponSlot == AutoAttackWeaponSlot::OffHand)
+        {
+            unit->attackOffHandAnimation = ::Util::Unit::GetOffHandAttackAnimation(itemTemplate.categoryType);
+        }
+        else
+        {
+            unit->attackMainHandAnimation = ::Util::Unit::GetMainHandAttackAnimation(itemTemplate.categoryType);
+        }
+
+        return true;
+#else
+        (void)registry;
+        (void)entity;
+        (void)weaponSlot;
+        return false;
+#endif
+    }
+
     static void EmitUnitReactionChanged(entt::entity entity, Gameplay::Faction::Reaction oldReaction, Gameplay::Faction::Reaction newReaction)
     {
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         if (!zenith)
             return;
 
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::ReactionChanged, MetaGen::Game::Lua::UnitEventDataReactionChanged
-        {
-            .unitID = entt::to_integral(entity),
-            .oldReaction = static_cast<u8>(oldReaction),
-            .newReaction = static_cast<u8>(newReaction)
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::ReactionChanged, MetaGen::Game::Lua::UnitEventDataReactionChanged{ .unitID = entt::to_integral(entity), .oldReaction = static_cast<u8>(oldReaction), .newReaction = static_cast<u8>(newReaction) });
     }
 
     static void EmitReputationChanged(const Gameplay::Faction::ReputationChange& change)
@@ -217,6 +334,7 @@ namespace ECS::Systems
         networkState.isLoadingMap = false;
         networkState.isInWorld = false;
         networkState.pathToVisualize.clear();
+        networkState.interactionState.Reset();
         networkState.entityToNetworkID.clear();
         networkState.networkIDToEntity.clear();
         networkState.networkVisTree->RemoveAll();
@@ -498,89 +616,76 @@ namespace ECS::Systems
                     return true;
                 }
 
-                if (!registry->valid(targetEntity))
-                {
-                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
-                    return true;
-                }
+                 if (!registry->valid(targetEntity))
+                 {
+                     NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
+                     return true;
+                 }
 
-                auto* sourceUnit = registry->try_get<Components::Unit>(sourceEntity);
-                auto* targetUnit = registry->try_get<Components::Unit>(targetEntity);
+                 auto* sourceUnit = registry->try_get<Components::Unit>(sourceEntity);
+                 auto* targetUnit = registry->try_get<Components::Unit>(targetEntity);
 
-                if (!sourceUnit || !targetUnit)
-                {
-                    NC_LOG_WARNING("Network : Received Combat Event for entity without Unit Component ({0})", targetNetworkID.ToString());
-                    return true;
-                }
+                 if (!sourceUnit || !targetUnit)
+                 {
+                     NC_LOG_WARNING("Network : Received Combat Event for entity without Unit Component ({0})", targetNetworkID.ToString());
+                     return true;
+                 }
 
-                std::string result = "";
+                 if (sourceUnit->name.empty() || targetUnit->name.empty())
+                 {
+                     return true;
+                 }
 
-                if (eventID == MetaGen::Shared::CombatLog::CombatLogEventEnum::DamageDealt)
-                {
-                    // Damage Dealt
-                    if (overValue)
-                    {
-                        result = std::format("{} dealt {:.2f} damage to {} (Overkill: {:.2f})", sourceUnit->name, value, targetUnit->name, overValue);
-                    }
-                    else
-                    {
-                        result = std::format("{} dealt {:.2f} damage to {}", sourceUnit->name, value, targetUnit->name);
-                    }
-                }
-                else
-                {
-                    // Healing Taken
+                 {
+                     Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+                     zenith->CallEvent(MetaGen::Game::Lua::GameEvent::CombatLog, MetaGen::Game::Lua::GameEventDataCombatLog{ .eventID = static_cast<u16>(eventID), .sourceName = sourceUnit->name, .targetName = targetUnit->name, .value1 = value, .value2 = overValue });
+                 }
+                 break;
+             }
 
-                    if (overValue)
-                    {
-                        result = std::format("{} healed {} for {:.2f} (Overheal: {:.2f})", sourceUnit->name, targetUnit->name, value, overValue);
-                    }
-                    else
-                    {
-                        result = std::format("{} healed {} for {:.2f}", sourceUnit->name, targetUnit->name, value);
-                    }
-                }
+             case MetaGen::Shared::CombatLog::CombatLogEventEnum::Resurrected:
+             {
+                 ObjectGUID targetNetworkID;
+                 f64 restoredHealth = 0.0f;
 
-                ImGui::InsertNotification({ ImGuiToastType::Success, 3000, "%s", result.c_str() });
-                break;
-            }
+                 if (!message.buffer->Deserialize(targetNetworkID))
+                     return false;
 
-            case MetaGen::Shared::CombatLog::CombatLogEventEnum::Resurrected:
-            {
-                ObjectGUID targetNetworkID;
-                f64 restoredHealth = 0.0f;
+                 if (!message.buffer->GetF64(restoredHealth))
+                     return false;
 
-                if (!message.buffer->Deserialize(targetNetworkID))
-                    return false;
+                 entt::entity targetEntity;
+                 if (!Util::Network::GetEntityIDFromObjectGUID(networkState, targetNetworkID, targetEntity))
+                 {
+                     NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
+                     return true;
+                 }
 
-                if (!message.buffer->GetF64(restoredHealth))
-                    return false;
+                 if (!registry->valid(targetEntity))
+                 {
+                     NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
+                     return true;
+                 }
 
-                entt::entity targetEntity;
-                if (!Util::Network::GetEntityIDFromObjectGUID(networkState, targetNetworkID, targetEntity))
-                {
-                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
-                    return true;
-                }
+                 auto* sourceUnit = registry->try_get<Components::Unit>(sourceEntity);
+                 auto* targetUnit = registry->try_get<Components::Unit>(targetEntity);
 
-                if (!registry->valid(targetEntity))
-                {
-                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
-                    return true;
-                }
+                 if (!sourceUnit || !targetUnit)
+                 {
+                     NC_LOG_WARNING("Network : Received Combat Event for entity without Unit Component ({0})", targetNetworkID.ToString());
+                     return true;
+                 }
 
-                auto* sourceUnit = registry->try_get<Components::Unit>(sourceEntity);
-                auto* targetUnit = registry->try_get<Components::Unit>(targetEntity);
+                 if (sourceUnit->name.empty() || targetUnit->name.empty())
+                 {
+                     return true;
+                 }
 
-                if (!sourceUnit || !targetUnit)
-                {
-                    NC_LOG_WARNING("Network : Received Combat Event for entity without Unit Component ({0})", targetNetworkID.ToString());
-                    return true;
-                }
-
-                std::string result = std::format("{} resurrected {} (Restored Health: {:.2f})", sourceUnit->name, targetUnit->name, restoredHealth);
-                ImGui::InsertNotification({ ImGuiToastType::Success, 3000, "%s", result.c_str() });
-                break;
+                 {
+                     Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+                     zenith->CallEvent(MetaGen::Game::Lua::GameEvent::CombatLog, MetaGen::Game::Lua::GameEventDataCombatLog{ .eventID = static_cast<u16>(MetaGen::Shared::CombatLog::CombatLogEventEnum::Resurrected), .sourceName = sourceUnit->name, .targetName = targetUnit->name, .value1 = restoredHealth, .value2 = 0.0 });
+                 }
+                 break;
             }
 
             default:
@@ -588,6 +693,7 @@ namespace ECS::Systems
                 break;
             }
         }
+
         return true;
     }
     bool HandleOnVisualizePath(Network::SocketID socketID, Network::Message& message)
@@ -606,6 +712,250 @@ namespace ECS::Systems
         networkState.pathToVisualize.resize(numPaths);
         memcpy(networkState.pathToVisualize.data(), positions.data(), numPaths * sizeof(vec3));
 
+        return true;
+    }
+
+    Editor::DatabaseEditorData* GetDatabaseEditorData(MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor, bool create)
+    {
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& context = registry.ctx();
+        using EditorType = MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum;
+        if (editor == EditorType::Spell)
+        {
+            if (context.contains<Editor::SpellEditorData>())
+                return &context.get<Editor::SpellEditorData>();
+
+            return create ? &context.emplace<Editor::SpellEditorData>() : nullptr;
+        }
+        if (editor == EditorType::Map)
+        {
+            if (context.contains<Editor::MapEditorData>())
+                return &context.get<Editor::MapEditorData>();
+
+            return create ? &context.emplace<Editor::MapEditorData>() : nullptr;
+        }
+        if (editor == EditorType::Interaction)
+        {
+            if (context.contains<Editor::InteractionEditorData>())
+                return &context.get<Editor::InteractionEditorData>();
+
+            return create ? &context.emplace<Editor::InteractionEditorData>() : nullptr;
+        }
+
+        return nullptr;
+    }
+
+    bool HandleOnDatabaseEditorSnapshotBegin(Network::SocketID, Network::Message& message)
+    {
+        u32 requestID = 0;
+        MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor;
+        u8 artifactCount = 0;
+        u64 revision = 0;
+        if (!message.buffer->GetU32(requestID) || !message.buffer->Get(editor) || !message.buffer->GetU8(artifactCount) || !message.buffer->GetU64(revision) || message.buffer->GetActiveSize() != 0 || editor >= MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Count)
+        {
+            return false;
+        }
+
+        Editor::DatabaseEditorData* editorData = GetDatabaseEditorData(editor, true);
+        if (!editorData || !editorData->BeginSnapshot(requestID, artifactCount, revision))
+        {
+            if (editorData)
+                editorData->FailSnapshot(requestID);
+            return false;
+        }
+
+        return true;
+    }
+
+    bool HandleOnDatabaseEditorChangeSet(Network::SocketID, Network::Message& message)
+    {
+        using EditorType = MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum;
+        EditorType editor;
+        if (!message.buffer->Get(editor) || editor >= EditorType::Count)
+            return false;
+
+        Editor::DatabaseEditorData* editorData = GetDatabaseEditorData(editor, false);
+        u64 revision = 0;
+        u16 changeCount = 0;
+        constexpr size_t MAX_CHANGE_SET_PACKET_PAYLOAD_SIZE = std::min<size_t>(std::numeric_limits<u16>::max(), Network::DEFAULT_BUFFER_SIZE - sizeof(Network::MessageHeader));
+        constexpr size_t CHANGE_SET_HEADER_SIZE = sizeof(u8) + sizeof(u64) + sizeof(u16);
+        constexpr size_t CHANGE_HEADER_SIZE = sizeof(u8) + sizeof(u8) + sizeof(u32) + sizeof(u32);
+        constexpr size_t MAX_CHANGE_SET_BODY_SIZE = MAX_CHANGE_SET_PACKET_PAYLOAD_SIZE - CHANGE_SET_HEADER_SIZE;
+        constexpr u16 MAX_CHANGE_SET_CHANGES = static_cast<u16>(MAX_CHANGE_SET_BODY_SIZE / CHANGE_HEADER_SIZE);
+        if (!message.buffer->GetU64(revision) || !message.buffer->GetU16(changeCount) || changeCount == 0 || changeCount > MAX_CHANGE_SET_CHANGES)
+        {
+            if (editorData)
+                editorData->FailChangeSet();
+            return false;
+        }
+
+        const size_t payloadSize = message.buffer->GetActiveSize();
+        if (payloadSize > MAX_CHANGE_SET_BODY_SIZE)
+        {
+            if (editorData)
+                editorData->FailChangeSet();
+            return false;
+        }
+
+        if (!editorData)
+            return message.buffer->SkipRead(payloadSize);
+        // Revision gaps and canonical apply failures are editor recovery events, not connection framing failures.
+        editorData->ReceiveChangeSet(revision, changeCount, message.buffer->GetReadPointer(), payloadSize);
+        return message.buffer->SkipRead(payloadSize);
+    }
+
+    bool HandleOnDatabaseEditorSnapshotChunk(Network::SocketID, Network::Message& message)
+    {
+        u32 requestID = 0;
+        MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor;
+        u8 typeValue = 0;
+        u32 totalSize = 0;
+        u32 offset = 0;
+        u16 chunkSize = 0;
+        if (!message.buffer->GetU32(requestID) || !message.buffer->Get(editor) || !message.buffer->GetU8(typeValue) || !message.buffer->GetU32(totalSize) || !message.buffer->GetU32(offset) || !message.buffer->GetU16(chunkSize))
+        {
+            return false;
+        }
+
+        constexpr size_t SNAPSHOT_CHUNK_HEADER_SIZE = sizeof(u32) + sizeof(u8) + sizeof(u8) + sizeof(u32) + sizeof(u32) + sizeof(u16);
+        constexpr size_t MAX_SNAPSHOT_CHUNK_SIZE = Network::DEFAULT_BUFFER_SIZE - sizeof(Network::MessageHeader) - SNAPSHOT_CHUNK_HEADER_SIZE;
+        if (editor >= MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Count || chunkSize == 0 || chunkSize > MAX_SNAPSHOT_CHUNK_SIZE)
+            return false;
+
+        std::vector<u8> bytes(chunkSize);
+        if (!message.buffer->GetBytes(bytes.data(), bytes.size()))
+            return false;
+
+        Editor::DatabaseEditorData* editorData = GetDatabaseEditorData(editor, false);
+        if (!editorData || !editorData->AppendSnapshotChunk(requestID, typeValue, totalSize, offset, bytes.data(), chunkSize))
+        {
+            if (editorData)
+                editorData->FailSnapshot(requestID);
+            return false;
+        }
+
+        return true;
+    }
+
+    bool HandleOnDatabaseEditorSnapshotEnd(Network::SocketID, Network::Message& message)
+    {
+        u32 requestID = 0;
+        MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum editor;
+        u8 succeeded = 0;
+        if (!message.buffer->GetU32(requestID) || !message.buffer->Get(editor) || !message.buffer->GetU8(succeeded) || message.buffer->GetActiveSize() != 0 || succeeded > 1 || editor >= MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Count)
+        {
+            return false;
+        }
+
+        Editor::DatabaseEditorData* editorData = GetDatabaseEditorData(editor, false);
+        if (!editorData)
+            return false;
+
+        const bool loaded = editorData->CompleteSnapshot(requestID, succeeded == 1);
+        const char* notification = "The database editor snapshot completed.";
+        switch (editor)
+        {
+            case MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Spell:
+                notification = loaded ? "Spell editor data loaded from the server." : "The server rejected or failed the Spell editor snapshot.";
+                break;
+
+            case MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Map:
+                notification = loaded ? "Map editor data loaded from the server." : "The server rejected or failed the Map editor snapshot.";
+                break;
+
+            case MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum::Interaction:
+                notification = loaded ? "Interaction editor data loaded from the server." : "The server rejected or failed the Interaction editor snapshot.";
+                break;
+
+            default:
+                break;
+        }
+
+        ImGui::InsertNotification({ loaded ? ImGuiToastType::Success : ImGuiToastType::Error, 3000, notification });
+        return true;
+    }
+
+    bool HandleOnDatabaseEditorMutationResult(Network::SocketID, MetaGen::Shared::Packet::ServerDatabaseEditorMutationResultPacket& packet)
+    {
+        using EditorType = MetaGen::Shared::DatabaseEditor::DatabaseEditorTypeEnum;
+        using MutationType = MetaGen::Shared::DatabaseEditor::DatabaseEditorMutationTypeEnum;
+        if (packet.editor >= static_cast<u8>(EditorType::Count) || packet.mutationType >= static_cast<u8>(MutationType::Count) || packet.succeeded > 1)
+            return false;
+
+        Editor::DatabaseEditorData* editorData = GetDatabaseEditorData(static_cast<EditorType>(packet.editor), true);
+        if (!editorData)
+            return false;
+
+        editorData->RecordMutationResult({ .requestID = packet.requestID, .artifact = packet.artifact, .artifactID = packet.artifactID, .mutationType = static_cast<MutationType>(packet.mutationType), .succeeded = packet.succeeded == 1, .revision = packet.revision, .response = std::move(packet.response) });
+        return true;
+    }
+
+    Editor::CreatureAIEditorBackend* GetCreatureAIEditorBackend()
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->dbRegistry)
+            return nullptr;
+
+        auto& context = registries->dbRegistry->ctx();
+        return context.contains<Editor::CreatureAIEditorBackend>()
+            ? &context.get<Editor::CreatureAIEditorBackend>()
+            : &context.emplace<Editor::CreatureAIEditorBackend>();
+    }
+
+    bool HandleOnDevelopmentActionResult(Network::SocketID, MetaGen::Shared::Packet::ServerDevelopmentActionResultPacket& packet)
+    {
+        Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        if (backend)
+            backend->HandleActionResult(packet);
+        return true;
+    }
+
+    bool HandleOnDevelopmentTransferBegin(Network::SocketID, Network::Message& message)
+    {
+        u32 requestID = 0;
+        u32 totalSize = 0;
+        u64 revision = 0;
+        if (!message.buffer->GetU32(requestID) || !message.buffer->GetU32(totalSize) || !message.buffer->GetU64(revision))
+            return false;
+
+        Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        return backend && backend->BeginTransfer(requestID, totalSize, revision);
+    }
+
+    bool HandleOnDevelopmentTransferChunk(Network::SocketID, Network::Message& message)
+    {
+        u32 requestID = 0;
+        u32 offset = 0;
+        u16 chunkSize = 0;
+        if (!message.buffer->GetU32(requestID) || !message.buffer->GetU32(offset) || !message.buffer->GetU16(chunkSize) || chunkSize == 0 || chunkSize > 1024)
+        {
+            return false;
+        }
+
+        std::vector<u8> bytes(chunkSize);
+        if (!message.buffer->GetBytes(bytes.data(), bytes.size()))
+            return false;
+
+        Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        return backend && backend->AppendTransfer(requestID, offset, bytes.data(), chunkSize);
+    }
+
+    bool HandleOnDevelopmentTransferEnd(Network::SocketID, Network::Message& message)
+    {
+        u32 requestID = 0;
+        u8 succeeded = 0;
+        if (!message.buffer->GetU32(requestID) || !message.buffer->GetU8(succeeded) || succeeded > 1)
+            return false;
+
+        Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        return backend && backend->CompleteTransfer(requestID, succeeded == 1);
+    }
+
+    bool HandleOnCreatureAIDevelopmentInfo(Network::SocketID, MetaGen::Shared::Packet::ServerCreatureAIDevelopmentInfoPacket& packet)
+    {
+        Editor::CreatureAIEditorBackend* backend = GetCreatureAIEditorBackend();
+        if (backend)
+            backend->HandleInspection(packet);
         return true;
     }
 
@@ -722,7 +1072,7 @@ namespace ECS::Systems
         }
 
         const auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(packet.mapID);
-        const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
+        const std::string& mapInternalName = mapStorage->GetString(map.internalName);
 
         u32 internalMapNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
         mapLoader->LoadMap(internalMapNameHash);
@@ -786,6 +1136,332 @@ namespace ECS::Systems
 
     bool HandleOnCheatCommandResult(Network::SocketID socketID, MetaGen::Shared::Packet::ServerCheatCommandResultPacket& packet)
     {
+        return true;
+    }
+
+    bool ReadBoundedString(Bytebuffer& buffer, std::string& value, size_t maxLength)
+    {
+        value.clear();
+        value.reserve(std::min(buffer.GetActiveSize(), maxLength));
+        for (size_t length = 0; length <= maxLength; length++)
+        {
+            u8 character = 0;
+            if (!buffer.GetU8(character))
+                return false;
+            if (character == 0)
+                return true;
+            if (length == maxLength)
+                return false;
+
+            value.push_back(static_cast<char>(character));
+        }
+
+        return false;
+    }
+
+    bool HandleOnInteractionSnapshot(Network::SocketID, Network::Message& message)
+    {
+        constexpr u16 MAX_OPTIONS = 64;
+        constexpr size_t MAX_TEXT_LENGTH = 4096;
+        constexpr size_t MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH = MAX_TEXT_LENGTH + 32;
+
+        MetaGen::Shared::Packet::ServerInteractionSnapshotPacket packet;
+        const bool decodedIdentity = message.buffer->GetU64(packet.sessionID) && message.buffer->GetU32(packet.revision) && message.buffer->Deserialize(packet.sourceGUID);
+        const bool decodedMetadata = decodedIdentity && message.buffer->GetU8(packet.surfaceType) && message.buffer->GetU8(packet.questMask);
+        const bool decodedText = decodedMetadata && ReadBoundedString(*message.buffer, packet.heading, MAX_TEXT_LENGTH) && ReadBoundedString(*message.buffer, packet.greeting, MAX_TEXT_LENGTH);
+        const bool decodedCounts = decodedText && message.buffer->GetU16(packet.optionCount) && message.buffer->GetU16(packet.objectiveCount) && message.buffer->GetU16(packet.rewardCount);
+        if (!decodedCounts)
+            return false;
+
+        const bool identityValid = packet.sessionID != 0 && packet.revision != 0 && packet.sourceGUID.IsValid();
+        const bool surfaceValid = packet.surfaceType < static_cast<u8>(MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Count);
+        const bool questMaskValid = (packet.questMask & ~static_cast<u8>(MetaGen::Shared::Interaction::QuestInteractionMaskEnum::All)) == 0;
+        const bool countsValid = packet.optionCount <= MAX_OPTIONS && packet.objectiveCount <= 16 && packet.rewardCount <= 64;
+        if (!identityValid || !surfaceValid || !questMaskValid || !countsValid || (packet.greeting.empty() && packet.optionCount == 0))
+            return false;
+
+        Singletons::InteractionSessionState session{
+            .id = packet.sessionID,
+            .revision = packet.revision,
+            .sourceGUID = packet.sourceGUID,
+            .surfaceType = static_cast<MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum>(packet.surfaceType),
+            .questMask = static_cast<MetaGen::Shared::Interaction::QuestInteractionMaskEnum>(packet.questMask),
+            .heading = std::move(packet.heading),
+            .greeting = std::move(packet.greeting)
+        };
+
+        const Singletons::CostSingleton* costs = nullptr;
+        if (session.surfaceType == MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Vendor)
+        {
+            const auto& databaseContext = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx();
+            costs = databaseContext.find<Singletons::CostSingleton>();
+        }
+
+        session.options.reserve(packet.optionCount);
+        for (u16 i = 0; i < packet.optionCount; i++)
+        {
+            Singletons::InteractionOptionState option;
+            u8 enabled = 0;
+            if (session.surfaceType == MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Vendor)
+            {
+                const bool decodedItem = message.buffer->GetU64(option.token) && message.buffer->GetU32(option.itemTemplateID) && message.buffer->GetU32(option.quantity);
+                const bool decodedCost = decodedItem && message.buffer->GetU32(option.costID);
+                const bool decodedState = decodedCost && message.buffer->GetU8(enabled) && ReadBoundedString(*message.buffer, option.disabledReason, MAX_TEXT_LENGTH);
+                if (!decodedState || option.itemTemplateID == 0 || option.quantity == 0)
+                    return false;
+            }
+            else
+            {
+                u8 kind = 0;
+                const bool decodedIdentity = message.buffer->GetU64(option.token) && message.buffer->GetU16(option.icon) && message.buffer->GetU8(kind) && message.buffer->GetU8(enabled);
+                const bool decodedText = decodedIdentity && ReadBoundedString(*message.buffer, option.text, MAX_TEXT_LENGTH);
+                const bool decodedDisabledReason = decodedText && ReadBoundedString(*message.buffer, option.disabledReason, MAX_TEXT_LENGTH);
+                if (!decodedDisabledReason || option.text.empty() || kind >= static_cast<u8>(MetaGen::Shared::Interaction::InteractionOptionKindEnum::Count))
+                    return false;
+
+                option.kind = static_cast<MetaGen::Shared::Interaction::InteractionOptionKindEnum>(kind);
+            }
+
+            if (option.token == 0 || enabled > 1)
+                return false;
+
+            option.enabled = enabled == 1;
+            if (session.surfaceType == MetaGen::Shared::Interaction::InteractionSurfaceTypeEnum::Vendor)
+            {
+                option.costDataAvailable = option.costID == 0;
+                if (costs)
+                {
+                    const auto currencyItr = costs->currencyComponentsByCostID.find(option.costID);
+                    const auto itemItr = costs->itemComponentsByCostID.find(option.costID);
+                    option.costDataAvailable = option.costDataAvailable || currencyItr != costs->currencyComponentsByCostID.end() || itemItr != costs->itemComponentsByCostID.end();
+                    if (currencyItr != costs->currencyComponentsByCostID.end())
+                    {
+                        option.costCurrencyComponents.reserve(currencyItr->second.size());
+                        for (const auto& component : currencyItr->second)
+                        {
+                            option.costCurrencyComponents.push_back({ component.currencyID, component.amount });
+                        }
+                    }
+
+                    if (itemItr != costs->itemComponentsByCostID.end())
+                    {
+                        option.costItemComponents.reserve(itemItr->second.size());
+                        for (const auto& component : itemItr->second)
+                        {
+                            option.costItemComponents.push_back({ component.itemTemplateID, component.amount });
+                        }
+                    }
+                }
+
+                option.enabled = option.enabled && option.costDataAvailable;
+            }
+
+            session.options.push_back(std::move(option));
+        }
+
+        session.objectives.reserve(packet.objectiveCount);
+        for (u16 i = 0; i < packet.objectiveCount; i++)
+        {
+            Singletons::InteractionSessionState::QuestObjective objective;
+            u8 optional = 0;
+            const bool decodedText = ReadBoundedString(*message.buffer, objective.text, MAX_TEXT_LENGTH);
+            const bool decodedDisplayText = decodedText && ReadBoundedString(*message.buffer, objective.displayText, MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH);
+            const bool decodedProgress = decodedDisplayText && message.buffer->GetU32(objective.progress) && message.buffer->GetU32(objective.required) && message.buffer->GetU8(optional);
+            if (!decodedProgress)
+                return false;
+
+            const bool objectiveValid = !objective.text.empty() && !objective.displayText.empty() && objective.required != 0 && objective.progress <= objective.required && optional <= 1;
+            if (!objectiveValid)
+                return false;
+
+            objective.optional = optional == 1;
+
+            session.objectives.push_back(std::move(objective));
+        }
+
+        session.rewards.reserve(packet.rewardCount);
+        robin_hood::unordered_flat_set<u32> rewardSelectionIDs;
+        rewardSelectionIDs.reserve(packet.rewardCount);
+        for (u16 i = 0; i < packet.rewardCount; i++)
+        {
+            Singletons::InteractionSessionState::QuestReward reward;
+            u8 type = 0;
+            u8 amountNegative = 0;
+            const bool decodedIdentity = message.buffer->GetU32(reward.groupID) && message.buffer->GetU32(reward.selectionID) && message.buffer->GetU8(type) && message.buffer->GetU32(reward.resourceID);
+            const bool decodedValue = decodedIdentity && message.buffer->GetU64(reward.amount) && message.buffer->GetU8(amountNegative) && message.buffer->GetU8(reward.selectionCount) && message.buffer->GetU32(reward.flags);
+            if (!decodedValue)
+                return false;
+
+            const bool identityValid = reward.groupID != 0 && reward.selectionID != 0 && !rewardSelectionIDs.contains(reward.selectionID) && type < static_cast<u8>(MetaGen::Shared::Interaction::QuestRewardTypeEnum::Count);
+            const bool metadataValid = amountNegative <= 1 && reward.selectionCount <= 16 && (reward.flags & ~static_cast<u32>(MetaGen::Shared::Interaction::QuestRewardFlagsEnum::All)) == 0;
+            if (!identityValid || !metadataValid)
+                return false;
+
+            reward.type = static_cast<MetaGen::Shared::Interaction::QuestRewardTypeEnum>(type);
+            reward.amountNegative = amountNegative == 1;
+            if (reward.amountNegative && reward.type != MetaGen::Shared::Interaction::QuestRewardTypeEnum::Reputation)
+                return false;
+
+            rewardSelectionIDs.insert(reward.selectionID);
+            session.rewards.push_back(reward);
+        }
+
+        robin_hood::unordered_flat_map<u32, u8> selectedByGroup;
+        for (const auto& reward : session.rewards)
+        {
+            u8& selectedCount = selectedByGroup[reward.groupID];
+            if (reward.selectionCount != 0 && selectedCount < reward.selectionCount)
+            {
+                session.selectedRewardSelectionIDs.insert(reward.selectionID);
+                selectedCount++;
+            }
+        }
+
+        if (message.buffer->GetActiveSize() != 0)
+            return false;
+
+        auto& networkState = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<Singletons::NetworkState>();
+        networkState.interactionState.activeSession = std::move(session);
+        networkState.interactionState.lastClosedSessionID = 0;
+        networkState.interactionState.lastCloseReason = MetaGen::Shared::Interaction::InteractionCloseReasonEnum::Count;
+        networkState.interactionState.lastResultSessionID = 0;
+        networkState.interactionState.lastResultRevision = 0;
+        networkState.interactionState.lastResult = MetaGen::Shared::Interaction::InteractionResultEnum::Count;
+        networkState.interactionState.Touch();
+        return true;
+    }
+
+    bool HandleOnInteractionClose(Network::SocketID, MetaGen::Shared::Packet::ServerInteractionClosePacket& packet)
+    {
+        if (packet.sessionID == 0 || packet.reason >= static_cast<u8>(MetaGen::Shared::Interaction::InteractionCloseReasonEnum::Count))
+            return false;
+
+        auto& interactionState = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<Singletons::NetworkState>().interactionState;
+        if (interactionState.activeSession && interactionState.activeSession->id == packet.sessionID)
+            interactionState.activeSession.reset();
+        interactionState.lastClosedSessionID = packet.sessionID;
+        interactionState.lastCloseReason = static_cast<MetaGen::Shared::Interaction::InteractionCloseReasonEnum>(packet.reason);
+        interactionState.Touch();
+        return true;
+    }
+
+    bool HandleOnInteractionResult(Network::SocketID, MetaGen::Shared::Packet::ServerInteractionResultPacket& packet)
+    {
+        const bool isOpenRejection = packet.sessionID == 0 && packet.revision == 0;
+        const bool isSessionResult = packet.sessionID != 0 && packet.revision != 0;
+        if ((!isOpenRejection && !isSessionResult) || packet.result >= static_cast<u8>(MetaGen::Shared::Interaction::InteractionResultEnum::Count))
+            return false;
+        if (isOpenRejection && packet.result != static_cast<u8>(MetaGen::Shared::Interaction::InteractionResultEnum::Unavailable))
+            return false;
+
+        auto& interactionState = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<Singletons::NetworkState>().interactionState;
+        interactionState.lastResultSessionID = packet.sessionID;
+        interactionState.lastResultRevision = packet.revision;
+        interactionState.lastResult = static_cast<MetaGen::Shared::Interaction::InteractionResultEnum>(packet.result);
+        interactionState.Touch();
+        return true;
+    }
+
+    bool HandleOnUnitInteractionUpdate(Network::SocketID, MetaGen::Shared::Packet::ServerUnitInteractionUpdatePacket& packet)
+    {
+        constexpr u8 VALID_CAPABILITIES = static_cast<u8>(MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum::All);
+        constexpr u8 VALID_QUEST_MASK = static_cast<u8>(MetaGen::Shared::Interaction::QuestInteractionMaskEnum::All);
+        if (!packet.guid.IsValid() || (packet.capabilities & static_cast<u8>(~VALID_CAPABILITIES)) != 0 || (packet.questMask & static_cast<u8>(~VALID_QUEST_MASK)) != 0)
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+        entt::entity entity = entt::null;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
+        {
+            NC_LOG_WARNING("Network : Received ServerUnitInteractionUpdate for unknown entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        if (packet.capabilities == 0)
+        {
+            registry->remove<Components::InteractionCapabilities>(entity);
+        }
+        else
+        {
+            registry->emplace_or_replace<Components::InteractionCapabilities>(entity, Components::InteractionCapabilities{ .value = static_cast<MetaGen::Shared::Interaction::InteractionCapabilityMaskEnum>(packet.capabilities), .questMask = static_cast<MetaGen::Shared::Interaction::QuestInteractionMaskEnum>(packet.questMask) });
+        }
+
+        return true;
+    }
+
+    bool HandleOnQuestLogSnapshot(Network::SocketID, Network::Message& message)
+    {
+        constexpr u8 MAX_QUESTS = 32;
+        constexpr u8 MAX_OBJECTIVES = 16;
+        constexpr size_t MAX_TEXT_LENGTH = 4096;
+        constexpr size_t MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH = MAX_TEXT_LENGTH + 32;
+        u64 revision = 0;
+        u8 questCount = 0;
+        if (!message.buffer->GetU64(revision) || !message.buffer->GetU8(questCount) || revision == 0 || questCount > MAX_QUESTS)
+            return false;
+
+        std::vector<Singletons::InteractionState::QuestLogEntry> entries;
+        entries.reserve(questCount);
+        for (u8 i = 0; i < questCount; i++)
+        {
+            auto& quest = entries.emplace_back();
+            u8 state = 0;
+            u8 objectiveCount = 0;
+            const bool decodedIdentity = message.buffer->GetU32(quest.id) && message.buffer->GetU8(state);
+            const bool decodedText = decodedIdentity && ReadBoundedString(*message.buffer, quest.title, MAX_TEXT_LENGTH) && ReadBoundedString(*message.buffer, quest.logText, MAX_TEXT_LENGTH);
+            const bool decodedMetadata = decodedText && message.buffer->GetU8(objectiveCount);
+            if (!decodedMetadata)
+                return false;
+
+            const bool questValid = quest.id != 0 && state < static_cast<u8>(MetaGen::Shared::Interaction::CharacterQuestStateEnum::Count) && !quest.title.empty() && objectiveCount <= MAX_OBJECTIVES;
+            if (!questValid)
+                return false;
+
+            quest.state = static_cast<MetaGen::Shared::Interaction::CharacterQuestStateEnum>(state);
+            quest.objectives.reserve(objectiveCount);
+            for (u8 objectiveIndex = 0; objectiveIndex < objectiveCount; objectiveIndex++)
+            {
+                auto& objective = quest.objectives.emplace_back();
+                u8 optional = 0;
+                const bool decodedIdentity = message.buffer->GetU32(objective.id);
+                const bool decodedText = decodedIdentity && ReadBoundedString(*message.buffer, objective.text, MAX_TEXT_LENGTH);
+                const bool decodedDisplayText = decodedText && ReadBoundedString(*message.buffer, objective.displayText, MAX_OBJECTIVE_DISPLAY_TEXT_LENGTH);
+                const bool decodedProgress = decodedDisplayText && message.buffer->GetU32(objective.progress) && message.buffer->GetU32(objective.required) && message.buffer->GetU8(optional);
+                if (!decodedProgress)
+                    return false;
+
+                const bool identityValid = objective.id != 0 && !objective.text.empty() && !objective.displayText.empty();
+                const bool progressValid = objective.required != 0 && objective.progress <= objective.required && optional <= 1;
+                if (!identityValid || !progressValid)
+                    return false;
+
+                objective.optional = optional == 1;
+            }
+        }
+
+        if (message.buffer->GetActiveSize() != 0)
+            return false;
+
+        auto& state = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<Singletons::NetworkState>().interactionState;
+        if (revision < state.questLogRevision)
+            return true;
+
+        state.questLogRevision = revision;
+        state.questLog = std::move(entries);
+        state.Touch();
+        return true;
+    }
+
+    bool HandleOnQuestCommandResult(Network::SocketID, MetaGen::Shared::Packet::ServerQuestCommandResultPacket& packet)
+    {
+        if (packet.questID == 0 || packet.result >= static_cast<u8>(MetaGen::Shared::Interaction::InteractionResultEnum::Count))
+            return false;
+
+        auto& interactionState = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<Singletons::NetworkState>().interactionState;
+        interactionState.lastQuestCommandQuestID = packet.questID;
+        interactionState.lastQuestCommandResult = static_cast<MetaGen::Shared::Interaction::InteractionResultEnum>(packet.result);
+        interactionState.Touch();
         return true;
     }
 
@@ -885,9 +1561,7 @@ namespace ECS::Systems
         Util::Faction::AttachUnit(*registry, newEntity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
-            .unitID = entt::to_integral(newEntity)
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{ .unitID = entt::to_integral(newEntity) });
 
         return true;
     }
@@ -917,13 +1591,11 @@ namespace ECS::Systems
         registry->destroy(entity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Remove, MetaGen::Game::Lua::UnitEventDataRemove{
-            .unitID = entt::to_integral(entity)
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Remove, MetaGen::Game::Lua::UnitEventDataRemove{ .unitID = entt::to_integral(entity) });
 
         return true;
     }
-    
+
     bool HandleOnUnitEquippedItemUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitEquippedItemUpdatePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -952,6 +1624,14 @@ namespace ECS::Systems
         unitEquipment.equipmentSlotToItemID[packet.slot] = packet.itemID;
         unitEquipment.dirtyItemIDSlots.insert(static_cast<MetaGen::Shared::Unit::ItemEquipSlotEnum>(packet.slot));
         registry->emplace_or_replace<Components::UnitEquipmentDirty>(entity);
+
+        if (packet.slot == static_cast<u8>(MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand))
+        {
+            const auto* unit = registry->try_get<Components::Unit>(entity);
+            if (unit && unit->isAutoAttacking)
+                ::Util::Unit::SetAutoAttackVisualState(*registry, entity, true);
+        }
+
         return true;
     }
     bool HandleOnUnitVisualItemUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitVisualItemUpdatePacket& packet)
@@ -982,6 +1662,14 @@ namespace ECS::Systems
         unitEquipment.equipmentSlotToVisualItemID[packet.slot] = packet.itemID;
         unitEquipment.dirtyVisualItemIDSlots.insert(static_cast<MetaGen::Shared::Unit::ItemEquipSlotEnum>(packet.slot));
         registry->emplace_or_replace<Components::UnitVisualEquipmentDirty>(entity);
+
+        if (packet.slot == static_cast<u8>(MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand))
+        {
+            const auto* unit = registry->try_get<Components::Unit>(entity);
+            if (unit && unit->isAutoAttacking)
+                ::Util::Unit::SetAutoAttackVisualState(*registry, entity, true);
+        }
+
         return true;
     }
 
@@ -1017,13 +1705,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::PowerUpdate, MetaGen::Game::Lua::UnitEventDataPowerUpdate{
-            .unitID = entt::to_integral(entity),
-            .powerType = packet.kind,
-            .base = packet.base,
-            .current = packet.current,
-            .max = packet.max
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::PowerUpdate, MetaGen::Game::Lua::UnitEventDataPowerUpdate{ .unitID = entt::to_integral(entity), .powerType = packet.kind, .base = packet.base, .current = packet.current, .max = packet.max });
 
         return true;
     }
@@ -1053,13 +1735,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::ResistanceUpdate, MetaGen::Game::Lua::UnitEventDataResistanceUpdate{
-            .unitID = entt::to_integral(entity),
-            .resistanceType = packet.kind,
-            .base = packet.base,
-            .current = packet.current,
-            .max = packet.max
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::ResistanceUpdate, MetaGen::Game::Lua::UnitEventDataResistanceUpdate{ .unitID = entt::to_integral(entity), .resistanceType = packet.kind, .base = packet.base, .current = packet.current, .max = packet.max });
 
         return true;
     }
@@ -1089,12 +1765,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::StatUpdate, MetaGen::Game::Lua::UnitEventDataStatUpdate{
-            .unitID = entt::to_integral(entity),
-            .statType = packet.kind,
-            .base = packet.base,
-            .current = packet.current
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::StatUpdate, MetaGen::Game::Lua::UnitEventDataStatUpdate{ .unitID = entt::to_integral(entity), .statType = packet.kind, .base = packet.base, .current = packet.current });
         return true;
     }
 
@@ -1110,8 +1781,8 @@ namespace ECS::Systems
             return true;
         }
 
-        entt::entity targetEntity;
-        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.targetGUID, targetEntity))
+        entt::entity targetEntity = entt::null;
+        if (packet.targetGUID.IsValid() && !Util::Network::GetEntityIDFromObjectGUID(networkState, packet.targetGUID, targetEntity))
         {
             NC_LOG_WARNING("Network : Received Target Update for non existing target entity ({0})", packet.targetGUID.ToString());
             return true;
@@ -1121,10 +1792,7 @@ namespace ECS::Systems
         unit.targetEntity = targetEntity;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
-            .unitID = entt::to_integral(entity),
-            .targetID = entt::to_integral(targetEntity)
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{ .unitID = entt::to_integral(entity), .targetID = entt::to_integral(targetEntity) });
 
         return true;
     }
@@ -1153,8 +1821,13 @@ namespace ECS::Systems
             return true;
         }
 
-        if (packet.spellID == 1)
+        const AutoAttackWeaponSlot weaponSlot = GetAutoAttackWeaponSlot(packet.spellID);
+        if (weaponSlot != AutoAttackWeaponSlot::None)
         {
+            QueueUnitAttackAnimation(*registry, entity, weaponSlot);
+
+#if 0
+            // TODO: AnimationV2 restore the local main-hand and off-hand weapon timing used by legacy attack animation sequencing.
             auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
 
             entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
@@ -1192,6 +1865,7 @@ namespace ECS::Systems
                 
                 characterSingleton.secondaryAttackTimer = itemWeaponTemplate.speed;
             }
+#endif
         }
         else
         {
@@ -1201,6 +1875,47 @@ namespace ECS::Systems
             castInfo.castTime = packet.castTime;
             castInfo.timeToCast = packet.timeToCast;
         }
+
+        return true;
+    }
+    bool HandleOnUnitAttack(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitAttackPacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        entt::entity entity;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity) || !registry->valid(entity))
+        {
+            NC_LOG_WARNING("Network : Received Unit Attack for non existing entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        const auto weaponSlot = static_cast<AutoAttackWeaponSlot>(packet.weaponSlot);
+        if (weaponSlot != AutoAttackWeaponSlot::MainHand && weaponSlot != AutoAttackWeaponSlot::OffHand)
+        {
+            NC_LOG_WARNING("Network : Received Unit Attack with invalid weapon slot ({0})", packet.weaponSlot);
+            return true;
+        }
+
+        QueueUnitAttackAnimation(*registry, entity, weaponSlot);
+        return true;
+    }
+    bool HandleOnUnitAutoAttackState(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitAutoAttackStatePacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        entt::entity entity;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity) || !registry->valid(entity))
+        {
+            NC_LOG_WARNING("Network : Received Auto Attack State for non existing entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        if (!registry->all_of<Components::Unit>(entity))
+            return true;
+
+        ::Util::Unit::SetAutoAttackVisualState(*registry, entity, packet.enabled != 0);
 
         return true;
     }
@@ -1225,9 +1940,7 @@ namespace ECS::Systems
         OrbitalCamera::ResetForNewWorld(*registry);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{
-            .moverID = entt::to_integral(entity)
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{ .moverID = entt::to_integral(entity) });
 
         return true;
     }
@@ -1348,6 +2061,11 @@ namespace ECS::Systems
             characterSingleton.character->SetRotation(joltRotation);
             characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
 
+            auto& characterState = registry->ctx().get<Singletons::CharacterControllerSingleton>();
+            characterState.groundMovementMode = Singletons::CharacterGroundMovementMode::Fall;
+            characterState.unsupportedState.elapsedFallTime = 0.0f;
+            characterState.unsupportedState.elapsedFallDistance = 0.0f;
+
             auto& orbitalCameraSettings = registry->ctx().get<Singletons::OrbitalCameraSettings>();
             if (orbitalCameraSettings.entity != entt::null)
             {
@@ -1419,6 +2137,28 @@ namespace ECS::Systems
         return true;
     }
 
+    bool HandleOnItemUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerItemUpdatePacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+        const auto entityItr = networkState.networkIDToEntity.find(packet.guid);
+        if (entityItr == networkState.networkIDToEntity.end())
+        {
+            NC_LOG_WARNING("Network : Received ServerItemUpdate for non existing item ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        auto* item = registry->try_get<Components::Item>(entityItr->second);
+        if (!item)
+        {
+            NC_LOG_WARNING("Network : Received ServerItemUpdate for non item object ({0})", packet.guid.ToString());
+            return true;
+        }
+        item->count = packet.count;
+        item->durability = packet.durability;
+        return true;
+    }
+
     bool HandleOnContainerAdd(Network::SocketID socketID, MetaGen::Shared::Packet::ServerContainerAddPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -1480,11 +2220,7 @@ namespace ECS::Systems
         characterSingleton.containers[packet.index] = packet.guid;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::Add, MetaGen::Game::Lua::ContainerEventDataAdd{
-            .index = packet.index + 1u,
-            .numSlots = container.numSlots,
-            .itemID = container.itemID
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::Add, MetaGen::Game::Lua::ContainerEventDataAdd{ .index = packet.index + 1u, .numSlots = container.numSlots, .itemID = container.itemID });
         return true;
     }
     bool HandleOnContainerAddToSlot(Network::SocketID socketID, MetaGen::Shared::Packet::ServerContainerAddToSlotPacket& packet)
@@ -1550,12 +2286,7 @@ namespace ECS::Systems
         auto& item = registry->get<Components::Item>(itemEntity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::AddToSlot, MetaGen::Game::Lua::ContainerEventDataAddToSlot{
-            .containerIndex = packet.index + 1u,
-            .slotIndex = packet.slot + 1u,
-            .itemID = item.itemID,
-            .count = item.count
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::AddToSlot, MetaGen::Game::Lua::ContainerEventDataAddToSlot{ .containerIndex = packet.index + 1u, .slotIndex = packet.slot + 1u, .itemID = item.itemID, .count = item.count });
 
         return true;
     }
@@ -1622,10 +2353,7 @@ namespace ECS::Systems
         };
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::RemoveFromSlot, MetaGen::Game::Lua::ContainerEventDataRemoveFromSlot{
-            .containerIndex = packet.index + 1u,
-            .slotIndex = packet.slot + 1u
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::RemoveFromSlot, MetaGen::Game::Lua::ContainerEventDataRemoveFromSlot{ .containerIndex = packet.index + 1u, .slotIndex = packet.slot + 1u });
 
         return true;
     }
@@ -1793,12 +2521,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::SwapSlots, MetaGen::Game::Lua::ContainerEventDataSwapSlots{
-            .srcContainerIndex = packet.srcContainer + 1u,
-            .destContainerIndex = packet.dstContainer + 1u,
-            .srcSlotIndex = packet.srcSlot + 1u,
-            .destSlotIndex = packet.dstSlot + 1u
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::SwapSlots, MetaGen::Game::Lua::ContainerEventDataSwapSlots{ .srcContainerIndex = packet.srcContainer + 1u, .destContainerIndex = packet.dstContainer + 1u, .srcSlotIndex = packet.srcSlot + 1u, .destSlotIndex = packet.dstSlot + 1u });
 
         return true;
     }
@@ -1848,11 +2571,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::ChatMessageReceived, MetaGen::Game::Lua::GameEventDataChatMessageReceived{
-            .sender = senderName,
-            .channel = channel,
-            .message = packet.message
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::ChatMessageReceived, MetaGen::Game::Lua::GameEventDataChatMessageReceived{ .sender = senderName, .channel = channel, .message = packet.message });
 
         return true;
     }
@@ -1887,29 +2606,35 @@ namespace ECS::Systems
 
         auto& unitAuraInfo = registry.get<Components::UnitAuraInfo>(unitID);
 
-        // Calculate aura expiration timestamp
-        u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-        u64 expirationTime = currentTime + static_cast<u64>(packet.duration * 1000.0f);
+        u8 disposition = static_cast<u8>(MetaGen::Shared::Spell::AuraDispositionEnum::None);
+        u8 dispelType = static_cast<u8>(MetaGen::Shared::Spell::AuraDispelTypeEnum::None);
+        entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
+        if (clientDBSingleton.Has(ClientDBHash::SpellAura))
+        {
+            auto* spellAuraStorage = clientDBSingleton.Get(ClientDBHash::SpellAura);
+            if (spellAuraStorage->Has(packet.spellID))
+            {
+                const auto& spellAura = spellAuraStorage->Get<MetaGen::Shared::ClientDB::SpellAuraRecord>(packet.spellID);
+                disposition = spellAura.disposition;
+                dispelType = spellAura.dispelType;
+            }
+        }
 
         u32 auraIndex = static_cast<u32>(unitAuraInfo.auras.size());
         auto& auraInfo = unitAuraInfo.auras.emplace_back();
         auraInfo.unitID = entt::to_integral(unitID);
         auraInfo.auraID = packet.auraInstanceID;
         auraInfo.spellID = packet.spellID;
-        auraInfo.expireTimestamp = expirationTime;
+        auraInfo.expireTimestamp = CalculateAuraExpirationTimestamp(packet.duration);
         auraInfo.stacks = packet.stacks;
+        auraInfo.disposition = disposition;
+        auraInfo.dispelType = dispelType;
 
         unitAuraInfo.auraIDToAuraIndex[packet.auraInstanceID] = auraIndex;
-        unitAuraInfo.spellIDToAuraIndex[packet.spellID] = auraIndex;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraAdd, MetaGen::Game::Lua::UnitEventDataAuraAdd{
-            .unitID = entt::to_integral(unitID),
-            .auraID = packet.auraInstanceID,
-            .spellID = packet.spellID,
-            .duration = packet.duration,
-            .stacks = packet.stacks
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraAdd, MetaGen::Game::Lua::UnitEventDataAuraAdd{ .unitID = entt::to_integral(unitID), .auraID = packet.auraInstanceID, .spellID = packet.spellID, .duration = packet.duration, .stacks = packet.stacks });
 
         return true;
     }
@@ -1935,19 +2660,11 @@ namespace ECS::Systems
 
         u32 auraIndex = unitAuraInfo.auraIDToAuraIndex[packet.auraInstanceID];
         auto& auraInfo = unitAuraInfo.auras[auraIndex];
-        u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-        u64 expirationTime = currentTime + static_cast<u64>(packet.duration * 1000.0f);
-
-        auraInfo.expireTimestamp = expirationTime;
+        auraInfo.expireTimestamp = CalculateAuraExpirationTimestamp(packet.duration);
         auraInfo.stacks = packet.stacks;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraUpdate, MetaGen::Game::Lua::UnitEventDataAuraUpdate{
-            .unitID = entt::to_integral(unitID),
-            .auraID = packet.auraInstanceID,
-            .duration = packet.duration,
-            .stacks = packet.stacks
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraUpdate, MetaGen::Game::Lua::UnitEventDataAuraUpdate{ .unitID = entt::to_integral(unitID), .auraID = packet.auraInstanceID, .duration = packet.duration, .stacks = packet.stacks });
 
         return true;
     }
@@ -1972,23 +2689,17 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraRemove, MetaGen::Game::Lua::UnitEventDataAuraRemove{
-            .unitID = entt::to_integral(unitID),
-            .auraID = packet.auraInstanceID
-        });
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraRemove, MetaGen::Game::Lua::UnitEventDataAuraRemove{ .unitID = entt::to_integral(unitID), .auraID = packet.auraInstanceID });
 
         u32 auraIndex = unitAuraInfo.auraIDToAuraIndex[packet.auraInstanceID];
-        u32 auraSpellID = unitAuraInfo.auras[auraIndex].spellID;
         unitAuraInfo.auras.erase(unitAuraInfo.auras.begin() + auraIndex);
 
-        // Rebuild the auraIDToAuraIndex and spellIDToAuraIndex maps
+        // Vector erasure shifts all following indices, so rebuild the instance lookup.
         unitAuraInfo.auraIDToAuraIndex.clear();
-        unitAuraInfo.spellIDToAuraIndex.clear();
 
         for (u32 i = 0; i < unitAuraInfo.auras.size(); ++i)
         {
             unitAuraInfo.auraIDToAuraIndex[unitAuraInfo.auras[i].auraID] = i;
-            unitAuraInfo.spellIDToAuraIndex[unitAuraInfo.auras[i].spellID] = i;
         }
 
         return true;
@@ -2021,6 +2732,13 @@ namespace ECS::Systems
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnCheatCommandResult);
 
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerInteractionSnapshotPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnInteractionSnapshot));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerQuestLogSnapshotPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnQuestLogSnapshot));
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnInteractionClose);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnQuestCommandResult);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnInteractionResult);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitInteractionUpdate);
+
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitFactionUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnReputationUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnFactionPerceptionOverrideUpdate);
@@ -2034,12 +2752,15 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitStatUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitTargetUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitCastSpell);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitAttack);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitAutoAttackState);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitSetMover);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitMove);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitMoveStop);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitTeleport);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnItemAdd);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnItemUpdate);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnContainerAdd);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnContainerAddToSlot);
@@ -2061,6 +2782,16 @@ namespace ECS::Systems
             networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerUnitNetFieldUpdatePacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnUnitNetFieldUpdate));
             networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerSendCombatEventPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCombatEvent));
             networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerPathVisualizationPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnVisualizePath));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerDatabaseEditorSnapshotBeginPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnDatabaseEditorSnapshotBegin));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerDatabaseEditorSnapshotChunkPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnDatabaseEditorSnapshotChunk));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerDatabaseEditorSnapshotEndPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnDatabaseEditorSnapshotEnd));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerDatabaseEditorChangeSetPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnDatabaseEditorChangeSet));
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnDatabaseEditorMutationResult);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnDevelopmentActionResult);
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerDevelopmentTransferBeginPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnDevelopmentTransferBegin));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerDevelopmentTransferChunkPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnDevelopmentTransferChunk));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerDevelopmentTransferEndPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnDevelopmentTransferEnd));
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnCreatureAIDevelopmentInfo);
 
             networkState.unitNetFieldListener.RegisterFieldListener(MetaGen::Shared::NetField::UnitNetFieldEnum::DisplayID, [](entt::entity entity, ObjectGUID guid, MetaGen::Shared::NetField::UnitNetFieldEnum field)
             {
@@ -2108,17 +2839,17 @@ namespace ECS::Systems
             {
                 if (!networkState.asioThread.joinable())
                 {
-                    networkState.asioThread = std::thread([&] 
+                    networkState.asioThread = std::thread([&]
                     {
                         if (networkState.asioContext.stopped())
                             networkState.asioContext.restart();
 
-                        networkState.asioContext.run(); 
+                        networkState.asioContext.run();
                     });
                 }
             }
         }
-        
+
         static bool wasConnected = false;
         if (Util::Network::IsConnected(networkState))
         {
@@ -2137,9 +2868,7 @@ namespace ECS::Systems
                 if (timeDiff >= Singletons::NetworkState::PING_INTERVAL)
                 {
                     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<16>();
-                    if (Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientPingPacket{
-                        .ping = networkState.pingInfo.ping
-                    }))
+                    if (Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientPingPacket{ .ping = networkState.pingInfo.ping }))
                     {
                         networkState.pingInfo.lastPingTime = currentTime;
                     }
@@ -2192,6 +2921,22 @@ namespace ECS::Systems
 
                 CleanupNetworkWorldEntities(registry);
                 Util::Faction::ResetOwnerState(registry);
+
+                entt::registry::context& dbContext = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx();
+                if (dbContext.contains<Editor::SpellEditorBackend>())
+                    dbContext.erase<Editor::SpellEditorBackend>();
+                if (dbContext.contains<Editor::SpellEditorData>())
+                    dbContext.erase<Editor::SpellEditorData>();
+                if (dbContext.contains<Editor::MapEditorBackend>())
+                    dbContext.erase<Editor::MapEditorBackend>();
+                if (dbContext.contains<Editor::MapEditorData>())
+                    dbContext.erase<Editor::MapEditorData>();
+                if (dbContext.contains<Editor::InteractionEditorBackend>())
+                    dbContext.erase<Editor::InteractionEditorBackend>();
+                if (dbContext.contains<Editor::InteractionEditorData>())
+                    dbContext.erase<Editor::InteractionEditorData>();
+                if (dbContext.contains<Editor::CreatureAIEditorBackend>())
+                    dbContext.erase<Editor::CreatureAIEditorBackend>();
 
                 networkState.authInfo.Reset();
                 networkState.characterListInfo.Reset();

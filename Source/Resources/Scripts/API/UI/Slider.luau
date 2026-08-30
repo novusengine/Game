@@ -1,8 +1,36 @@
-local sliderAPI = { }
+local RootedWidget = require("@src/API/UI/RootedWidget")
+
+export type Options =
+{
+    backgroundTemplate : string?,
+    fillTemplate : string?,
+    fillSizeX : number?,
+    fillSizeY : number?,
+    fillPosX : number?,
+    fillPosY : number?,
+    Min : number?,
+    Max : number?,
+    Step : number?,
+}
+
+export type Slider =
+{
+    root : Panel,
+    background : Panel,
+    fill : Panel,
+    GetValue : (self : Slider) -> number,
+    GetProgress : (self : Slider) -> number,
+    SetValue : (self : Slider, value : number) -> (),
+    SetProgress : (self : Slider, progress : number) -> (),
+    SetOnValueChanged : (self : Slider, callback : (Slider, number) -> ()) -> (),
+}
+
+export type SliderAPI = { New : (parent : Widget, position : vec, size : vec, layer : integer, options : Options?) -> Slider }
+local sliderAPI : SliderAPI = { }
 
 --[[
 usage:
-.NewSlider(panel, 0, 0, 200, 25, 0, {
+.New(panel, vec.New(0, 0), vec.New(200, 25), 0, {
     backgroundTemplate = "DefaultSliderBackground",
     fillTemplate = "DefaultSliderFill",
     Min = 0,
@@ -82,25 +110,27 @@ local function SetupSliderMethods(sliderTable)
     return sliderTable
 end
 
-function sliderAPI.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplateTable)
+function sliderAPI.New(parent : Widget, position : vec, size : vec, layer : integer, sliderTemplateTable : Options?)
     local sliderTable = {}
     
-    sliderTable.slider = parent:NewWidget(posX, posY, layer)
+    sliderTable.root = parent:NewPanel(position, size, layer)
+    sliderTable.root:SetAlpha(0.0)
+    RootedWidget.Attach(sliderTable)
     sliderTemplateTable = sliderTemplateTable or {}
 
     local backgroundTemplate = sliderTemplateTable["backgroundTemplate"] or "DefaultSliderBackground"
     local fillTemplate = sliderTemplateTable["fillTemplate"] or "DefaultSliderFill"
 
-    sliderTable.background = sliderTable.slider:NewPanel(0, 0, sizeX, sizeY, 0, backgroundTemplate)
+    sliderTable.background = sliderTable.root:NewPanel(vec.New(0, 0), size, 0i, backgroundTemplate)
     
-    sliderTable.fillSizeX = sliderTemplateTable["fillSizeX"] or sizeX - 16
-    sliderTable.fillSizeY = sliderTemplateTable["fillSizeY"] or sizeY - 16
+    sliderTable.fillSizeX = sliderTemplateTable["fillSizeX"] or size.x - 16
+    sliderTable.fillSizeY = sliderTemplateTable["fillSizeY"] or size.y - 16
     local fillPosX = sliderTemplateTable["fillPosX"] or 8
     local fillPosY = sliderTemplateTable["fillPosY"] or 0
 
-    sliderTable.fill = sliderTable.background:NewPanel(fillPosX, fillPosY, sliderTable.fillSizeX, sliderTable.fillSizeY, 1, fillTemplate)
-    sliderTable.fill:SetAnchor(0.0, 0.5)
-    sliderTable.fill:SetRelativePoint(0.0, 0.5)
+    sliderTable.fill = sliderTable.background:NewPanel(vec.New(fillPosX, fillPosY), vec.New(sliderTable.fillSizeX, sliderTable.fillSizeY), 1i, fillTemplate)
+    sliderTable.fill:SetAnchor(vec.New(0.0, 0.5))
+    sliderTable.fill:SetRelativePoint(vec.New(0.0, 0.5))
 
     sliderTable.Min = sliderTemplateTable["Min"] or 0
     sliderTable.Max = sliderTemplateTable["Max"] or 1
