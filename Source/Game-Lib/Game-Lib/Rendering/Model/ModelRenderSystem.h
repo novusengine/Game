@@ -107,6 +107,8 @@ namespace ModelRendering
         RenderScenes::RenderScene* _mainScene = nullptr;
         robin_hood::unordered_flat_map<u64, std::unique_ptr<ModelRenderView>> _views;
         std::vector<RenderScenes::RenderScene*> _scenes;
+        std::vector<RenderScenes::RenderView*> _deformationViews;
+        RenderResources* _resources = nullptr;
         ModelRenderView* _mainView = nullptr;
         i32 _lastForcedLOD = -1;
         bool _validateTransfers = false;

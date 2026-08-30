@@ -110,14 +110,14 @@ namespace AnimationLoading
         return AssetLoading::ShouldPerformFullValidation(validationMode) ? AnimationAssetValidator::Validate(result) : result;
     }
 
-    AnimationSetAssetReadResult AnimationAssetReader::ReadAnimationSet(std::span<const u8> payload)
+    AnimationSetAssetReadResult AnimationAssetReader::ReadAnimationSet(std::span<const u8> payload, AssetLoading::ValidationMode validationMode)
     {
         AnimationSetAssetReadResult result;
         if (!ReadRoot<Animation::AnimationSetAsset>(payload, Animation::ANIMATION_SET_FILE_TYPE, result)) return result;
         const auto& root = result.view.root;
         if (!ReadSection(result, payload, sizeof(root), root.slotsOffset, root.numSlots, result.view.slots, "slots") ||
             !ReadSection(result, payload, sizeof(root), root.variantsOffset, root.numVariants, result.view.variants, "variants")) return result;
-        return result;
+        return AssetLoading::ShouldPerformFullValidation(validationMode) ? AnimationAssetValidator::Validate(result) : result;
     }
 
     AnimationGraphAssetReadResult AnimationAssetReader::ReadAnimationGraph(std::span<const u8> payload)
@@ -165,13 +165,13 @@ namespace AnimationLoading
         return result;
     }
 
-    AnimationBoundsAssetReadResult AnimationAssetReader::ReadAnimationBounds(std::span<const u8> payload)
+    AnimationBoundsAssetReadResult AnimationAssetReader::ReadAnimationBounds(std::span<const u8> payload, AssetLoading::ValidationMode validationMode)
     {
         AnimationBoundsAssetReadResult result;
         if (!ReadRoot<Animation::AnimationBoundsAsset>(payload, Animation::ANIMATION_BOUNDS_FILE_TYPE, result)) return result;
         const auto& root = result.view.root;
         if (!ReadSection(result, payload, sizeof(root), root.clipsOffset, root.numClips, result.view.clips, "clips") ||
             !ReadSection(result, payload, sizeof(root), root.segmentsOffset, root.numSegments, result.view.segments, "segments")) return result;
-        return result;
+        return AssetLoading::ShouldPerformFullValidation(validationMode) ? AnimationAssetValidator::Validate(result) : result;
     }
 } // namespace AnimationLoading

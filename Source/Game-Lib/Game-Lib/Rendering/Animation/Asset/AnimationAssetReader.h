@@ -108,17 +108,19 @@ namespace AnimationLoading
     using RetargetProfileAssetReadResult = AssetReadResult<RetargetProfileAssetView>;
     using AnimationBoundsAssetReadResult = AssetReadResult<AnimationBoundsAssetView>;
 
+    // Decodes CPU-side animation payloads into borrowed views over their serialized arrays.
+    // The views expose offline-prepared data without copying or rebuilding it at runtime.
     class AnimationAssetReader
     {
       public:
         static RigFamilyAssetReadResult ReadRigFamily(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
         static SkeletonAssetReadResult ReadSkeleton(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
         static AnimationClipAssetReadResult ReadAnimationClip(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
-        static AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload);
+        static AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
         static AnimationGraphAssetReadResult ReadAnimationGraph(std::span<const u8> payload);
         static BoneMaskAssetReadResult ReadBoneMask(std::span<const u8> payload);
         static IKRigAssetReadResult ReadIKRig(std::span<const u8> payload);
         static RetargetProfileAssetReadResult ReadRetargetProfile(std::span<const u8> payload);
-        static AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload);
+        static AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
     };
 } // namespace AnimationLoading

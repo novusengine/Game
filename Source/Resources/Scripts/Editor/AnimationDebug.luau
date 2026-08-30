@@ -13,7 +13,7 @@ local InputBox = require("@src/API/UI/InputBox")
 require("@src/API/UI/MenuBar")
 
 local PANEL_W = 560
-local PANEL_H = 244
+local PANEL_H = 320
 local TITLE_H = 16
 local ROW_H = 20
 local GAP = 4
@@ -90,6 +90,7 @@ local firstRowY = -(TITLE_H + 8)
 local modelInput = AddPathInput("Model", firstRowY, "character.model")
 local skeletonInput = AddPathInput("Skeleton", firstRowY - ROW_H - GAP, "character.skeleton")
 local clipInput = AddPathInput("Clip", firstRowY - (ROW_H + GAP) * 2, "orc_idle.animationclip")
+local setInput = AddPathInput("Set", firstRowY - (ROW_H + GAP) * 3, "animations/mixamo/mixamo.animationset")
 
 local entity = nil
 local operationGeneration = 0
@@ -99,6 +100,12 @@ local statusText
 local stateText
 local loopBtn
 local skeletonBtn
+local controllerMode = false
+local controllerGraphMode = "states"
+local speedParameter = nil
+local lateralParameter = nil
+local forwardParameter = nil
+local magnitudeParameter = nil
 
 local function SetStatus(text)
     statusText:SetText("Status: " .. text)
@@ -131,6 +138,12 @@ local function RefreshState()
         stateText:SetText("No debug actor")
         return
     end
+    local controllerState = Asset.GetAnimationControllerState(entity)
+    if controllerState ~= nil then
+        local transition = controllerState.transitioning and string.format(" -> %d  %.0f/%.0f ms", controllerState.transitionTarget, controllerState.transitionTimeUS / 1000, controllerState.transitionDurationUS / 1000) or ""
+        stateText:SetText(string.format("Entity %d | state %d%s | %.2f s | slot %s>%s clip %s variant %d depth %d result %d | samples %d tri %s weights %.2f/%.2f/%.2f | leader %s markers %s>%s rates %.2f/%.2f/%.2f fallback %s snapshot %s", entity, controllerState.currentState, transition, controllerState.stateTimeUS / 1000000, tostring(controllerState.requestedSlotSemanticID), tostring(controllerState.resolvedSlotSemanticID), tostring(controllerState.resolvedClipAssetID), controllerState.resolvedVariationID, controllerState.resolvedFallbackDepth, controllerState.slotResolution, controllerState.activeBlendSamples, tostring(controllerState.activeBlendTriangle), controllerState.blendWeight0, controllerState.blendWeight1, controllerState.blendWeight2, tostring(controllerState.synchronizationLeader), tostring(controllerState.previousSynchronizationMarker), tostring(controllerState.nextSynchronizationMarker), controllerState.playbackRate0, controllerState.playbackRate1, controllerState.playbackRate2, controllerState.synchronizationFallback and "yes" or "no", controllerState.hasContinuitySnapshot and "yes" or "no"))
+        return
+    end
     local state = Asset.GetAnimationState(entity)
     if state == nil then
         stateText:SetText("Entity " .. tostring(entity) .. " | model loaded, no clip bound")
@@ -146,7 +159,57 @@ local function DestroyActor()
         Asset.DestroyAnimatedModel(entity)
         entity = nil
     end
+    controllerMode = false
+    controllerGraphMode = "states"
+    speedParameter = nil
+    lateralParameter = nil
+    forwardParameter = nil
+    magnitudeParameter = nil
     RefreshState()
+end
+
+local function SpawnController(mode)
+    DestroyActor()
+    entity = Asset.SpawnModelAtWorldOrigin(modelInput.text)
+    if entity == nil then
+        SetStatus("model spawn rejected")
+        return
+    end
+    operationGeneration += 1
+    local generation = operationGeneration
+    local targetEntity = entity
+    controllerMode = true
+    controllerGraphMode = mode
+    SetStatus("waiting for model, Skeleton, Set, and clips")
+    SetCVar("animationDebugSkeletonPath", skeletonInput.text)
+    SetCVar("animationDebugSkeletonPose", 1)
+    Camera.ActivateFreeflying()
+    local function BindWhenReady(attempt)
+        if generation ~= operationGeneration or entity ~= targetEntity then return end
+        if Asset.BindAnimationController(targetEntity, skeletonInput.text, setInput.text, mode) then
+            if mode == "blend2d" then
+                lateralParameter = Asset.ResolveAnimationParameter(targetEntity, "lateral")
+                forwardParameter = Asset.ResolveAnimationParameter(targetEntity, "forward")
+                magnitudeParameter = Asset.ResolveAnimationParameter(targetEntity, "magnitude")
+                if lateralParameter == nil or forwardParameter == nil or magnitudeParameter == nil then SetStatus("2D parameters did not resolve"); return end
+                Asset.AnimationSetFloatParameter(targetEntity, lateralParameter, 0.0)
+                Asset.AnimationSetFloatParameter(targetEntity, forwardParameter, 0.0)
+                Asset.AnimationSetFloatParameter(targetEntity, magnitudeParameter, 0.0)
+            else
+                speedParameter = Asset.ResolveAnimationParameter(targetEntity, "speed")
+                if speedParameter == nil then SetStatus("speed parameter did not resolve"); return end
+                Asset.AnimationSetFloatParameter(targetEntity, speedParameter, 0.0)
+            end
+            SetStatus("compiled " .. mode .. " graph bound")
+            FrameWhenReady(targetEntity, generation, 1)
+            RefreshState()
+        elseif attempt < 240 then
+            Scheduler.AfterFrames(1, function() BindWhenReady(attempt + 1) end)
+        else
+            SetStatus("timed out binding controller; check Set/clip paths and log")
+        end
+    end
+    Scheduler.AfterFrames(1, function() BindWhenReady(1) end)
 end
 
 local function FrameWhenReady(targetEntity, generation, attempts)
@@ -231,12 +294,15 @@ local function SpawnRestPose()
     Scheduler.AfterFrames(1, function() BindWhenReady(1) end)
 end
 
-local controlsY = firstRowY - (ROW_H + GAP) * 3 - 4
-local fourButtonW = (PANEL_W - SIDE_PAD * 2 - GAP * 3) / 4
-local spawnPlayBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD, controlsY, fourButtonW, ROW_H, 1, MakeBtnOpts("Spawn + Play"))
-local spawnPausedBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fourButtonW + GAP), controlsY, fourButtonW, ROW_H, 1, MakeBtnOpts("Spawn Paused"))
-local restPoseBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fourButtonW + GAP) * 2, controlsY, fourButtonW, ROW_H, 1, MakeBtnOpts("Rest Pose"))
-local destroyBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fourButtonW + GAP) * 3, controlsY, fourButtonW, ROW_H, 1, MakeBtnOpts("Destroy"))
+local controlsY = firstRowY - (ROW_H + GAP) * 4 - 4
+local spawnButtonW = (PANEL_W - SIDE_PAD * 2 - GAP * 6) / 7
+local spawnPlayBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Direct Play"))
+local spawnPausedBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP), controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Direct Pause"))
+local controllerBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 2, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("States"))
+local blend1DBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 3, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Blend 1D"))
+local blend2DBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 4, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Blend 2D"))
+local restPoseBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 5, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Rest Pose"))
+local destroyBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 6, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Destroy"))
 
 local playbackY = controlsY - ROW_H - GAP
 local fiveButtonW = (PANEL_W - SIDE_PAD * 2 - GAP * 4) / 5
@@ -246,7 +312,7 @@ local stopBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fiveButton
 loopBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 3, playbackY, fiveButtonW, ROW_H, 1, MakeBtnOpts("Loop"))
 local frameBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 4, playbackY, fiveButtonW, ROW_H, 1, MakeBtnOpts("Frame"))
 
-for _, btn in { spawnPlayBtn, spawnPausedBtn, restPoseBtn, destroyBtn, playBtn, pauseBtn, stopBtn, loopBtn, frameBtn } do
+for _, btn in { spawnPlayBtn, spawnPausedBtn, controllerBtn, blend1DBtn, blend2DBtn, restPoseBtn, destroyBtn, playBtn, pauseBtn, stopBtn, loopBtn, frameBtn } do
     btn:SetAnchor(0.0, 1.0)
     btn:SetRelativePoint(0.0, 1.0)
 end
@@ -279,13 +345,30 @@ for _, btn in { seekBtn, stepBackBtn, stepForwardBtn, rateBtn, skeletonBtn } do
     btn:SetRelativePoint(0.0, 1.0)
 end
 
-stateText = windowPanel:NewText("No debug actor", SIDE_PAD, rateY - ROW_H - 8, 1, BTN_TEXT_TPL)
+local speedY = rateY - ROW_H - GAP
+AddLabel("Speed", speedY - 3)
+local speedInput = InputBox.NewInputBox(windowPanel, SIDE_PAD + LABEL_W, speedY, 104, ROW_H, 1, {
+    panelTemplate = "DebugDarkGrey", textTemplate = BTN_TEXT_TPL, defaultText = "0.0",
+})
+speedInput:SetAnchor(0.0, 1.0)
+speedInput:SetRelativePoint(0.0, 1.0)
+speedInput:SetTextVerticallyCentered()
+local speedBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 108, speedY, 70, ROW_H, 1, MakeBtnOpts("Apply"))
+local idleBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 182, speedY, 70, ROW_H, 1, MakeBtnOpts("Idle"))
+local walkBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 256, speedY, 70, ROW_H, 1, MakeBtnOpts("Walk"))
+local runBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 330, speedY, 70, ROW_H, 1, MakeBtnOpts("Run"))
+for _, btn in { speedBtn, idleBtn, walkBtn, runBtn } do
+    btn:SetAnchor(0.0, 1.0)
+    btn:SetRelativePoint(0.0, 1.0)
+end
+
+stateText = windowPanel:NewText("No debug actor", SIDE_PAD, speedY - ROW_H - 8, 1, BTN_TEXT_TPL)
 stateText:SetAnchor(0.0, 1.0)
 stateText:SetRelativePoint(0.0, 1.0)
 stateText:SetColor(LABEL_TINT)
 stateText:SetInteractable(false)
 
-statusText = windowPanel:NewText("Status: ready", SIDE_PAD, rateY - ROW_H - 28, 1, BTN_TEXT_TPL)
+statusText = windowPanel:NewText("Status: ready", SIDE_PAD, speedY - ROW_H - 28, 1, BTN_TEXT_TPL)
 statusText:SetAnchor(0.0, 1.0)
 statusText:SetRelativePoint(0.0, 1.0)
 statusText:SetColor(MUTED_TINT)
@@ -293,6 +376,9 @@ statusText:SetInteractable(false)
 
 spawnPlayBtn:SetOnMouseUp(function() SpawnAnimated(true) end)
 spawnPausedBtn:SetOnMouseUp(function() SpawnAnimated(false) end)
+controllerBtn:SetOnMouseUp(function() SpawnController("states") end)
+blend1DBtn:SetOnMouseUp(function() SpawnController("blend1d") end)
+blend2DBtn:SetOnMouseUp(function() SpawnController("blend2d") end)
 restPoseBtn:SetOnMouseUp(SpawnRestPose)
 destroyBtn:SetOnMouseUp(function()
     DestroyActor()
@@ -351,6 +437,26 @@ rateBtn:SetOnMouseUp(function()
     if entity ~= nil and rate ~= nil and Asset.AnimationSetPlaybackRate(entity, rate) then SetStatus("playback rate applied") else SetStatus("rate rejected") end
     RefreshState()
 end)
+local function SetControllerSpeed(value)
+    if not controllerMode or entity == nil then
+        SetStatus("spawn a controller actor first")
+        return
+    end
+    if controllerGraphMode == "blend2d" then
+        if lateralParameter == nil or forwardParameter == nil or magnitudeParameter == nil then SetStatus("2D parameters unavailable"); return end
+        local comma = string.find(speedInput.text, ",", 1, true)
+        local lateral = comma ~= nil and tonumber(string.sub(speedInput.text, 1, comma - 1)) or 0.0
+        local forward = comma ~= nil and tonumber(string.sub(speedInput.text, comma + 1)) or value
+        if lateral ~= nil and forward ~= nil and Asset.AnimationSetFloatParameter(entity, lateralParameter, lateral) and Asset.AnimationSetFloatParameter(entity, forwardParameter, forward) and Asset.AnimationSetFloatParameter(entity, magnitudeParameter, math.sqrt(lateral * lateral + forward * forward)) then SetStatus(string.format("2D input %.2f, %.2f", lateral, forward)) else SetStatus("2D write rejected") end
+    elseif speedParameter ~= nil and Asset.AnimationSetFloatParameter(entity, speedParameter, value) then SetStatus(string.format("controller speed %.2f", value)) else SetStatus("speed write rejected") end
+end
+speedBtn:SetOnMouseUp(function()
+    local value = tonumber(speedInput.text)
+    if value ~= nil or controllerGraphMode == "blend2d" then SetControllerSpeed(value or 0.0) else SetStatus("speed must be numeric") end
+end)
+idleBtn:SetOnMouseUp(function() speedInput:SetText("0.0"); SetControllerSpeed(0.0) end)
+walkBtn:SetOnMouseUp(function() speedInput:SetText("1.0"); SetControllerSpeed(1.0) end)
+runBtn:SetOnMouseUp(function() speedInput:SetText("3.0"); SetControllerSpeed(3.0) end)
 skeletonBtn:SetOnMouseUp(function()
     skeletonVisible = not skeletonVisible
     SetCVar("animationDebugSkeletonPath", skeletonInput.text)

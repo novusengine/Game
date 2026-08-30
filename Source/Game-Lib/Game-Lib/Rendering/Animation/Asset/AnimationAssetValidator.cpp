@@ -81,6 +81,20 @@ namespace
                std::abs(transform.scale.z) > std::numeric_limits<f32>::epsilon() && transform.reserved0 == 0 && transform.reserved1 == 0;
     }
 
+    bool IsValidBounds(const Animation::Bounds& bounds)
+    {
+        return IsFinite(bounds.center) && std::isfinite(bounds.sphereRadius) && bounds.sphereRadius >= 0.0f && IsFinite(bounds.extents) && bounds.extents.x >= 0.0f && bounds.extents.y >= 0.0f && bounds.extents.z >= 0.0f && bounds.reserved == 0;
+    }
+
+    bool Contains(const Animation::Bounds& outer, const Animation::Bounds& inner)
+    {
+        constexpr f32 tolerance = 1.0e-6f;
+        for (u32 axis = 0; axis < 3; ++axis)
+            if (inner.center[axis] - inner.extents[axis] < outer.center[axis] - outer.extents[axis] - tolerance || inner.center[axis] + inner.extents[axis] > outer.center[axis] + outer.extents[axis] + tolerance)
+                return false;
+        return true;
+    }
+
     bool IsIdentity(const mat4a& value)
     {
         for (u32 column = 0; column < 4; ++column)
@@ -336,6 +350,98 @@ namespace AnimationLoading
             if (!IsRangeValid(event.payloadOffset, event.payloadSize, result.view.eventPayloadBytes.size()))
                 return Fail<AnimationClipAssetReadResult>(DiagnosticCode::InvalidRange, "events.payload", index, event.payloadOffset, event.payloadSize);
             previousTime = event.timeMicroseconds;
+        }
+        return result;
+    }
+
+    AnimationSetAssetReadResult AnimationAssetValidator::Validate(AnimationSetAssetReadResult result)
+    {
+        const Animation::AnimationSetAsset& root = result.view.root;
+        if (root.declaredPoseDomainAssetID == FileFormat::INVALID_ASSET_ID)
+            return FailDependency<AnimationSetAssetReadResult>("AnimationSetAsset.declaredPoseDomainAssetID", root.declaredPoseDomainAssetID);
+        if (root.declaredPoseDomainType > Animation::PoseDomainType::Skeleton)
+            return Fail<AnimationSetAssetReadResult>(DiagnosticCode::UnsupportedEnum, "AnimationSetAsset.declaredPoseDomainType", Diagnostic::NO_INDEX, static_cast<u8>(root.declaredPoseDomainType));
+        if (!IsReservedZero(root.reserved0, std::size(root.reserved0)) || root.flags != 0)
+            return Fail<AnimationSetAssetReadResult>(DiagnosticCode::ReservedValueNonZero, "AnimationSetAsset.reservedOrFlags");
+
+        for (u32 index = 0; index < result.view.slots.size(); ++index)
+        {
+            const Animation::AnimationSetSlot& slot = result.view.slots[index];
+            if (slot.semanticID == 0 || !IsRangeValid(slot.variantOffset, slot.numVariants, result.view.variants.size()))
+                return Fail<AnimationSetAssetReadResult>(DiagnosticCode::InvalidRange, "slots.variants", index, slot.variantOffset, slot.numVariants);
+            if ((slot.flags & ~Animation::AnimationSetSlotFlags_Required) != 0)
+                return Fail<AnimationSetAssetReadResult>(DiagnosticCode::UnsupportedFlags, "slots.flags", index, slot.flags, Animation::AnimationSetSlotFlags_Required);
+            if (slot.fallbackSlotIndex < -1 || (slot.fallbackSlotIndex >= 0 && static_cast<u32>(slot.fallbackSlotIndex) >= result.view.slots.size()) || slot.fallbackSlotIndex == static_cast<i32>(index))
+                return Fail<AnimationSetAssetReadResult>(DiagnosticCode::InvalidIndex, "slots.fallbackSlotIndex", index, slot.fallbackSlotIndex, result.view.slots.size());
+            if ((slot.flags & Animation::AnimationSetSlotFlags_Required) != 0 && slot.numVariants == 0)
+                return Fail<AnimationSetAssetReadResult>(DiagnosticCode::EmptyRequiredRange, "slots.variants", index);
+            for (u32 previous = 0; previous < index; ++previous)
+                if (result.view.slots[previous].semanticID == slot.semanticID)
+                    return Fail<AnimationSetAssetReadResult>(DiagnosticCode::InvalidValue, "slots.semanticID", index, slot.semanticID);
+            std::vector<bool> seen(result.view.slots.size(), false);
+            i32 fallback = static_cast<i32>(index);
+            while (fallback >= 0)
+            {
+                if (seen[fallback])
+                    return Fail<AnimationSetAssetReadResult>(DiagnosticCode::InvalidValue, "slots.fallbackCycle", index, fallback);
+                seen[fallback] = true;
+                fallback = result.view.slots[fallback].fallbackSlotIndex;
+            }
+            for (u32 local = 0; local < slot.numVariants; ++local)
+            {
+                const Animation::AnimationClipVariant& variant = result.view.variants[slot.variantOffset + local];
+                if (variant.animationClipAssetID == FileFormat::INVALID_ASSET_ID)
+                    return FailDependency<AnimationSetAssetReadResult>("variants.animationClipAssetID", variant.animationClipAssetID, slot.variantOffset + local);
+                if (variant.selectionWeight == 0 || variant.flags != 0 || variant.stableVariationID == 0)
+                    return Fail<AnimationSetAssetReadResult>(DiagnosticCode::InvalidValue, "variants.weightFlagsOrStableID", slot.variantOffset + local);
+                for (u32 previous = 0; previous < local; ++previous)
+                    if (result.view.variants[slot.variantOffset + previous].stableVariationID == variant.stableVariationID)
+                        return Fail<AnimationSetAssetReadResult>(DiagnosticCode::InvalidValue, "variants.stableVariationID", slot.variantOffset + local, variant.stableVariationID);
+            }
+        }
+        return result;
+    }
+
+    AnimationBoundsAssetReadResult AnimationAssetValidator::Validate(AnimationBoundsAssetReadResult result)
+    {
+        const Animation::AnimationBoundsAsset& root = result.view.root;
+        if (root.modelAssetID == FileFormat::INVALID_ASSET_ID)
+            return FailDependency<AnimationBoundsAssetReadResult>("AnimationBoundsAsset.modelAssetID", root.modelAssetID);
+        if (root.skeletonAssetID == FileFormat::INVALID_ASSET_ID)
+            return FailDependency<AnimationBoundsAssetReadResult>("AnimationBoundsAsset.skeletonAssetID", root.skeletonAssetID);
+        constexpr u32 supportedFlags = Animation::AnimationBoundsAssetFlags_HasGlobalFallback;
+        if (root.reserved0 != 0 || (root.flags & ~supportedFlags) != 0 || root.reserved != 0)
+            return Fail<AnimationBoundsAssetReadResult>(DiagnosticCode::ReservedValueNonZero, "AnimationBoundsAsset.reservedOrFlags");
+        if (result.view.clips.empty())
+            return Fail<AnimationBoundsAssetReadResult>(DiagnosticCode::EmptyRequiredRange, "clips");
+
+        const bool hasGlobalFallback = (root.flags & Animation::AnimationBoundsAssetFlags_HasGlobalFallback) != 0;
+        if (hasGlobalFallback && (result.view.clips[0].animationClipAssetID != FileFormat::INVALID_ASSET_ID || result.view.clips[0].numSegments != 0 || result.view.clips[0].segmentOffset != 0 || !IsValidBounds(result.view.clips[0].fallbackBounds)))
+            return Fail<AnimationBoundsAssetReadResult>(DiagnosticCode::InvalidValue, "clips.globalFallback");
+
+        for (u32 clipIndex = 0; clipIndex < result.view.clips.size(); ++clipIndex)
+        {
+            const Animation::ClipBounds& clip = result.view.clips[clipIndex];
+            if (clipIndex == 0 && hasGlobalFallback)
+                continue;
+            if (clip.animationClipAssetID == FileFormat::INVALID_ASSET_ID)
+                return FailDependency<AnimationBoundsAssetReadResult>("clips.animationClipAssetID", clip.animationClipAssetID, clipIndex);
+            if (clip.numSegments == 0 || !IsRangeValid(clip.segmentOffset, clip.numSegments, result.view.segments.size()) || !IsValidBounds(clip.fallbackBounds))
+                return Fail<AnimationBoundsAssetReadResult>(DiagnosticCode::InvalidRange, "clips.segmentsOrFallback", clipIndex, clip.segmentOffset, clip.numSegments);
+            for (u32 previous = 0; previous < clipIndex; ++previous)
+                if (result.view.clips[previous].animationClipAssetID == clip.animationClipAssetID)
+                    return Fail<AnimationBoundsAssetReadResult>(DiagnosticCode::InvalidValue, "clips.animationClipAssetID", clipIndex, clip.animationClipAssetID);
+            if (hasGlobalFallback && !Contains(result.view.clips[0].fallbackBounds, clip.fallbackBounds))
+                return Fail<AnimationBoundsAssetReadResult>(DiagnosticCode::InvalidValue, "clips.globalFallbackContainment", clipIndex);
+            u32 expectedStart = 0;
+            for (u32 local = 0; local < clip.numSegments; ++local)
+            {
+                const u32 segmentIndex = clip.segmentOffset + local;
+                const Animation::AnimatedBoundsSegment& segment = result.view.segments[segmentIndex];
+                if (segment.startTimeMicroseconds != expectedStart || segment.endTimeMicroseconds <= segment.startTimeMicroseconds || !IsValidBounds(segment.bounds) || !Contains(clip.fallbackBounds, segment.bounds))
+                    return Fail<AnimationBoundsAssetReadResult>(DiagnosticCode::InvalidValue, "segments.orderBoundsOrContainment", segmentIndex, segment.startTimeMicroseconds, expectedStart);
+                expectedStart = segment.endTimeMicroseconds;
+            }
         }
         return result;
     }

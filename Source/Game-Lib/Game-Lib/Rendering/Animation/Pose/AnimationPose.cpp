@@ -2,6 +2,7 @@
 
 #include <Base/Math/Math.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -18,6 +19,25 @@ namespace
 
 namespace Animation
 {
+    bool BlendLocalPoses(std::span<const FileFormat::Animation::LocalTransform> outgoing, std::span<const FileFormat::Animation::LocalTransform> incoming, f32 weight, std::span<FileFormat::Animation::LocalTransform> output)
+    {
+        if (outgoing.size() != incoming.size() || output.size() != outgoing.size() || !std::isfinite(weight))
+            return false;
+        weight = std::clamp(weight, 0.0f, 1.0f);
+        for (u32 jointIndex = 0; jointIndex < output.size(); ++jointIndex)
+        {
+            output[jointIndex].translation = glm::mix(outgoing[jointIndex].translation, incoming[jointIndex].translation, weight);
+            quat incomingRotation = incoming[jointIndex].rotation;
+            if (glm::dot(outgoing[jointIndex].rotation, incomingRotation) < 0.0f)
+                incomingRotation = -incomingRotation;
+            output[jointIndex].rotation = glm::normalize(glm::slerp(outgoing[jointIndex].rotation, incomingRotation, weight));
+            output[jointIndex].scale = glm::mix(outgoing[jointIndex].scale, incoming[jointIndex].scale, weight);
+            output[jointIndex].reserved0 = 0;
+            output[jointIndex].reserved1 = 0;
+        }
+        return true;
+    }
+
     mat4a ComposeLocalTransform(const FileFormat::Animation::LocalTransform& transform)
     {
         return Math::AffineMatrix::TransformMatrix(transform.translation, transform.rotation, transform.scale);

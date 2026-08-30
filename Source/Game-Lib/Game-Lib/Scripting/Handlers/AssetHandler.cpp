@@ -8,6 +8,7 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
+#include "Game-Lib/Rendering/Animation/Controller/AnimationSemantic.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
@@ -38,6 +39,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -46,7 +48,41 @@ namespace fs = std::filesystem;
 
 namespace Scripting::Asset
 {
-    static std::unordered_map<u32, Animation::DirectPlaybackHandle> s_directPlaybackByEntity;
+    struct AnimationPreviewBinding
+    {
+        Animation::DirectPlaybackHandle playback;
+        Animation::ControllerPlaybackHandle controller;
+        Animation::PoseSourceHandle poseSource;
+        AnimationLoading::SkeletonHandle restPoseSkeleton;
+        std::vector<Animation::AnimationParameterHandle> parameterHandles;
+    };
+
+    static std::unordered_map<u32, std::shared_ptr<AnimationPreviewBinding>> s_animationBindingByEntity;
+
+    static void ReleaseAnimationBinding(u32 entityValue, bool clearSceneBinding)
+    {
+        const auto found = s_animationBindingByEntity.find(entityValue);
+        if (found == s_animationBindingByEntity.end())
+            return;
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        Animation::ModelDeformationSystem* deformation = gameRenderer ? gameRenderer->GetModelRenderSystem()->GetDeformationSystem() : nullptr;
+        if (clearSceneBinding && gameRenderer)
+            gameRenderer->GetModelSceneBridge()->SetPoseSource(static_cast<entt::entity>(entityValue), {});
+        std::shared_ptr<AnimationPreviewBinding> binding = found->second;
+        s_animationBindingByEntity.erase(found);
+        if (binding.use_count() != 1 || !deformation)
+            return;
+        if (binding->playback)
+            deformation->DestroyDirectPlayback(binding->playback);
+        else if (binding->controller)
+            deformation->DestroyControllerPlayback(binding->controller);
+        else if (binding->poseSource)
+        {
+            deformation->DestroyPoseSource(binding->poseSource);
+            if (binding->restPoseSkeleton && gameRenderer)
+                gameRenderer->GetRenderAssetResources()->GetAnimationRegistry().Release(binding->restPoseSkeleton);
+        }
+    }
 
     static bool StartsWithCaseInsensitive(std::string_view value, std::string_view prefix)
     {
@@ -113,12 +149,8 @@ namespace Scripting::Asset
 
     void AssetHandler::Clear(Zenith*)
     {
-        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        Animation::ModelDeformationSystem* deformation = gameRenderer ? gameRenderer->GetModelRenderSystem()->GetDeformationSystem() : nullptr;
-        if (deformation)
-            for (const auto& [entity, playback] : s_directPlaybackByEntity)
-                deformation->DestroyDirectPlayback(playback);
-        s_directPlaybackByEntity.clear();
+        while (!s_animationBindingByEntity.empty())
+            ReleaseAnimationBinding(s_animationBindingByEntity.begin()->first, false);
     }
 
     static fs::path GetDataRoot()
@@ -328,14 +360,24 @@ namespace Scripting::Asset
             return 1;
         }
         const Animation::PoseSourceHandle poseSource = deformation->CreateRestPose(skeleton, *view);
-        if (!poseSource || !bridge->SetPoseSource(entity, poseSource))
+        if (!poseSource)
         {
-            if (poseSource)
-                deformation->DestroyPoseSource(poseSource);
             registry.Release(skeleton);
             zenith->Push(false);
             return 1;
         }
+        ReleaseAnimationBinding(entityValue, true);
+        if (!bridge->SetPoseSource(entity, poseSource))
+        {
+            deformation->DestroyPoseSource(poseSource);
+            registry.Release(skeleton);
+            zenith->Push(false);
+            return 1;
+        }
+        auto binding = std::make_shared<AnimationPreviewBinding>();
+        binding->poseSource = poseSource;
+        binding->restPoseSkeleton = skeleton;
+        s_animationBindingByEntity[entityValue] = std::move(binding);
         NC_LOG_INFO("ANIMATION_PREVIEW rest_pose_bound entity={} skeleton={} joints={} pose_source={}", entityValue, skeletonPath, view->joints.size(), poseSource.GetRawValue());
         zenith->Push(true);
         return 1;
@@ -386,7 +428,7 @@ namespace Scripting::Asset
 
         const Animation::DirectPlaybackHandle playback = deformation->CreateDirectPlayback(skeleton, clip, *skeletonView, *clipView);
         const Animation::PoseSourceHandle poseSource = deformation->GetPlaybackPoseSource(playback);
-        if (!playback || !poseSource || !bridge->SetPoseSource(entity, poseSource))
+        if (!playback || !poseSource)
         {
             if (playback)
                 deformation->DestroyDirectPlayback(playback);
@@ -398,24 +440,62 @@ namespace Scripting::Asset
             zenith->Push(false);
             return 1;
         }
-
-        const auto existing = s_directPlaybackByEntity.find(entityValue);
-        if (existing != s_directPlaybackByEntity.end())
-            deformation->DestroyDirectPlayback(existing->second);
-        s_directPlaybackByEntity[entityValue] = playback;
+        ReleaseAnimationBinding(entityValue, true);
+        if (!bridge->SetPoseSource(entity, poseSource))
+        {
+            deformation->DestroyDirectPlayback(playback);
+            zenith->Push(false);
+            return 1;
+        }
+        auto binding = std::make_shared<AnimationPreviewBinding>();
+        binding->playback = playback;
+        binding->poseSource = poseSource;
+        s_animationBindingByEntity[entityValue] = std::move(binding);
         bridge->SetShadowDynamic(entity, true);
         NC_LOG_INFO("ANIMATION_PREVIEW clip_bound entity={} skeleton={} clip={} joints={} tracks={} playback={}", entityValue, skeletonPath, clipPath, skeletonView->joints.size(), clipView->tracks.size(), playback.GetRawValue());
         zenith->Push(true);
         return 1;
     }
 
+    i32 AssetHandler::ShareAnimationPose(Zenith* zenith)
+    {
+        const u32 targetEntityValue = zenith->CheckVal<u32>(1);
+        const u32 sourceEntityValue = zenith->CheckVal<u32>(2);
+        if (targetEntityValue == sourceEntityValue)
+        {
+            zenith->Push(s_animationBindingByEntity.contains(sourceEntityValue));
+            return 1;
+        }
+        const auto source = s_animationBindingByEntity.find(sourceEntityValue);
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer ? gameRenderer->GetModelSceneBridge() : nullptr;
+        const entt::entity targetEntity = static_cast<entt::entity>(targetEntityValue);
+        if (source == s_animationBindingByEntity.end() || !bridge || !source->second->poseSource || !bridge->GetScene(targetEntity))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        const std::shared_ptr<AnimationPreviewBinding> shared = source->second;
+        ReleaseAnimationBinding(targetEntityValue, true);
+        if (!bridge->SetPoseSource(targetEntity, shared->poseSource))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        s_animationBindingByEntity[targetEntityValue] = shared;
+        bridge->SetShadowDynamic(targetEntity, true);
+        NC_LOG_INFO("ANIMATION_PREVIEW pose_shared source_entity={} target_entity={} pose_source={} references={}", sourceEntityValue, targetEntityValue, shared->poseSource.GetRawValue(), shared.use_count());
+        zenith->Push(true);
+        return 1;
+    }
+
     static Animation::ModelDeformationSystem* GetPlayback(u32 entityValue, Animation::DirectPlaybackHandle& playback)
     {
-        const auto found = s_directPlaybackByEntity.find(entityValue);
+        const auto found = s_animationBindingByEntity.find(entityValue);
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        if (found == s_directPlaybackByEntity.end() || !gameRenderer)
+        if (found == s_animationBindingByEntity.end() || !gameRenderer || !found->second->playback)
             return nullptr;
-        playback = found->second;
+        playback = found->second->playback;
         return gameRenderer->GetModelRenderSystem()->GetDeformationSystem();
     }
 
@@ -486,23 +566,238 @@ namespace Scripting::Asset
         return 1;
     }
 
+    static std::shared_ptr<const Animation::CompiledAnimationGraph> CompilePreviewLocomotionGraph(std::string_view mode)
+    {
+        Animation::EditableAnimationGraph graph;
+        if (mode == "blend1d")
+        {
+            graph.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}};
+            Animation::EditableGraphState locomotion;
+            locomotion.sourceGUID = 11;
+            locomotion.durationMicroseconds = 60'000'000;
+            locomotion.kind = Animation::GraphStateKind::BlendSpace1D;
+            locomotion.inputX = "speed";
+            locomotion.smoothingHalfLifeSeconds = 0.12f;
+            locomotion.blendSamples = {{{1.0f, 0.0f}, Animation::HashAnimationSlot("WalkForward")}, {{3.0f, 0.0f}, Animation::HashAnimationSlot("RunForward")}};
+            graph.states = {{10, Animation::HashAnimationSlot("Idle"), 60'000'000}, locomotion};
+            graph.entryStateGUID = 10;
+            graph.transitions = {{10, 11, "speed", Animation::GraphComparison::Greater, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}, {11, 10, "speed", Animation::GraphComparison::LessEqual, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}};
+        }
+        else if (mode == "blend2d")
+        {
+            graph.parameters = {{"lateral", FileFormat::Animation::GraphValueType::Float}, {"forward", FileFormat::Animation::GraphValueType::Float}, {"magnitude", FileFormat::Animation::GraphValueType::Float}};
+            Animation::EditableGraphState locomotion;
+            locomotion.sourceGUID = 21;
+            locomotion.durationMicroseconds = 60'000'000;
+            locomotion.kind = Animation::GraphStateKind::BlendSpace2D;
+            locomotion.inputX = "lateral";
+            locomotion.inputY = "forward";
+            locomotion.smoothingHalfLifeSeconds = 0.12f;
+            locomotion.blendSamples = {{{-1.0f, 0.0f}, Animation::HashAnimationSlot("StrafeLeft")}, {{1.0f, 0.0f}, Animation::HashAnimationSlot("StrafeRight")}, {{0.0f, 1.0f}, Animation::HashAnimationSlot("RunForward")}, {{0.0f, -1.0f}, Animation::HashAnimationSlot("RunBackward")}};
+            locomotion.blendTriangles = {{{{0, 1, 2}}}, {{{0, 3, 1}}}};
+            graph.states = {{20, Animation::HashAnimationSlot("Idle"), 60'000'000}, locomotion};
+            graph.entryStateGUID = 20;
+            graph.transitions = {{20, 21, "magnitude", Animation::GraphComparison::Greater, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}, {21, 20, "magnitude", Animation::GraphComparison::LessEqual, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}};
+        }
+        else
+        {
+        graph.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}};
+        graph.states = {{1, Animation::HashAnimationSlot("Idle"), 60'000'000}, {2, Animation::HashAnimationSlot("WalkForward"), 60'000'000}, {3, Animation::HashAnimationSlot("RunForward"), 60'000'000}};
+        graph.entryStateGUID = 1;
+        graph.transitions = {
+            {1, 2, "speed", Animation::GraphComparison::Greater, 0.1f, 250'000, Animation::BlendCurve::SmoothStep},
+            {2, 1, "speed", Animation::GraphComparison::LessEqual, 0.1f, 250'000, Animation::BlendCurve::SmoothStep},
+            {2, 3, "speed", Animation::GraphComparison::Greater, 2.0f, 200'000, Animation::BlendCurve::SmoothStep},
+            {3, 2, "speed", Animation::GraphComparison::LessEqual, 2.0f, 200'000, Animation::BlendCurve::SmoothStep},
+        };
+        }
+        const Animation::GraphCompileResult result = Animation::CompileAnimationGraph(graph);
+        return result ? result.graph : nullptr;
+    }
+
+    i32 AssetHandler::BindAnimationController(Zenith* zenith)
+    {
+        const u32 entityValue = zenith->CheckVal<u32>(1);
+        const char* skeletonPathRaw = zenith->CheckVal<const char*>(2);
+        const char* setPathRaw = zenith->CheckVal<const char*>(3);
+        const std::string_view mode = zenith->IsString(4) ? zenith->Get<const char*>(4) : "states";
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer ? gameRenderer->GetModelSceneBridge() : nullptr;
+        const entt::entity entity = static_cast<entt::entity>(entityValue);
+        RenderScenes::RenderScene* scene = bridge ? bridge->GetScene(entity) : nullptr;
+        Animation::ModelDeformationSystem* deformation = scene ? scene->GetModelDeformationSystem() : nullptr;
+        if (!skeletonPathRaw || !setPathRaw || !deformation)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
+        std::string skeletonPath;
+        std::string setPath;
+        FileFormat::AssetID skeletonAssetID = FileFormat::INVALID_ASSET_ID;
+        FileFormat::AssetID setAssetID = FileFormat::INVALID_ASSET_ID;
+        if (!pactStorage || !ResolveModelAssetPath(skeletonPathRaw, pactStorage, skeletonPath, skeletonAssetID) || !ResolveModelAssetPath(setPathRaw, pactStorage, setPath, setAssetID))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        AnimationLoading::AnimationAssetRegistry& assets = gameRenderer->GetRenderAssetResources()->GetAnimationRegistry();
+        const AnimationLoading::SkeletonHandle skeleton = assets.LoadSkeleton(skeletonAssetID);
+        const AnimationLoading::AnimationSetHandle animationSet = assets.LoadAnimationSet(setAssetID);
+        AssetLoading::Diagnostic skeletonDiagnostic;
+        AssetLoading::Diagnostic setDiagnostic;
+        const AnimationLoading::SkeletonAssetView* skeletonView = assets.Get(skeleton, &skeletonDiagnostic);
+        const AnimationLoading::AnimationSetAssetView* setView = assets.Get(animationSet, &setDiagnostic);
+        const std::shared_ptr<const Animation::CompiledAnimationGraph> graph = CompilePreviewLocomotionGraph(mode);
+        if (!skeletonView || !setView || !graph)
+        {
+            assets.Release(animationSet);
+            assets.Release(skeleton);
+            NC_LOG_ERROR("ANIMATION_CONTROLLER bind_failed entity={} skeleton={} skeleton_diagnostic={} set={} set_diagnostic={}", entityValue, skeletonPath, AssetLoading::Describe(skeletonDiagnostic), setPath, AssetLoading::Describe(setDiagnostic));
+            zenith->Push(false);
+            return 1;
+        }
+        const Animation::ControllerPlaybackHandle controller = deformation->CreateControllerPlayback(skeleton, animationSet, *skeletonView, *setView, graph, entityValue);
+        const Animation::PoseSourceHandle poseSource = deformation->GetControllerPoseSource(controller);
+        if (!controller || !poseSource)
+        {
+            assets.Release(animationSet);
+            assets.Release(skeleton);
+            zenith->Push(false);
+            return 1;
+        }
+        ReleaseAnimationBinding(entityValue, true);
+        if (!bridge->SetPoseSource(entity, poseSource))
+        {
+            deformation->DestroyControllerPlayback(controller);
+            zenith->Push(false);
+            return 1;
+        }
+        auto binding = std::make_shared<AnimationPreviewBinding>();
+        binding->controller = controller;
+        binding->poseSource = poseSource;
+        s_animationBindingByEntity[entityValue] = std::move(binding);
+        NC_LOG_INFO("ANIMATION_CONTROLLER bound entity={} skeleton={} set={} states={} parameters={} pose_source={}", entityValue, skeletonPath, setPath, graph->states.size(), graph->parameters.size(), poseSource.GetRawValue());
+        zenith->Push(true);
+        return 1;
+    }
+
+    static Animation::ModelDeformationSystem* GetControllerBinding(u32 entityValue, std::shared_ptr<AnimationPreviewBinding>& binding)
+    {
+        const auto found = s_animationBindingByEntity.find(entityValue);
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        if (found == s_animationBindingByEntity.end() || !gameRenderer || !found->second->controller)
+            return nullptr;
+        binding = found->second;
+        return gameRenderer->GetModelRenderSystem()->GetDeformationSystem();
+    }
+
+    i32 AssetHandler::ResolveAnimationParameter(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        const char* name = zenith->CheckVal<const char*>(2);
+        const Animation::AnimationParameterHandle handle = deformation && name ? deformation->ResolveControllerParameter(binding->controller, Animation::HashAnimationName(name)) : Animation::AnimationParameterHandle{};
+        if (!handle)
+        {
+            zenith->Push();
+            return 1;
+        }
+        binding->parameterHandles.push_back(handle);
+        zenith->Push(static_cast<u32>(binding->parameterHandles.size()));
+        return 1;
+    }
+
+    static Animation::AnimationParameterHandle GetParameterToken(const std::shared_ptr<AnimationPreviewBinding>& binding, u32 token)
+    {
+        return binding && token > 0 && token <= binding->parameterHandles.size() ? binding->parameterHandles[token - 1] : Animation::AnimationParameterHandle{};
+    }
+
+    i32 AssetHandler::AnimationSetFloatParameter(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        zenith->Push(deformation && deformation->SetControllerFloat(GetParameterToken(binding, zenith->CheckVal<u32>(2)), zenith->CheckVal<f32>(3)));
+        return 1;
+    }
+
+    i32 AssetHandler::AnimationSetBoolParameter(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        zenith->Push(deformation && deformation->SetControllerBool(GetParameterToken(binding, zenith->CheckVal<u32>(2)), zenith->CheckVal<bool>(3)));
+        return 1;
+    }
+
+    i32 AssetHandler::AnimationTriggerParameter(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        zenith->Push(deformation && deformation->TriggerController(GetParameterToken(binding, zenith->CheckVal<u32>(2))));
+        return 1;
+    }
+
+    i32 AssetHandler::AnimationQueueAction(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        const char* name = zenith->CheckVal<const char*>(2);
+        const u32 payload = zenith->IsNumber(3) ? zenith->Get<u32>(3) : 0;
+        zenith->Push(deformation && name && deformation->QueueControllerAction(binding->controller, Animation::HashAnimationSemantic("animation-action", name), payload));
+        return 1;
+    }
+
+    i32 AssetHandler::GetAnimationControllerState(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        Animation::AnimationControllerState state;
+        if (!deformation || !deformation->GetControllerState(binding->controller, state))
+        {
+            zenith->Push();
+            return 1;
+        }
+        zenith->CreateTable();
+        zenith->AddTableField("currentState", state.currentState);
+        zenith->AddTableField("transitionTarget", state.transitionTarget);
+        zenith->AddTableField("stateTimeUS", state.stateTimeMicroseconds);
+        zenith->AddTableField("transitionTimeUS", state.transitionTimeMicroseconds);
+        zenith->AddTableField("transitionDurationUS", state.transitionDurationMicroseconds);
+        zenith->AddTableField("transitioning", state.transitioning);
+        zenith->AddTableField("hasContinuitySnapshot", state.hasContinuitySnapshot);
+        zenith->AddTableField("activeBlendSamples", state.activeBlendSamples);
+        zenith->AddTableField("activeBlendTriangle", state.activeBlendTriangle);
+        zenith->AddTableField("blendWeight0", state.activeBlendWeights[0]);
+        zenith->AddTableField("blendWeight1", state.activeBlendWeights[1]);
+        zenith->AddTableField("blendWeight2", state.activeBlendWeights[2]);
+        zenith->AddTableField("playbackRate0", state.synchronizationPlaybackRates[0]);
+        zenith->AddTableField("playbackRate1", state.synchronizationPlaybackRates[1]);
+        zenith->AddTableField("playbackRate2", state.synchronizationPlaybackRates[2]);
+        zenith->AddTableField("synchronizationLeader", state.synchronizationLeader);
+        zenith->AddTableField("previousSynchronizationMarker", state.previousSynchronizationMarker);
+        zenith->AddTableField("nextSynchronizationMarker", state.nextSynchronizationMarker);
+        zenith->AddTableField("requestedSlotSemanticID", state.requestedSlotSemanticID);
+        zenith->AddTableField("resolvedSlotSemanticID", state.resolvedSlotSemanticID);
+        zenith->AddTableField("resolvedClipAssetID", state.resolvedClipAssetID);
+        zenith->AddTableField("resolvedVariationID", state.resolvedVariationID);
+        zenith->AddTableField("resolvedFallbackDepth", state.resolvedFallbackDepth);
+        zenith->AddTableField("slotResolution", static_cast<u32>(state.slotResolution));
+        zenith->AddTableField("synchronizationFallback", state.synchronizationFallback);
+        return 1;
+    }
+
     i32 AssetHandler::DestroyAnimatedModel(Zenith* zenith)
     {
         const u32 entityValue = zenith->CheckVal<u32>(1);
-        Animation::DirectPlaybackHandle playback;
-        Animation::ModelDeformationSystem* deformation = GetPlayback(entityValue, playback);
-        bool destroyed = false;
-        if (deformation)
-        {
-            if (GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer())
-                gameRenderer->GetModelSceneBridge()->SetPoseSource(static_cast<entt::entity>(entityValue), {});
-            destroyed = deformation->DestroyDirectPlayback(playback);
-            s_directPlaybackByEntity.erase(entityValue);
-        }
+        const bool hadAnimationBinding = s_animationBindingByEntity.contains(entityValue);
+        ReleaseAnimationBinding(entityValue, true);
+        bool destroyed = hadAnimationBinding;
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
         const entt::entity entity = static_cast<entt::entity>(entityValue);
         if (registries && registries->gameRegistry->valid(entity))
         {
+            if (ECS::Components::Model* model = registries->gameRegistry->try_get<ECS::Components::Model>(entity))
+                ServiceLocator::GetGameRenderer()->GetModelLoader()->UnloadModelForEntity(entity, *model);
             registries->gameRegistry->destroy(entity);
             destroyed = true;
         }
@@ -649,6 +944,8 @@ namespace Scripting::Asset
         const Animation::ModelDeformationSystem* deformation = ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->GetDeformationSystem();
         const Animation::ModelDeformationStats& deformationStats = deformation->GetStats();
         const Animation::DirectPlaybackStats& playbackStats = deformation->GetPlaybackStats();
+        const Animation::ControllerPosePlayerStats& controllerStats = deformation->GetControllerPlaybackStats();
+        const Animation::AnimationControllerStats controllerCoreStats = deformation->GetControllerCoreStats();
         zenith->AddTableField("animationPoseSources", deformationStats.poseSources);
         zenith->AddTableField("animationPoseRequests", deformationStats.requests);
         zenith->AddTableField("animationDeformationDispatches", deformationStats.dispatches);
@@ -660,10 +957,28 @@ namespace Scripting::Asset
         zenith->AddTableField("animationDispatchOverflows", deformationStats.dispatchOverflows);
         zenith->AddTableField("animationPaletteOverflows", deformationStats.paletteOverflows);
         zenith->AddTableField("animationArenaOverflows", deformationStats.deformationArenaOverflows);
+        zenith->AddTableField("animationViewRequests", deformationStats.viewRequests);
+        zenith->AddTableField("animationTransientViewRequests", deformationStats.transientViewRequests);
+        zenith->AddTableField("animationShadowViewRequests", deformationStats.shadowViewRequests);
+        zenith->AddTableField("animationFrustumRejectedInstances", deformationStats.frustumRejectedInstances);
+        zenith->AddTableField("animationSelectedSegmentBounds", deformationStats.selectedSegmentBounds);
+        zenith->AddTableField("animationConservativeBoundsFallbacks", deformationStats.conservativeBoundsFallbacks);
+        zenith->AddTableField("animationDebugActualBounds", deformationStats.debugActualBounds);
+        zenith->AddTableField("animationBoundsViolations", deformationStats.boundsViolations);
+        zenith->AddTableField("animationDemandedLODs", deformationStats.demandedLODs);
         zenith->AddTableField("animationControllerAdvances", playbackStats.controllerAdvances);
         zenith->AddTableField("animationControllerPoseRequests", playbackStats.poseRequests);
         zenith->AddTableField("animationControllerPoseEvaluations", playbackStats.poseEvaluations);
         zenith->AddTableField("animationControllerEvaluationUS", playbackStats.evaluationMicroseconds);
+        zenith->AddTableField("animationGraphAdvances", controllerStats.advances);
+        zenith->AddTableField("animationGraphPoseRequests", controllerStats.poseRequests);
+        zenith->AddTableField("animationGraphPoseEvaluations", controllerStats.poseEvaluations);
+        zenith->AddTableField("animationGraphBlendedSamples", controllerStats.blendedSamples);
+        zenith->AddTableField("animationGraphSnapshotBlends", controllerStats.snapshotBlends);
+        zenith->AddTableField("animationGraphFailures", controllerStats.failures);
+        zenith->AddTableField("animationGraphTransitions", controllerCoreStats.transitions);
+        zenith->AddTableField("animationGraphInterruptions", controllerCoreStats.interruptions);
+        zenith->AddTableField("animationGraphSnapshots", controllerCoreStats.snapshots);
         for (u32 lod = 0; lod < 8; ++lod)
         {
             const std::string field = "modelLOD" + std::to_string(lod);

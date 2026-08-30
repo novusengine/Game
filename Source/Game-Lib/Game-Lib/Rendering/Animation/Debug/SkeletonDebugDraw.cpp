@@ -23,6 +23,7 @@ namespace
     AutoCVar_Int CVAR_AnimationDebugSkeletonAxes(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonAxes", "draw Animation V2 joint model-space axes", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonLabels(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonLabels", "Animation V2 labels: 0 off, 1 joint indices, 2 selected semantic ID", 0, CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonBounds(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonBounds", "draw bounds around Animation V2 debug joints", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
+    AutoCVar_Int CVAR_AnimationDebugBoundsEnabled(CVarCategory::Client | CVarCategory::Rendering, "animationDebugBoundsEnabled", "draw selected pre-pose and actual CPU post-skin Animation V2 bounds; red indicates a containment violation", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonDepthColor(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonDepthColor", "color Animation V2 joints by hierarchy depth", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonSelectedJoint(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonSelectedJoint", "highlight one Animation V2 joint index, or -1", -1, CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonUseSelection(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonUseSelection", "place Animation V2 skeleton at the selected entity transform", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
@@ -68,7 +69,9 @@ namespace Animation
     void SkeletonDebugDraw::Update()
     {
         _stats = {};
-        if (CVAR_AnimationDebugSkeletonEnabled.Get() == 0)
+        const bool skeletonEnabled = CVAR_AnimationDebugSkeletonEnabled.Get() != 0;
+        const bool boundsEnabled = CVAR_AnimationDebugBoundsEnabled.Get() != 0;
+        if (!skeletonEnabled && !boundsEnabled)
         {
             if (_wasEnabled)
                 NC_LOG_INFO("ANIMATION_DEBUG_SKELETON disabled zero_work=1");
@@ -78,7 +81,12 @@ namespace Animation
         }
         _wasEnabled = true;
         _stats.enabled = true;
-        if (!EnsureSkeletonLoaded() || !EvaluateRequestedPose())
+        if (boundsEnabled && _hasAnimationBounds)
+        {
+            DrawBounds(_selectedWorldBounds, _animationBoundsViolation ? Color::Red : (_tightAnimationBounds ? Color::Green : Color::Yellow));
+            DrawBounds(_actualWorldBounds, _animationBoundsViolation ? Color::Red : Color::Cyan);
+        }
+        if (!skeletonEnabled || !EnsureSkeletonLoaded() || !EvaluateRequestedPose())
             return;
 
         mat4x4 worldTransform(1.0f);
@@ -110,6 +118,25 @@ namespace Animation
     void SkeletonDebugDraw::ClearCurrentLocalPose()
     {
         _currentLocalPose.clear();
+    }
+
+    bool SkeletonDebugDraw::WantsAnimationBounds() const
+    {
+        return CVAR_AnimationDebugBoundsEnabled.Get() != 0;
+    }
+
+    void SkeletonDebugDraw::SetAnimationBounds(const FileFormat::Animation::Bounds& selectedWorldBounds, const FileFormat::Animation::Bounds& actualWorldBounds, bool tightSelection, bool violation)
+    {
+        _selectedWorldBounds = selectedWorldBounds;
+        _actualWorldBounds = actualWorldBounds;
+        _tightAnimationBounds = tightSelection;
+        _animationBoundsViolation = violation;
+        _hasAnimationBounds = true;
+    }
+
+    void SkeletonDebugDraw::ClearAnimationBounds()
+    {
+        _hasAnimationBounds = false;
     }
 
     bool SkeletonDebugDraw::EnsureSkeletonLoaded()
@@ -217,6 +244,16 @@ namespace Animation
             if (selectedJoint >= 0 && static_cast<u32>(selectedJoint) < _skeleton->joints.size())
                 NC_LOG_INFO("ANIMATION_DEBUG_SKELETON selected_joint index={} semantic={} depth={} parent={}", selectedJoint, _skeleton->joints[selectedJoint].semanticID, _skeleton->joints[selectedJoint].hierarchyDepth, _skeleton->joints[selectedJoint].parentJointIndex);
         }
+    }
+
+    void SkeletonDebugDraw::DrawBounds(const FileFormat::Animation::Bounds& bounds, Color color)
+    {
+        const vec3 minimum = bounds.center - bounds.extents;
+        const vec3 maximum = bounds.center + bounds.extents;
+        const std::array<vec3, 8> corners = {vec3(minimum.x, minimum.y, minimum.z), vec3(maximum.x, minimum.y, minimum.z), vec3(maximum.x, maximum.y, minimum.z), vec3(minimum.x, maximum.y, minimum.z), vec3(minimum.x, minimum.y, maximum.z), vec3(maximum.x, minimum.y, maximum.z), vec3(maximum.x, maximum.y, maximum.z), vec3(minimum.x, maximum.y, maximum.z)};
+        constexpr std::array<std::array<u8, 2>, 12> edges = {{{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}}};
+        for (const auto& edge : edges)
+            EmitLine(corners[edge[0]], corners[edge[1]], color);
     }
 
     void SkeletonDebugDraw::DrawLabel(u64 value, const vec3& origin, const vec3& right, const vec3& up, Color color, u32 maximumDigits)

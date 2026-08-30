@@ -30,6 +30,12 @@ namespace Animation
         std::vector<FileFormat::Animation::LocalTransform> localPose;
         std::vector<AffineFloat3x4> palette;
         u64 poseGeneration = 1;
+        u64 sampleTimeMicroseconds = 0;
+        FileFormat::AssetID boundsClipAssetID = FileFormat::INVALID_ASSET_ID;
+        bool supportsTightAnimationBounds = false;
+        u64 lastDemandFrame = 0;
+        bool participatedPreviousFrame = false;
+        bool participatedCurrentFrame = false;
     };
 
     struct PoseSourceStoreStats
@@ -38,14 +44,21 @@ namespace Animation
         u32 freeSlots = 0;
         u32 staleHandleRejects = 0;
         u64 poseEvaluations = 0;
+        u64 invalidations = 0;
     };
 
+    // Owns generation-checked local poses and their evaluated GPU skinning palettes.
+    // Demand tracking lets shared poses update only while a visible model needs them.
     class PoseSourceStore
     {
       public:
         PoseSourceHandle CreateRestPose(AnimationLoading::SkeletonHandle skeleton, const AnimationLoading::SkeletonAssetView& skeletonView);
         bool Destroy(PoseSourceHandle handle);
-        bool SetLocalPose(PoseSourceHandle handle, std::span<const FileFormat::Animation::LocalTransform> localPose, const AnimationLoading::SkeletonAssetView& skeletonView);
+        bool SetLocalPose(PoseSourceHandle handle, std::span<const FileFormat::Animation::LocalTransform> localPose, const AnimationLoading::SkeletonAssetView& skeletonView, u64 sampleTimeMicroseconds = 0);
+        bool SetBoundsMetadata(PoseSourceHandle handle, FileFormat::AssetID clipAssetID, u64 sampleTimeMicroseconds, bool supportsTightBounds);
+        bool Invalidate(PoseSourceHandle handle);
+        void BeginDemandFrame(u64 frame);
+        bool MarkDemand(PoseSourceHandle handle, u64 frame);
         const PoseSource* Get(PoseSourceHandle handle) const;
         PoseSourceStoreStats GetStats() const;
 
@@ -64,5 +77,7 @@ namespace Animation
         std::vector<u32> _freeSlots;
         mutable u32 _staleHandleRejects = 0;
         u64 _poseEvaluations = 0;
+        u64 _invalidations = 0;
+        u64 _demandFrame = 0;
     };
 } // namespace Animation

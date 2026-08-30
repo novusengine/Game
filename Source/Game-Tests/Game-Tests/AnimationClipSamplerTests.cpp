@@ -1,9 +1,15 @@
 #include "Game-Lib/Rendering/Animation/Pose/AnimationClipSampler.h"
+#include "Game-Lib/Rendering/Animation/Asset/AnimationAssetValidator.h"
+#include "Game-Lib/Rendering/Animation/Pose/AnimationPose.h"
+#include "Game-Lib/Rendering/Animation/Pose/PoseSourceStore.h"
 
 #include <catch2/catch2.hpp>
 
 #include <array>
+#include <cstdlib>
+#include <fstream>
 #include <glm/gtx/quaternion.hpp>
+#include <json/json.hpp>
 
 namespace
 {
@@ -14,6 +20,13 @@ namespace
         CHECK(value.x == Catch::Approx(expected.x).margin(0.0001f));
         CHECK(value.y == Catch::Approx(expected.y).margin(0.0001f));
         CHECK(value.z == Catch::Approx(expected.z).margin(0.0001f));
+    }
+
+    std::vector<u8> ReadPayload(const char* path)
+    {
+        std::ifstream input(path, std::ios::binary);
+        REQUIRE(input);
+        return std::vector<u8>(std::istreambuf_iterator<char>(input), {});
     }
 }
 
@@ -81,4 +94,120 @@ TEST_CASE("Animation clip samples complete rest-defaulted pose and shortest rota
     CheckVec3(pose[0].scale, vec3(2.0f));
     CheckVec3(pose[1].translation, vec3(20.0f));
     CHECK(std::abs(glm::dot(pose[0].rotation, glm::angleAxis(glm::pi<f32>() / 3.0f, vec3(0.0f, 1.0f, 0.0f)))) == Catch::Approx(1.0f).margin(0.0001f));
+}
+
+TEST_CASE("Pose source generations invalidation and demand participation are explicit", "[AnimationPose][PoseSourceStore]")
+{
+    std::array<AnimationFormat::SkeletonJoint, 1> joints = {};
+    joints[0].parentJointIndex = -1;
+    AnimationLoading::SkeletonAssetView skeleton;
+    skeleton.joints = joints;
+
+    Animation::PoseSourceStore store;
+    const Animation::PoseSourceHandle first = store.CreateRestPose({}, skeleton);
+    REQUIRE(first);
+    REQUIRE(store.Get(first));
+    CHECK(store.Get(first)->poseGeneration == 1);
+    CHECK(store.Get(first)->sampleTimeMicroseconds == 0);
+
+    store.BeginDemandFrame(10);
+    REQUIRE(store.MarkDemand(first, 10));
+    CHECK(store.Get(first)->lastDemandFrame == 10);
+    CHECK(store.Get(first)->participatedCurrentFrame);
+    CHECK_FALSE(store.Get(first)->participatedPreviousFrame);
+
+    store.BeginDemandFrame(11);
+    CHECK_FALSE(store.Get(first)->participatedCurrentFrame);
+    CHECK(store.Get(first)->participatedPreviousFrame);
+
+    const u64 generationBeforeInvalidation = store.Get(first)->poseGeneration;
+    REQUIRE(store.Invalidate(first));
+    CHECK(store.Get(first)->poseGeneration == generationBeforeInvalidation + 1);
+    CHECK_FALSE(store.Get(first)->participatedCurrentFrame);
+    CHECK_FALSE(store.Get(first)->participatedPreviousFrame);
+
+    std::array<AnimationFormat::LocalTransform, 1> localPose = {};
+    localPose[0].translation = vec3(2.0f, 3.0f, 4.0f);
+    REQUIRE(store.SetLocalPose(first, localPose, skeleton, 123456));
+    CHECK(store.Get(first)->sampleTimeMicroseconds == 123456);
+    CHECK(store.Get(first)->poseGeneration == generationBeforeInvalidation + 2);
+
+    REQUIRE(store.Destroy(first));
+    CHECK(store.Get(first) == nullptr);
+    CHECK_FALSE(store.MarkDemand(first, 12));
+
+    const Animation::PoseSourceHandle reused = store.CreateRestPose({}, skeleton);
+    REQUIRE(reused);
+    CHECK(reused.GetRawValue() != first.GetRawValue());
+    CHECK(store.Get(first) == nullptr);
+    CHECK(store.Get(reused) != nullptr);
+
+    const Animation::PoseSourceStoreStats stats = store.GetStats();
+    CHECK(stats.liveSources == 1);
+    CHECK(stats.invalidations == 1);
+    CHECK(stats.poseEvaluations == 3);
+    CHECK(stats.staleHandleRejects >= 3);
+}
+
+TEST_CASE("Game clip sampling and hierarchy evaluation match independent Blender goldens", "[AnimationClipSampler][ExternalFixture]")
+{
+    const char* skeletonPath = std::getenv("NOVUS_NBS_PHASE5_SKELETON");
+    const char* clipPath = std::getenv("NOVUS_NBS_PHASE5_CLIP");
+    const char* goldenPath = std::getenv("NOVUS_NBS_PHASE5_GOLDEN");
+    if (!skeletonPath || !clipPath || !goldenPath)
+        return;
+
+    const std::vector<u8> skeletonPayload = ReadPayload(skeletonPath);
+    const std::vector<u8> clipPayload = ReadPayload(clipPath);
+    const AnimationLoading::SkeletonAssetReadResult skeleton = AnimationLoading::AnimationAssetReader::ReadSkeleton(skeletonPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationClipAssetReadResult clip = AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload, AssetLoading::ValidationMode::Full);
+    REQUIRE(skeleton);
+    REQUIRE(clip);
+    std::ifstream goldenInput(goldenPath);
+    REQUIRE(goldenInput);
+    const nlohmann::json golden = nlohmann::json::parse(goldenInput);
+    REQUIRE(golden.at("schema") == "novus.animation-v2.blender-golden.v1");
+    const u64 skeletonAssetID = golden.at("skeleton_asset_id").get<u64>();
+    REQUIRE_FALSE(AnimationLoading::AnimationAssetValidator::ValidateDomain(clip.view, AnimationFormat::PoseDomainType::Skeleton, skeletonAssetID));
+    REQUIRE(golden.at("duration_microseconds").get<u64>() == clip.view.root.durationMicroseconds);
+    REQUIRE(golden.at("sample_rate_hz").get<u32>() == clip.view.root.sampleRateHz);
+    REQUIRE(golden.at("sample_count").get<u32>() == clip.view.root.sampleCount);
+    REQUIRE(golden.at("joint_count").get<u32>() == skeleton.view.joints.size());
+
+    constexpr f32 localTolerance = 2.0e-5f;
+    constexpr f32 modelTolerance = 4.0e-5f;
+    std::vector<AnimationFormat::LocalTransform> localPose(skeleton.view.joints.size());
+    for (const nlohmann::json& sample : golden.at("samples"))
+    {
+        const u64 timeMicroseconds = sample.at("time_microseconds").get<u64>();
+        INFO("sample " << sample.at("sample_index").get<u32>() << " at " << timeMicroseconds << " us");
+        REQUIRE(Animation::SampleClipLocalPose(clip.view, skeleton.view, static_cast<f64>(timeMicroseconds) / 1'000'000.0, false, localPose) == Animation::ClipSampleError::None);
+        const Animation::PoseEvaluationResult evaluated = Animation::EvaluatePose(skeleton.view.joints, localPose);
+        REQUIRE(evaluated);
+        REQUIRE(sample.at("joints").size() == skeleton.view.joints.size());
+
+        for (const nlohmann::json& joint : sample.at("joints"))
+        {
+            const u32 jointIndex = joint.at("index").get<u32>();
+            INFO("joint " << joint.at("name").get<std::string>() << " [" << jointIndex << "]");
+            REQUIRE(jointIndex < skeleton.view.joints.size());
+            CHECK(joint.at("semantic_id").get<u64>() == skeleton.view.joints[jointIndex].semanticID);
+
+            const auto& expectedTranslation = joint.at("translation");
+            const auto& expectedRotation = joint.at("rotation_xyzw");
+            const auto& expectedScale = joint.at("scale");
+            for (u32 axis = 0; axis < 3; ++axis)
+            {
+                CHECK(localPose[jointIndex].translation[axis] == Catch::Approx(expectedTranslation.at(axis).get<f32>()).margin(localTolerance));
+                CHECK(localPose[jointIndex].scale[axis] == Catch::Approx(expectedScale.at(axis).get<f32>()).margin(localTolerance));
+            }
+            const quat expectedQuaternion(expectedRotation.at(3).get<f32>(), expectedRotation.at(0).get<f32>(), expectedRotation.at(1).get<f32>(), expectedRotation.at(2).get<f32>());
+            CHECK(std::abs(glm::dot(localPose[jointIndex].rotation, expectedQuaternion)) >= 1.0f - localTolerance);
+
+            const auto& expectedModel = joint.at("model_column_major_3x4");
+            for (u32 column = 0; column < 4; ++column)
+                for (u32 row = 0; row < 3; ++row)
+                    CHECK(evaluated.modelTransforms[jointIndex][column][row] == Catch::Approx(expectedModel.at(column * 3 + row).get<f32>()).margin(modelTolerance));
+        }
+    }
 }

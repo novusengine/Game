@@ -44,11 +44,14 @@ namespace Animation
         explicit operator bool() const { return error == PoseEvaluationError::None; }
     };
 
+    // Builds model-space joint transforms and GPU skinning palettes from local skeleton poses.
+    // The helpers keep pose composition and blending independent from playback policy.
     mat4a ComposeLocalTransform(const FileFormat::Animation::LocalTransform& transform);
     AffineFloat3x4 PackAffineFloat3x4(const mat4a& transform);
     mat4a UnpackAffineFloat3x4(const AffineFloat3x4& transform);
     vec3 TransformPoint(const AffineFloat3x4& transform, const vec3& point);
     vec3 TransformVector(const AffineFloat3x4& transform, const vec3& vector);
     PoseEvaluationResult EvaluatePose(std::span<const FileFormat::Animation::SkeletonJoint> joints, std::span<const FileFormat::Animation::LocalTransform> localPose);
+    bool BlendLocalPoses(std::span<const FileFormat::Animation::LocalTransform> outgoing, std::span<const FileFormat::Animation::LocalTransform> incoming, f32 weight, std::span<FileFormat::Animation::LocalTransform> output);
     PoseEvaluationResult EvaluateRestPose(const AnimationLoading::SkeletonAssetView& skeleton);
 } // namespace Animation

@@ -66,6 +66,8 @@ namespace AnimationLoading
         std::array<u32, 9> residentAssetsByType = {};
     };
 
+    // Maintains CPU-side AssetID caches for immutable animation assets and their decoded views.
+    // Generation-checked handles permit reloads without allowing stale references to reach playback.
     class AnimationAssetRegistry
     {
       public:

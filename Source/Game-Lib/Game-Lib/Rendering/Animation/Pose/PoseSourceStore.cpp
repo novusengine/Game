@@ -29,6 +29,7 @@ namespace Animation
             slot.source.localPose.push_back(joint.restTransform);
         slot.source.palette = evaluated.palette;
         slot.source.poseGeneration = 1;
+        slot.source.sampleTimeMicroseconds = 0;
         ++_poseEvaluations;
         return PoseSourceHandle::Create(slotIndex, slot.generation);
     }
@@ -47,7 +48,7 @@ namespace Animation
         return true;
     }
 
-    bool PoseSourceStore::SetLocalPose(PoseSourceHandle handle, std::span<const FileFormat::Animation::LocalTransform> localPose, const AnimationLoading::SkeletonAssetView& skeletonView)
+    bool PoseSourceStore::SetLocalPose(PoseSourceHandle handle, std::span<const FileFormat::Animation::LocalTransform> localPose, const AnimationLoading::SkeletonAssetView& skeletonView, u64 sampleTimeMicroseconds)
     {
         Slot* slot = GetSlot(handle);
         if (!slot || localPose.size() != skeletonView.joints.size())
@@ -57,10 +58,61 @@ namespace Animation
             return false;
         slot->source.localPose.assign(localPose.begin(), localPose.end());
         slot->source.palette = std::move(evaluated.palette);
+        slot->source.sampleTimeMicroseconds = sampleTimeMicroseconds;
         ++slot->source.poseGeneration;
         if (slot->source.poseGeneration == 0)
             slot->source.poseGeneration = 1;
         ++_poseEvaluations;
+        return true;
+    }
+
+    bool PoseSourceStore::SetBoundsMetadata(PoseSourceHandle handle, FileFormat::AssetID clipAssetID, u64 sampleTimeMicroseconds, bool supportsTightBounds)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+            return false;
+        slot->source.boundsClipAssetID = clipAssetID;
+        slot->source.sampleTimeMicroseconds = sampleTimeMicroseconds;
+        slot->source.supportsTightAnimationBounds = supportsTightBounds;
+        return true;
+    }
+
+    bool PoseSourceStore::Invalidate(PoseSourceHandle handle)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+            return false;
+        ++slot->source.poseGeneration;
+        if (slot->source.poseGeneration == 0)
+            slot->source.poseGeneration = 1;
+        slot->source.participatedPreviousFrame = false;
+        slot->source.participatedCurrentFrame = false;
+        ++_invalidations;
+        return true;
+    }
+
+    void PoseSourceStore::BeginDemandFrame(u64 frame)
+    {
+        if (_demandFrame == frame)
+            return;
+        _demandFrame = frame;
+        for (Slot& slot : _slots)
+        {
+            if (!slot.live)
+                continue;
+            slot.source.participatedPreviousFrame = slot.source.participatedCurrentFrame;
+            slot.source.participatedCurrentFrame = false;
+        }
+    }
+
+    bool PoseSourceStore::MarkDemand(PoseSourceHandle handle, u64 frame)
+    {
+        BeginDemandFrame(frame);
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+            return false;
+        slot->source.lastDemandFrame = frame;
+        slot->source.participatedCurrentFrame = true;
         return true;
     }
 
@@ -72,7 +124,7 @@ namespace Animation
 
     PoseSourceStoreStats PoseSourceStore::GetStats() const
     {
-        return {.liveSources = static_cast<u32>(_slots.size() - _freeSlots.size()), .freeSlots = static_cast<u32>(_freeSlots.size()), .staleHandleRejects = _staleHandleRejects, .poseEvaluations = _poseEvaluations};
+        return {.liveSources = static_cast<u32>(_slots.size() - _freeSlots.size()), .freeSlots = static_cast<u32>(_freeSlots.size()), .staleHandleRejects = _staleHandleRejects, .poseEvaluations = _poseEvaluations, .invalidations = _invalidations};
     }
 
     PoseSourceStore::Slot* PoseSourceStore::GetSlot(PoseSourceHandle handle)

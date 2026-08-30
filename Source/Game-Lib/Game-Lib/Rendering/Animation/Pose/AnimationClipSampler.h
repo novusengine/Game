@@ -25,6 +25,8 @@ namespace Animation
         InvalidTrackRange
     };
 
+    // Maps playback time onto authored samples and evaluates a clip into a skeleton-local pose.
+    // Sampling starts from the rest pose so sparse tracks leave unauthored joints unchanged.
     ClipSampleLocation MapClipTime(const FileFormat::Animation::AnimationClipAsset& clip, f64 timeSeconds, bool looping);
     ClipSampleError SampleClipLocalPose(const AnimationLoading::AnimationClipAssetView& clip, const AnimationLoading::SkeletonAssetView& skeleton, f64 timeSeconds, bool looping, std::span<FileFormat::Animation::LocalTransform> outLocalPose);
 }

@@ -18,12 +18,12 @@ namespace
     Result ReadRigFamily(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadRigFamily(payload, AssetLoading::ValidationMode::Full); }
     AnimationLoading::SkeletonAssetReadResult ReadSkeleton(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadSkeleton(payload, AssetLoading::ValidationMode::Full); }
     AnimationLoading::AnimationClipAssetReadResult ReadAnimationClip(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationClip(payload, AssetLoading::ValidationMode::Full); }
-    AnimationLoading::AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationSet(payload); }
+    AnimationLoading::AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationSet(payload, AssetLoading::ValidationMode::Full); }
     AnimationLoading::AnimationGraphAssetReadResult ReadAnimationGraph(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationGraph(payload); }
     AnimationLoading::BoneMaskAssetReadResult ReadBoneMask(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadBoneMask(payload); }
     AnimationLoading::IKRigAssetReadResult ReadIKRig(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadIKRig(payload); }
     AnimationLoading::RetargetProfileAssetReadResult ReadRetargetProfile(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadRetargetProfile(payload); }
-    AnimationLoading::AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload); }
+    AnimationLoading::AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload, AssetLoading::ValidationMode::Full); }
 } // namespace
 
 namespace AnimationLoading

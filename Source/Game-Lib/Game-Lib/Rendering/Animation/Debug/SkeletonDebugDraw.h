@@ -22,6 +22,8 @@ namespace Animation
         bool currentPoseFallback = false;
     };
 
+    // Draws skeleton poses and animation bounds through the shared debug renderer.
+    // CVAR controls allow runtime inspection without changing normal animation behavior.
     class SkeletonDebugDraw
     {
       public:
@@ -31,12 +33,16 @@ namespace Animation
         void Update();
         void SetCurrentLocalPose(std::span<const FileFormat::Animation::LocalTransform> localPose);
         void ClearCurrentLocalPose();
+        bool WantsAnimationBounds() const;
+        void SetAnimationBounds(const FileFormat::Animation::Bounds& selectedWorldBounds, const FileFormat::Animation::Bounds& actualWorldBounds, bool tightSelection, bool violation);
+        void ClearAnimationBounds();
         const SkeletonDebugDrawStats& GetStats() const { return _stats; }
 
       private:
         bool EnsureSkeletonLoaded();
         bool EvaluateRequestedPose();
         void DrawSkeleton(const mat4x4& worldTransform);
+        void DrawBounds(const FileFormat::Animation::Bounds& bounds, Color color);
         void DrawLabel(u64 value, const vec3& origin, const vec3& right, const vec3& up, Color color, u32 maximumDigits);
         void EmitLine(const vec3& from, const vec3& to, Color color);
         void ReleaseSkeleton();
@@ -54,5 +60,10 @@ namespace Animation
         bool _reportedCapacity = false;
         bool _wasEnabled = false;
         bool _reportedReady = false;
+        FileFormat::Animation::Bounds _selectedWorldBounds;
+        FileFormat::Animation::Bounds _actualWorldBounds;
+        bool _hasAnimationBounds = false;
+        bool _tightAnimationBounds = false;
+        bool _animationBoundsViolation = false;
     };
 } // namespace Animation

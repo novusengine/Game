@@ -44,6 +44,8 @@ namespace Animation
         u64 evaluationMicroseconds = 0;
     };
 
+    // Owns lightweight playback state for clips that do not need an animation graph.
+    // It advances time independently and samples poses only when deformation requests them.
     class DirectClipPlayer
     {
       public:

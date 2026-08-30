@@ -26,6 +26,7 @@ namespace Scripting::Asset
         static i32 SpawnModelAtWorldOrigin(Zenith* zenith);
         static i32 BindRestPose(Zenith* zenith);
         static i32 BindAnimation(Zenith* zenith);
+        static i32 ShareAnimationPose(Zenith* zenith);
         static i32 AnimationPlay(Zenith* zenith);
         static i32 AnimationPause(Zenith* zenith);
         static i32 AnimationStop(Zenith* zenith);
@@ -33,6 +34,13 @@ namespace Scripting::Asset
         static i32 AnimationSetLooping(Zenith* zenith);
         static i32 AnimationSetPlaybackRate(Zenith* zenith);
         static i32 GetAnimationState(Zenith* zenith);
+        static i32 BindAnimationController(Zenith* zenith);
+        static i32 ResolveAnimationParameter(Zenith* zenith);
+        static i32 AnimationSetFloatParameter(Zenith* zenith);
+        static i32 AnimationSetBoolParameter(Zenith* zenith);
+        static i32 AnimationTriggerParameter(Zenith* zenith);
+        static i32 AnimationQueueAction(Zenith* zenith);
+        static i32 GetAnimationControllerState(Zenith* zenith);
         static i32 DestroyAnimatedModel(Zenith* zenith);
         static i32 BeginDragSpawn(Zenith* zenith);
         static i32 LoadRenderModel(Zenith* zenith);
@@ -51,6 +59,7 @@ namespace Scripting::Asset
         { "SpawnModelAtWorldOrigin", AssetHandler::SpawnModelAtWorldOrigin, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BindRestPose",    AssetHandler::BindRestPose,    Scripting::LuaMethodFlags::DeveloperOnly },
         { "BindAnimation", AssetHandler::BindAnimation, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ShareAnimationPose", AssetHandler::ShareAnimationPose, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationPlay", AssetHandler::AnimationPlay, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationPause", AssetHandler::AnimationPause, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationStop", AssetHandler::AnimationStop, Scripting::LuaMethodFlags::DeveloperOnly },
@@ -58,6 +67,13 @@ namespace Scripting::Asset
         { "AnimationSetLooping", AssetHandler::AnimationSetLooping, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationSetPlaybackRate", AssetHandler::AnimationSetPlaybackRate, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetAnimationState", AssetHandler::GetAnimationState, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "BindAnimationController", AssetHandler::BindAnimationController, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResolveAnimationParameter", AssetHandler::ResolveAnimationParameter, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationSetFloatParameter", AssetHandler::AnimationSetFloatParameter, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationSetBoolParameter", AssetHandler::AnimationSetBoolParameter, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationTriggerParameter", AssetHandler::AnimationTriggerParameter, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationQueueAction", AssetHandler::AnimationQueueAction, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetAnimationControllerState", AssetHandler::GetAnimationControllerState, Scripting::LuaMethodFlags::DeveloperOnly },
         { "DestroyAnimatedModel", AssetHandler::DestroyAnimatedModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BeginDragSpawn", AssetHandler::BeginDragSpawn, Scripting::LuaMethodFlags::DeveloperOnly },
         { "LoadRenderModel", AssetHandler::LoadRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },

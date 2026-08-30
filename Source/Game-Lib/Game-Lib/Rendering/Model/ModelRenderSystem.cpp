@@ -28,7 +28,7 @@ namespace ModelRendering
                                          RenderAssets::RenderAssetResources* assets, RenderScenes::RenderScene* scene,
                                          RenderResources& resources, bool validateTransfers)
         : _renderer(renderer), _gameRenderer(gameRenderer), _assets(assets), _mainScene(scene),
-          _validateTransfers(validateTransfers)
+          _resources(&resources), _validateTransfers(validateTransfers)
     {
         RenderScenes::RenderViewDesc desc;
         desc.viewID = 1;
@@ -136,7 +136,12 @@ namespace ModelRendering
         for (auto& [viewID, view] : _views)
             view->Update(forcedLOD);
         _deformationSystem->AdvancePlayback(deltaTime);
-        _deformationSystem->Prepare(*_mainScene, _assets->GetModelGeometryStorage(), _assets->GetAnimationRegistry());
+        _deformationSystem->AdvanceControllerPlayback(deltaTime);
+        _deformationViews.clear();
+        for (auto& [viewID, view] : _views)
+            if (view->GetView().ShouldRender())
+                _deformationViews.push_back(&view->GetView());
+        _deformationSystem->Prepare(_scenes, _deformationViews, *_resources, forcedLOD, _assets->GetModelGeometryStorage(), _assets->GetAnimationRegistry());
         for (RenderScenes::RenderScene* scene : _scenes)
         {
             scene->AcknowledgeModelMembershipChanges();

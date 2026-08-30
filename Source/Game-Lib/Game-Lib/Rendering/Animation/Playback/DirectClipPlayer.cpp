@@ -34,6 +34,7 @@ namespace Animation
         slot.controller.poseSource = poseSource;
         slot.controller.looping = (clipView.root.flags & FileFormat::Animation::AnimationClipFlags_Looping) != 0;
         slot.controller.localPose.resize(skeletonView.joints.size());
+        _poseSources->SetBoundsMetadata(poseSource, _assets->GetAssetID(clip), 0, true);
         _poseToController[poseSource.GetRawValue()] = slotIndex;
         return DirectPlaybackHandle::Create(slotIndex, slot.generation);
     }
@@ -82,6 +83,8 @@ namespace Animation
         slot->controller.playing = false;
         slot->controller.timeSeconds = 0.0;
         slot->controller.sampleDirty = true;
+        _poseSources->Invalidate(slot->controller.poseSource);
+        _poseSources->SetBoundsMetadata(slot->controller.poseSource, _assets->GetAssetID(slot->controller.clip), 0, true);
         return true;
     }
 
@@ -92,6 +95,8 @@ namespace Animation
             return false;
         slot->controller.timeSeconds = MapControllerTime(slot->controller, timeSeconds);
         slot->controller.sampleDirty = true;
+        _poseSources->Invalidate(slot->controller.poseSource);
+        _poseSources->SetBoundsMetadata(slot->controller.poseSource, _assets->GetAssetID(slot->controller.clip), static_cast<u64>(std::max(slot->controller.timeSeconds, 0.0) * 1'000'000.0 + 0.5), true);
         return true;
     }
 
@@ -147,6 +152,7 @@ namespace Animation
                 continue;
             slot.controller.timeSeconds = MapControllerTime(slot.controller, slot.controller.timeSeconds + static_cast<f64>(deltaTime) * slot.controller.playbackRate);
             slot.controller.sampleDirty = true;
+            _poseSources->SetBoundsMetadata(slot.controller.poseSource, _assets->GetAssetID(slot.controller.clip), static_cast<u64>(std::max(slot.controller.timeSeconds, 0.0) * 1'000'000.0 + 0.5), true);
             ++_stats.controllerAdvances;
         }
     }
@@ -168,7 +174,8 @@ namespace Animation
             return false;
         const auto start = std::chrono::steady_clock::now();
         const ClipSampleError sample = SampleClipLocalPose(*clip, *skeleton, slot.controller.timeSeconds, slot.controller.looping, slot.controller.localPose);
-        if (sample != ClipSampleError::None || !_poseSources->SetLocalPose(slot.controller.poseSource, slot.controller.localPose, *skeleton))
+        const u64 sampleTimeMicroseconds = static_cast<u64>(std::max(slot.controller.timeSeconds, 0.0) * 1'000'000.0 + 0.5);
+        if (sample != ClipSampleError::None || !_poseSources->SetLocalPose(slot.controller.poseSource, slot.controller.localPose, *skeleton, sampleTimeMicroseconds))
             return false;
         _stats.evaluationMicroseconds += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
         ++_stats.poseEvaluations;
