@@ -2,6 +2,7 @@
 
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
 #include "Game-Lib/Rendering/Asset/AssetValidation.h"
+#include "MaterialAssetValidator.h"
 #include "MaterialInstancePatcher.h"
 #include "MaterialAnimator.h"
 #include "MaterialProgramLibrary.h"
@@ -69,6 +70,8 @@ namespace MaterialLoading
         {
             ZoneScopedN("Decode Material Asset");
             result = MaterialAssetReader::ReadMaterial(payload);
+            if (result && AssetLoading::ShouldPerformFullValidation())
+                result = MaterialAssetValidator::ValidateMaterial(std::move(result));
         }
         if (!result)
         {
@@ -123,7 +126,7 @@ namespace MaterialLoading
         MaterialAssetReadResult<MaterialInstanceAssetView> decoded;
         {
             ZoneScopedN("Decode Material Instance");
-            decoded = MaterialAssetReader::DecodeMaterialInstance(payload);
+            decoded = MaterialAssetReader::ReadMaterialInstance(payload);
         }
         if (!decoded)
         {
@@ -140,7 +143,7 @@ namespace MaterialLoading
         MaterialAssetReadResult<MaterialInstanceAssetView> result;
         {
             ZoneScopedN("Validate Material Instance");
-            result = MaterialAssetReader::ValidateMaterialInstance(std::move(decoded), GetMaterialView(materialEntry->second));
+            result = AssetLoading::ShouldPerformFullValidation() ? MaterialAssetValidator::ValidateMaterialInstance(std::move(decoded), GetMaterialView(materialEntry->second)) : std::move(decoded);
         }
         if (!result)
         {

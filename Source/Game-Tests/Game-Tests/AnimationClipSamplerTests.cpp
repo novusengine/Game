@@ -149,6 +149,81 @@ TEST_CASE("Pose source generations invalidation and demand participation are exp
     CHECK(stats.staleHandleRejects >= 3);
 }
 
+TEST_CASE("Semantic attachments and batched joint queries use CPU pose transforms", "[AnimationPose][Attachments][PoseQueries]")
+{
+    std::array<AnimationFormat::SkeletonJoint, 3> joints = {};
+    joints[0].semanticID = 10;
+    joints[0].parentJointIndex = -1;
+    joints[1].semanticID = 11;
+    joints[1].parentJointIndex = 0;
+    joints[1].restTransform.translation = vec3(0.0f, 1.0f, 0.0f);
+    joints[2].semanticID = 12;
+    joints[2].parentJointIndex = 1;
+    joints[2].restTransform.translation = vec3(0.0f, 2.0f, 0.0f);
+    FileFormat::Animation::SkeletonAttachment socket;
+    socket.semanticID = 100;
+    socket.jointIndex = 2;
+    socket.localTransform.translation = vec3(1.0f, 0.0f, 0.0f);
+    const std::array<FileFormat::Animation::SkeletonAttachment, 1> attachments = {socket};
+    AnimationLoading::SkeletonAssetView skeleton;
+    skeleton.joints = joints;
+    skeleton.attachments = attachments;
+
+    Animation::PoseSourceStore store;
+    const Animation::PoseSourceHandle poseSource = store.CreateRestPose({}, skeleton);
+    REQUIRE(poseSource);
+    const Animation::PoseAttachmentHandle attachment = store.CreateAttachment(poseSource, skeleton, 100, true, vec3(0.5f, 1.0f, 0.25f));
+    REQUIRE(attachment);
+    REQUIRE(store.Get(poseSource));
+    CheckVec3(store.Get(poseSource)->attachmentBoundsExpansion, vec3(1.5f, 1.0f, 0.25f));
+    store.BeginDemandFrame(1);
+    store.ResolveAttachments(1);
+    CHECK(store.GetAttachment(attachment)->lastResolvedFrame == 0);
+    CHECK_FALSE(store.GetAttachment(attachment)->valid);
+    REQUIRE(store.MarkDemand(poseSource, 1));
+    store.ResolveAttachments(1);
+    REQUIRE(store.GetAttachment(attachment));
+    CHECK(store.GetAttachment(attachment)->valid);
+    CheckVec3(store.GetAttachment(attachment)->currentTransform[3], vec3(1.0f, 3.0f, 0.0f));
+    CHECK_FALSE(store.GetAttachment(attachment)->motionValid);
+
+    std::array<AnimationFormat::LocalTransform, 3> pose = {joints[0].restTransform, joints[1].restTransform, joints[2].restTransform};
+    pose[0].translation = vec3(5.0f, 0.0f, 0.0f);
+    REQUIRE(store.SetLocalPose(poseSource, pose, skeleton));
+    store.ResolveAttachments(2);
+    CheckVec3(store.GetAttachment(attachment)->previousTransform[3], vec3(1.0f, 3.0f, 0.0f));
+    CheckVec3(store.GetAttachment(attachment)->currentTransform[3], vec3(6.0f, 3.0f, 0.0f));
+    CHECK(store.GetAttachment(attachment)->motionValid);
+
+    REQUIRE(store.Invalidate(poseSource));
+    store.ResolveAttachments(3);
+    CHECK_FALSE(store.GetAttachment(attachment)->valid);
+    CHECK_FALSE(store.GetAttachment(attachment)->motionValid);
+    REQUIRE(store.MarkDemand(poseSource, 3));
+    store.ResolveAttachments(3);
+    CHECK(store.GetAttachment(attachment)->valid);
+    CHECK_FALSE(store.GetAttachment(attachment)->motionValid);
+
+    store.BeginPoseQueryFrame(20);
+    const Animation::PoseQueryHandle first = store.RequestJoint(poseSource, skeleton, 12);
+    const Animation::PoseQueryHandle duplicate = store.RequestJoint(poseSource, skeleton, 12);
+    REQUIRE(first);
+    CHECK(first.index == duplicate.index);
+    store.ResolvePoseQueries();
+    REQUIRE(store.GetPoseQuery(first));
+    REQUIRE(store.GetPoseQuery(first)->valid);
+    CheckVec3(store.GetPoseQuery(first)->modelTransform[3], vec3(5.0f, 3.0f, 0.0f));
+    CHECK(store.GetStats().deduplicatedQueries == 1);
+    CHECK(store.GetStats().fullPoseQueryPromotions == 1);
+
+    REQUIRE(store.Destroy(poseSource));
+    store.ResolveAttachments(21);
+    CHECK_FALSE(store.GetAttachment(attachment)->valid);
+    CHECK_FALSE(store.GetAttachment(attachment)->motionValid);
+    REQUIRE(store.DestroyAttachment(attachment));
+    CHECK(store.GetAttachment(attachment) == nullptr);
+}
+
 TEST_CASE("Game clip sampling and hierarchy evaluation match independent Blender goldens", "[AnimationClipSampler][ExternalFixture]")
 {
     const char* skeletonPath = std::getenv("NOVUS_NBS_PHASE5_SKELETON");
@@ -159,8 +234,8 @@ TEST_CASE("Game clip sampling and hierarchy evaluation match independent Blender
 
     const std::vector<u8> skeletonPayload = ReadPayload(skeletonPath);
     const std::vector<u8> clipPayload = ReadPayload(clipPath);
-    const AnimationLoading::SkeletonAssetReadResult skeleton = AnimationLoading::AnimationAssetReader::ReadSkeleton(skeletonPayload, AssetLoading::ValidationMode::Full);
-    const AnimationLoading::AnimationClipAssetReadResult clip = AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::SkeletonAssetReadResult skeleton = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadSkeleton(skeletonPayload));
+    const AnimationLoading::AnimationClipAssetReadResult clip = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload));
     REQUIRE(skeleton);
     REQUIRE(clip);
     std::ifstream goldenInput(goldenPath);

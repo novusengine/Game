@@ -1,6 +1,5 @@
 #pragma once
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
-#include "Game-Lib/Rendering/Asset/AssetValidation.h"
 
 #include <FileFormat/Novus/Animation/Animation.h>
 
@@ -113,14 +112,14 @@ namespace AnimationLoading
     class AnimationAssetReader
     {
       public:
-        static RigFamilyAssetReadResult ReadRigFamily(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
-        static SkeletonAssetReadResult ReadSkeleton(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
-        static AnimationClipAssetReadResult ReadAnimationClip(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
-        static AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
+        static RigFamilyAssetReadResult ReadRigFamily(std::span<const u8> payload);
+        static SkeletonAssetReadResult ReadSkeleton(std::span<const u8> payload);
+        static AnimationClipAssetReadResult ReadAnimationClip(std::span<const u8> payload);
+        static AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload);
         static AnimationGraphAssetReadResult ReadAnimationGraph(std::span<const u8> payload);
         static BoneMaskAssetReadResult ReadBoneMask(std::span<const u8> payload);
         static IKRigAssetReadResult ReadIKRig(std::span<const u8> payload);
         static RetargetProfileAssetReadResult ReadRetargetProfile(std::span<const u8> payload);
-        static AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
+        static AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload);
     };
 } // namespace AnimationLoading

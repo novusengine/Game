@@ -13,6 +13,9 @@ namespace Animation
         FileFormat::AssetID domainAssetID = FileFormat::INVALID_ASSET_ID;
         u64 durationMicroseconds = 0;
         std::span<const FileFormat::Animation::SynchronizationMarker> synchronizationMarkers;
+        std::span<const FileFormat::Animation::AnimationEvent> events;
+        std::span<const u8> eventPayloadBytes;
+        bool looping = false;
     };
 
     enum class AnimationSlotResolution : u8

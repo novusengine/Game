@@ -1,5 +1,4 @@
 #include "MaterialAssetReader.h"
-#include "MaterialAssetValidator.h"
 
 #include <Base/Memory/Bytebuffer.h>
 
@@ -45,7 +44,7 @@ namespace
 
 namespace MaterialLoading
 {
-    MaterialAssetReadResult<MaterialAssetView> MaterialAssetReader::ReadMaterial(std::span<const u8> payload, AssetLoading::ValidationMode validationMode)
+    MaterialAssetReadResult<MaterialAssetView> MaterialAssetReader::ReadMaterial(std::span<const u8> payload)
     {
         if (payload.size() < sizeof(Material::MaterialAsset))
             return Fail<MaterialAssetView>(DiagnosticCode::PayloadTooSmall, "MaterialAsset", Diagnostic::NO_INDEX, payload.size(), sizeof(Material::MaterialAsset));
@@ -70,13 +69,10 @@ namespace MaterialLoading
         result.view.parameters = GetRootSection<Material::ParameterDefinition>(payload, root.parametersOffset, root.numParameters);
         result.view.defaultParameterData = GetRootSection<u8>(payload, root.defaultParameterDataOffset, root.defaultParameterDataSize);
 
-        if (AssetLoading::ShouldPerformFullValidation(validationMode))
-            return MaterialAssetValidator::ValidateMaterial(result);
-
         return result;
     }
 
-    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::DecodeMaterialInstance(std::span<const u8> payload)
+    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::ReadMaterialInstance(std::span<const u8> payload)
     {
         if (payload.size() < sizeof(Material::MaterialInstanceAsset))
             return Fail<MaterialInstanceAssetView>(DiagnosticCode::PayloadTooSmall, "MaterialInstanceAsset", Diagnostic::NO_INDEX, payload.size(), sizeof(Material::MaterialInstanceAsset));
@@ -105,19 +101,6 @@ namespace MaterialLoading
         result.view.animationBindings = GetRootSection<Material::MaterialAnimationBinding>(payload, root.animationBindingsOffset, root.numAnimationBindings);
 
         return result;
-    }
-
-    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::ReadMaterialInstance(std::span<const u8> payload, const MaterialAssetView& material, AssetLoading::ValidationMode validationMode)
-    {
-        return ValidateMaterialInstance(DecodeMaterialInstance(payload), material, validationMode);
-    }
-
-    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::ValidateMaterialInstance(MaterialAssetReadResult<MaterialInstanceAssetView> decoded,
-                                                                                                      const MaterialAssetView& material, AssetLoading::ValidationMode validationMode)
-    {
-        if (!decoded || !AssetLoading::ShouldPerformFullValidation(validationMode))
-            return decoded;
-        return MaterialAssetValidator::ValidateMaterialInstance(std::move(decoded), material);
     }
 
     MaterialAssetReadResult<MaterialAnimationAssetView> MaterialAssetReader::ReadMaterialAnimation(std::span<const u8> payload)

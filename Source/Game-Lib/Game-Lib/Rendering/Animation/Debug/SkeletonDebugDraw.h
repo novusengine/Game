@@ -1,6 +1,7 @@
 #pragma once
 #include "Game-Lib/Rendering/Animation/Asset/AnimationAssetRegistry.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationPose.h"
+#include "Game-Lib/Rendering/Animation/Pose/PoseSourceStore.h"
 
 #include <Base/Math/Color.h>
 
@@ -32,6 +33,8 @@ namespace Animation
 
         void Update();
         void SetCurrentLocalPose(std::span<const FileFormat::Animation::LocalTransform> localPose);
+        void SetJointWeights(std::span<const f32> weights);
+        void SetIKOperations(std::span<const PoseIKDebugOperation> operations);
         void ClearCurrentLocalPose();
         bool WantsAnimationBounds() const;
         void SetAnimationBounds(const FileFormat::Animation::Bounds& selectedWorldBounds, const FileFormat::Animation::Bounds& actualWorldBounds, bool tightSelection, bool violation);
@@ -54,6 +57,9 @@ namespace Animation
         const AnimationLoading::SkeletonAssetView* _skeleton = nullptr;
         PoseEvaluationResult _evaluatedPose;
         std::vector<FileFormat::Animation::LocalTransform> _currentLocalPose;
+        std::vector<f32> _jointWeights;
+        std::array<PoseIKDebugOperation, 4> _ikOperations = {};
+        u32 _ikOperationCount = 0;
         std::string _loadedPath;
         SkeletonDebugDrawStats _stats;
         i32 _lastLoggedSelectedJoint = std::numeric_limits<i32>::min();

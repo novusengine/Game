@@ -7,6 +7,16 @@
 
 namespace
 {
+    bool IsFinite(const vec3& value)
+    {
+        return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    }
+
+    bool IsFinite(const quat& value)
+    {
+        return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) && std::isfinite(value.w);
+    }
+
     bool IsFinite(const mat4a& transform)
     {
         for (u32 column = 0; column < 4; ++column)
@@ -19,6 +29,71 @@ namespace
 
 namespace Animation
 {
+    bool ResolveBoneMask(const AnimationLoading::BoneMaskAssetView& mask, FileFormat::Animation::PoseDomainType poseDomainType, FileFormat::AssetID poseDomainAssetID, u32 jointCount, std::vector<f32>& outputWeights)
+    {
+        if (mask.root.poseDomainType != poseDomainType || mask.root.poseDomainAssetID != poseDomainAssetID || mask.jointWeights.size() != jointCount)
+            return false;
+        outputWeights.resize(jointCount);
+        for (u32 jointIndex = 0; jointIndex < jointCount; ++jointIndex)
+            outputWeights[jointIndex] = static_cast<f32>(mask.jointWeights[jointIndex]) / 255.0f;
+        return true;
+    }
+
+    bool BlendOverrideLocalPoses(std::span<const FileFormat::Animation::LocalTransform> basePose, std::span<const FileFormat::Animation::LocalTransform> layerPose, f32 layerWeight, std::span<const f32> maskWeights, std::span<FileFormat::Animation::LocalTransform> output)
+    {
+        if (basePose.size() != layerPose.size() || output.size() != basePose.size() || (!maskWeights.empty() && maskWeights.size() != basePose.size()) || !std::isfinite(layerWeight))
+            return false;
+        layerWeight = std::clamp(layerWeight, 0.0f, 1.0f);
+        for (u32 jointIndex = 0; jointIndex < output.size(); ++jointIndex)
+        {
+            const f32 weight = layerWeight * (maskWeights.empty() ? 1.0f : std::clamp(maskWeights[jointIndex], 0.0f, 1.0f));
+            output[jointIndex].translation = glm::mix(basePose[jointIndex].translation, layerPose[jointIndex].translation, weight);
+            quat layerRotation = layerPose[jointIndex].rotation;
+            if (glm::dot(basePose[jointIndex].rotation, layerRotation) < 0.0f)
+                layerRotation = -layerRotation;
+            output[jointIndex].rotation = glm::normalize(glm::slerp(basePose[jointIndex].rotation, layerRotation, weight));
+            output[jointIndex].scale = glm::mix(basePose[jointIndex].scale, layerPose[jointIndex].scale, weight);
+        }
+        return true;
+    }
+
+    bool BuildAdditiveLocalPose(std::span<const FileFormat::Animation::LocalTransform> sourcePose, std::span<const FileFormat::Animation::LocalTransform> referencePose, std::span<FileFormat::Animation::LocalTransform> output)
+    {
+        if (sourcePose.size() != referencePose.size() || output.size() != sourcePose.size())
+            return false;
+        constexpr f32 minimumScale = 1.0e-6f;
+        for (u32 jointIndex = 0; jointIndex < output.size(); ++jointIndex)
+        {
+            const FileFormat::Animation::LocalTransform& source = sourcePose[jointIndex];
+            const FileFormat::Animation::LocalTransform& reference = referencePose[jointIndex];
+            if (!IsFinite(source.translation) || !IsFinite(source.rotation) || !IsFinite(source.scale) || !IsFinite(reference.translation) || !IsFinite(reference.rotation) || !IsFinite(reference.scale) || glm::any(glm::lessThan(glm::abs(reference.scale), vec3(minimumScale))))
+                return false;
+            output[jointIndex].translation = source.translation - reference.translation;
+            output[jointIndex].rotation = glm::normalize(glm::inverse(reference.rotation) * source.rotation);
+            output[jointIndex].scale = source.scale / reference.scale;
+        }
+        return true;
+    }
+
+    bool ApplyAdditiveLocalPose(std::span<const FileFormat::Animation::LocalTransform> basePose, std::span<const FileFormat::Animation::LocalTransform> additivePose, f32 layerWeight, std::span<const f32> maskWeights, std::span<FileFormat::Animation::LocalTransform> output)
+    {
+        if (basePose.size() != additivePose.size() || output.size() != basePose.size() || (!maskWeights.empty() && maskWeights.size() != basePose.size()) || !std::isfinite(layerWeight))
+            return false;
+        layerWeight = std::clamp(layerWeight, 0.0f, 1.0f);
+        const quat identity(1.0f, 0.0f, 0.0f, 0.0f);
+        for (u32 jointIndex = 0; jointIndex < output.size(); ++jointIndex)
+        {
+            const f32 weight = layerWeight * (maskWeights.empty() ? 1.0f : std::clamp(maskWeights[jointIndex], 0.0f, 1.0f));
+            quat deltaRotation = additivePose[jointIndex].rotation;
+            if (deltaRotation.w < 0.0f)
+                deltaRotation = -deltaRotation;
+            output[jointIndex].translation = basePose[jointIndex].translation + additivePose[jointIndex].translation * weight;
+            output[jointIndex].rotation = glm::normalize(basePose[jointIndex].rotation * glm::slerp(identity, deltaRotation, weight));
+            output[jointIndex].scale = basePose[jointIndex].scale * glm::mix(vec3(1.0f), additivePose[jointIndex].scale, weight);
+        }
+        return true;
+    }
+
     bool BlendLocalPoses(std::span<const FileFormat::Animation::LocalTransform> outgoing, std::span<const FileFormat::Animation::LocalTransform> incoming, f32 weight, std::span<FileFormat::Animation::LocalTransform> output)
     {
         if (outgoing.size() != incoming.size() || output.size() != outgoing.size() || !std::isfinite(weight))
@@ -70,6 +145,23 @@ namespace Animation
     {
         const vec4 homogeneous(vector, 0.0f);
         return vec3(glm::dot(transform.row0, homogeneous), glm::dot(transform.row1, homogeneous), glm::dot(transform.row2, homogeneous));
+    }
+
+    bool UpdateModelTransforms(std::span<const FileFormat::Animation::SkeletonJoint> joints, std::span<const FileFormat::Animation::LocalTransform> localPose, u32 firstJointIndex, std::span<mat4a> modelTransforms)
+    {
+        if (joints.size() != localPose.size() || modelTransforms.size() != joints.size() || firstJointIndex > joints.size())
+            return false;
+        for (u32 jointIndex = firstJointIndex; jointIndex < joints.size(); ++jointIndex)
+        {
+            const FileFormat::Animation::SkeletonJoint& joint = joints[jointIndex];
+            const mat4a localTransform = ComposeLocalTransform(localPose[jointIndex]);
+            if (!IsFinite(localTransform) || joint.parentJointIndex < -1 || joint.parentJointIndex >= static_cast<i32>(jointIndex))
+                return false;
+            modelTransforms[jointIndex] = joint.parentJointIndex < 0 ? localTransform : Math::AffineMatrix::MatrixMul(modelTransforms[joint.parentJointIndex], localTransform);
+            if (!IsFinite(modelTransforms[jointIndex]))
+                return false;
+        }
+        return true;
     }
 
     PoseEvaluationResult EvaluatePose(std::span<const FileFormat::Animation::SkeletonJoint> joints, std::span<const FileFormat::Animation::LocalTransform> localPose)

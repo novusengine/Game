@@ -84,6 +84,15 @@ namespace Animation
         bool SetLocalPose(PoseSourceHandle handle, std::span<const FileFormat::Animation::LocalTransform> localPose, const AnimationLoading::SkeletonAssetView& skeletonView) { return _poseSources.SetLocalPose(handle, localPose, skeletonView); }
         bool InvalidatePoseSource(PoseSourceHandle handle) { return _poseSources.Invalidate(handle); }
         const PoseSource* GetPoseSource(PoseSourceHandle handle) const { return _poseSources.Get(handle); }
+        PoseAttachmentHandle CreateAttachment(PoseSourceHandle parent, const AnimationLoading::SkeletonAssetView& skeletonView, u64 semanticID, bool visualOnly = true, const vec3& childBoundsExtent = {}) { return _poseSources.CreateAttachment(parent, skeletonView, semanticID, visualOnly, childBoundsExtent); }
+        bool DestroyAttachment(PoseAttachmentHandle handle) { return _poseSources.DestroyAttachment(handle); }
+        const PoseAttachment* GetAttachment(PoseAttachmentHandle handle) const { return _poseSources.GetAttachment(handle); }
+        bool BindModelAttachment(PoseAttachmentHandle attachment, RenderScenes::RenderScene* scene, RenderScenes::ModelInstanceHandle parent, RenderScenes::ModelInstanceHandle child, const mat4x4& childLocalTransform);
+        bool SetModelAttachmentLocalTransform(PoseAttachmentHandle attachment, const mat4x4& childLocalTransform);
+        bool UnbindModelAttachment(PoseAttachmentHandle attachment);
+        void BeginPoseQueries(u64 frame) { _poseSources.BeginPoseQueryFrame(frame); }
+        PoseQueryHandle RequestJoint(PoseSourceHandle poseSource, const AnimationLoading::SkeletonAssetView& skeletonView, u64 semanticID) { return _poseSources.RequestJoint(poseSource, skeletonView, semanticID); }
+        const PoseQueryResult* GetPoseQuery(PoseQueryHandle handle) const { return _poseSources.GetPoseQuery(handle); }
         DirectPlaybackHandle CreateDirectPlayback(AnimationLoading::SkeletonHandle skeleton, AnimationLoading::AnimationClipHandle clip, const AnimationLoading::SkeletonAssetView& skeletonView, const AnimationLoading::AnimationClipAssetView& clipView) { return _directPlayback->Create(skeleton, clip, skeletonView, clipView); }
         bool DestroyDirectPlayback(DirectPlaybackHandle handle) { return _directPlayback->Destroy(handle); }
         bool Play(DirectPlaybackHandle handle) { return _directPlayback->Play(handle); }
@@ -101,10 +110,12 @@ namespace Animation
         PoseSourceHandle GetControllerPoseSource(ControllerPlaybackHandle handle) const { return _controllerPlayback->GetPoseSource(handle); }
         AnimationParameterHandle ResolveControllerParameter(ControllerPlaybackHandle handle, u64 nameHash) const { return _controllerPlayback->ResolveParameter(handle, nameHash); }
         bool SetControllerFloat(AnimationParameterHandle handle, f32 value) { return _controllerPlayback->SetFloat(handle, value); }
+        bool SetControllerFloat3(AnimationParameterHandle handle, const vec3& value) { return _controllerPlayback->SetFloat3(handle, value); }
         bool SetControllerBool(AnimationParameterHandle handle, bool value) { return _controllerPlayback->SetBool(handle, value); }
         bool TriggerController(AnimationParameterHandle handle) { return _controllerPlayback->Trigger(handle); }
         bool QueueControllerAction(ControllerPlaybackHandle handle, u64 semanticID, u32 payload = 0) { return _controllerPlayback->QueueAction(handle, semanticID, payload); }
         bool GetControllerState(ControllerPlaybackHandle handle, AnimationControllerState& state) const { return _controllerPlayback->GetState(handle, state); }
+        bool GetControllerParameterValues(ControllerPlaybackHandle handle, std::vector<vec3>& values) const { return _controllerPlayback->GetParameterValues(handle, values); }
         const ControllerPosePlayerStats& GetControllerPlaybackStats() const { return _controllerPlayback->GetStats(); }
         AnimationControllerStats GetControllerCoreStats() const { return _controllerPlayback->GetControllerStats(); }
         void AdvanceControllerPlayback(f32 deltaTime) { _controllerPlayback->Advance(deltaTime); }
@@ -140,5 +151,14 @@ namespace Animation
         u32 _paletteCapacity = 0;
         u32 _vertexCapacity = 0;
         u64 _demandFrame = 0;
+        struct ModelAttachmentBinding
+        {
+            PoseAttachmentHandle attachment;
+            RenderScenes::RenderScene* scene = nullptr;
+            RenderScenes::ModelInstanceHandle parent = RenderScenes::InvalidModelInstanceHandle();
+            RenderScenes::ModelInstanceHandle child = RenderScenes::InvalidModelInstanceHandle();
+            mat4x4 childLocalTransform = mat4x4(1.0f);
+        };
+        std::vector<ModelAttachmentBinding> _modelAttachments;
     };
 } // namespace Animation

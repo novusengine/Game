@@ -7,8 +7,10 @@
 #include "Game-Lib/ECS/Singletons/EditorSelection.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Animation/Deformation/ModelDeformationSystem.h"
 #include "Game-Lib/Rendering/Animation/Controller/AnimationSemantic.h"
+#include "Game-Lib/Rendering/Animation/Pose/AnimationPose.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
@@ -35,6 +37,10 @@
 #include <lualib.h>
 
 #include <chrono>
+#include <cmath>
+
+#include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/norm.hpp>
 
 #include <algorithm>
 #include <filesystem>
@@ -57,9 +63,47 @@ namespace Scripting::Asset
         Animation::PoseSourceHandle poseSource;
         AnimationLoading::SkeletonHandle restPoseSkeleton;
         std::vector<Animation::AnimationParameterHandle> parameterHandles;
+        std::shared_ptr<const Animation::EditableAnimationGraph> graphSource;
+        std::shared_ptr<const Animation::CompiledAnimationGraph> compiledGraph;
     };
 
     static std::unordered_map<u32, std::shared_ptr<AnimationPreviewBinding>> s_animationBindingByEntity;
+
+    struct AnimationPreviewAttachment
+    {
+        u32 parentEntity = 0;
+        u32 childEntity = 0;
+        Animation::PoseAttachmentHandle attachment;
+        mat4x4 childLocalTransform = mat4x4(1.0f);
+    };
+
+    static std::unordered_map<u32, AnimationPreviewAttachment> s_animationAttachmentByChild;
+
+    static void ReleaseModelAttachment(u32 childEntity)
+    {
+        const auto found = s_animationAttachmentByChild.find(childEntity);
+        if (found == s_animationAttachmentByChild.end())
+            return;
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        Animation::ModelDeformationSystem* deformation = gameRenderer ? gameRenderer->GetModelRenderSystem()->GetDeformationSystem() : nullptr;
+        const Animation::PoseAttachmentHandle attachment = found->second.attachment;
+        s_animationAttachmentByChild.erase(found);
+        if (deformation)
+        {
+            deformation->UnbindModelAttachment(attachment);
+            deformation->DestroyAttachment(attachment);
+        }
+    }
+
+    static void ReleaseChildAttachments(u32 parentEntity)
+    {
+        std::vector<u32> children;
+        for (const auto& [childEntity, attachment] : s_animationAttachmentByChild)
+            if (attachment.parentEntity == parentEntity)
+                children.push_back(childEntity);
+        for (u32 childEntity : children)
+            ReleaseModelAttachment(childEntity);
+    }
 
     static void ReleaseAnimationBinding(u32 entityValue, bool clearSceneBinding)
     {
@@ -151,6 +195,8 @@ namespace Scripting::Asset
 
     void AssetHandler::Clear(Zenith*)
     {
+        while (!s_animationAttachmentByChild.empty())
+            ReleaseModelAttachment(s_animationAttachmentByChild.begin()->first);
         while (!s_animationBindingByEntity.empty())
             ReleaseAnimationBinding(s_animationBindingByEntity.begin()->first, false);
     }
@@ -616,10 +662,179 @@ namespace Scripting::Asset
         return 1;
     }
 
-    static std::shared_ptr<const Animation::CompiledAnimationGraph> CompilePreviewLocomotionGraph(std::string_view mode)
+    struct PreviewAnimationGraph
+    {
+        Animation::EditableAnimationGraph source;
+        std::shared_ptr<const Animation::CompiledAnimationGraph> compiled;
+    };
+
+    static PreviewAnimationGraph CompilePreviewLocomotionGraph(std::string_view mode)
     {
         Animation::EditableAnimationGraph graph;
-        if (mode == "blend1d")
+        if (mode == "ik" || mode == "ik_showcase")
+        {
+            Animation::EditableGraphParameter goal;
+            goal.name = "rightHandGoal";
+            goal.type = FileFormat::Animation::GraphValueType::Float3;
+            goal.defaultFloat3 = vec3(-0.35f, 1.45f, 0.45f);
+            Animation::EditableGraphParameter weight;
+            weight.name = "ikWeight";
+            weight.type = FileFormat::Animation::GraphValueType::Float;
+            weight.defaultFloat = 1.0f;
+            graph.parameters = {goal, weight};
+            if (mode == "ik_showcase")
+            {
+                Animation::EditableGraphParameter headGoal;
+                headGoal.name = "headGoal";
+                headGoal.type = FileFormat::Animation::GraphValueType::Float3;
+                headGoal.defaultFloat3 = vec3(0.0f, 1.65f, 1.0f);
+                graph.parameters.push_back(headGoal);
+            }
+            graph.states = {{1, Animation::HashAnimationSlot("Idle"), 60'000'000}};
+            graph.entryStateGUID = 1;
+            Animation::EditableGraphIKOperation ik;
+            ik.sourceGUID = 2;
+            ik.rigAssetID = Util::AssetPath::Hash("character.ikrig");
+            ik.solverSemanticID = Animation::HashAnimationSemantic("ik-solver", "right_hand");
+            ik.goalParameter = "rightHandGoal";
+            ik.weightParameter = "ikWeight";
+            ik.displayName = "Right Hand IK";
+            graph.ikOperations = {ik};
+            if (mode == "ik_showcase")
+            {
+                Animation::EditableGraphIKOperation look;
+                look.sourceGUID = 3;
+                look.rigAssetID = Util::AssetPath::Hash("character.ikrig");
+                look.solverSemanticID = Animation::HashAnimationSemantic("ik-solver", "head_look");
+                look.goalParameter = "headGoal";
+                look.constantWeight = 0.65f;
+                look.executionOrder = 1;
+                look.displayName = "Constrained Head Look";
+                graph.ikOperations.push_back(look);
+            }
+            graph.displayName = "Target Skeleton IK";
+            graph.states[0].displayName = mode == "ik_showcase" ? "Idle + Hand Reach + Head Look" : "Idle + Right Hand IK";
+            graph.states[0].editorPosition = {0.0f, 0.0f};
+        }
+        else if (mode == "layers")
+        {
+            graph.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}, {"upperBodyWeight", FileFormat::Animation::GraphValueType::Float}, {"additiveWeight", FileFormat::Animation::GraphValueType::Float}};
+            Animation::EditableGraphState locomotion;
+            locomotion.sourceGUID = 31;
+            locomotion.durationMicroseconds = 60'000'000;
+            locomotion.kind = Animation::GraphStateKind::BlendSpace1D;
+            locomotion.inputX = "speed";
+            locomotion.smoothingHalfLifeSeconds = 0.12f;
+            locomotion.blendSamples = {{{0.0f, 0.0f}, Animation::HashAnimationSlot("Idle")}, {{1.0f, 0.0f}, Animation::HashAnimationSlot("WalkForward")}, {{3.0f, 0.0f}, Animation::HashAnimationSlot("RunForward")}};
+            locomotion.displayName = "Base Locomotion";
+            graph.states = {locomotion};
+            graph.entryStateGUID = locomotion.sourceGUID;
+            Animation::EditableGraphLayer upperBody;
+            upperBody.sourceGUID = 32;
+            upperBody.clipSlotSemanticID = Animation::HashAnimationSlot("AttackUnarmed");
+            upperBody.maskAssetID = Util::AssetPath::Hash("character_upper_body.bonemask");
+            upperBody.durationMicroseconds = 1'033'333;
+            upperBody.type = Animation::AnimationLayerType::Override;
+            upperBody.weightParameter = "upperBodyWeight";
+            upperBody.executionOrder = 0;
+            upperBody.displayName = "Upper Body Punch Override";
+            Animation::EditableGraphLayer additive;
+            additive.sourceGUID = 33;
+            additive.clipSlotSemanticID = Animation::HashAnimationSlot("BreathingAdditive");
+            additive.maskAssetID = Util::AssetPath::Hash("character_upper_body.bonemask");
+            additive.durationMicroseconds = 9'933'333;
+            additive.type = Animation::AnimationLayerType::Additive;
+            additive.weightParameter = "additiveWeight";
+            additive.executionOrder = 1;
+            additive.displayName = "Breathing Additive";
+            graph.layers = {upperBody, additive};
+            graph.outputs = {{Animation::HashAnimationSemantic("animation-output", "upper_body_weight"), "upperBodyWeight"}, {Animation::HashAnimationSemantic("animation-output", "additive_weight"), "additiveWeight"}};
+            graph.displayName = "Masked Override + Additive";
+        }
+        else if (mode == "actions" || mode == "attachment")
+        {
+            graph.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}};
+            if (mode == "attachment")
+            {
+                Animation::EditableGraphParameter leftGripGoal;
+                leftGripGoal.name = "leftGripGoal";
+                leftGripGoal.type = FileFormat::Animation::GraphValueType::Float3;
+                Animation::EditableGraphParameter leftGripWeight;
+                leftGripWeight.name = "leftGripWeight";
+                leftGripWeight.type = FileFormat::Animation::GraphValueType::Float;
+                graph.parameters.push_back(leftGripGoal);
+                graph.parameters.push_back(leftGripWeight);
+            }
+            Animation::EditableGraphState locomotion;
+            locomotion.sourceGUID = 41;
+            locomotion.durationMicroseconds = 60'000'000;
+            locomotion.kind = Animation::GraphStateKind::BlendSpace1D;
+            locomotion.inputX = "speed";
+            locomotion.smoothingHalfLifeSeconds = 0.1f;
+            locomotion.blendSamples = {{{0.0f, 0.0f}, Animation::HashAnimationSlot("Idle")}, {{1.0f, 0.0f}, Animation::HashAnimationSlot("WalkForward")}, {{3.0f, 0.0f}, Animation::HashAnimationSlot("RunForward")}};
+            locomotion.displayName = "Continuing Locomotion";
+            graph.states = {locomotion};
+            graph.entryStateGUID = locomotion.sourceGUID;
+            const FileFormat::AssetID upperBodyMask = Util::AssetPath::Hash("character_upper_body.bonemask");
+            Animation::EditableGraphActionSlot punch;
+            punch.semanticID = Animation::HashAnimationSemantic("animation-action", "punch");
+            punch.clipSlotSemanticID = Animation::HashAnimationSlot("AttackUnarmed");
+            punch.maskAssetID = upperBodyMask;
+            punch.durationMicroseconds = 1'033'333;
+            punch.blendInMicroseconds = 120'000;
+            punch.blendOutMicroseconds = 160'000;
+            punch.priority = 1;
+            punch.displayName = "Punch";
+            Animation::EditableGraphActionSlot sword;
+            sword.semanticID = Animation::HashAnimationSemantic("animation-action", "sword_combo");
+            sword.clipSlotSemanticID = Animation::HashAnimationSlot("SwordAttack");
+            sword.maskAssetID = upperBodyMask;
+            sword.durationMicroseconds = 3'533'333;
+            sword.blendInMicroseconds = 180'000;
+            sword.blendOutMicroseconds = 220'000;
+            sword.priority = 2;
+            sword.displayName = "Sword Combo";
+            Animation::EditableGraphActionSlot reaction;
+            reaction.semanticID = Animation::HashAnimationSemantic("animation-action", "hit_reaction");
+            reaction.clipSlotSemanticID = Animation::HashAnimationSlot("HitReaction");
+            reaction.maskAssetID = upperBodyMask;
+            reaction.durationMicroseconds = 1'266'667;
+            reaction.blendInMicroseconds = 80'000;
+            reaction.blendOutMicroseconds = 180'000;
+            reaction.priority = 3;
+            reaction.queueWhenBlocked = false;
+            reaction.displayName = "Hit Reaction";
+            graph.actionSlots = {punch, sword, reaction};
+            if (mode == "attachment")
+            {
+                Animation::EditableGraphLayer grip;
+                grip.sourceGUID = 43;
+                grip.clipSlotSemanticID = Animation::HashAnimationSlot("SwordReady");
+                grip.maskAssetID = upperBodyMask;
+                grip.durationMicroseconds = 33333;
+                grip.type = Animation::AnimationLayerType::Override;
+                grip.executionOrder = 0;
+                grip.displayName = "Two-Hand Sword Ready";
+                graph.layers = {grip};
+                Animation::EditableGraphIKOperation secondaryGrip;
+                secondaryGrip.sourceGUID = 44;
+                secondaryGrip.rigAssetID = Util::AssetPath::Hash("character.ikrig");
+                secondaryGrip.solverSemanticID = Animation::HashAnimationSemantic("ik-solver", "left_hand");
+                secondaryGrip.goalParameter = "leftGripGoal";
+                secondaryGrip.goalAttachmentSemanticID = Animation::HashAnimationSemantic("skeleton-attachment", "right_hand");
+                secondaryGrip.effectorAttachmentSemanticID = Animation::HashAnimationSemantic("skeleton-attachment", "left_hand");
+                secondaryGrip.effectorAlignmentAxis = vec3(1.0f, 0.0f, 0.0f);
+                secondaryGrip.weightParameter = "leftGripWeight";
+                secondaryGrip.displayName = "Off-Hand Weapon Grip";
+                graph.ikOperations = {secondaryGrip};
+                graph.displayName = "Weapon Attachment + Grip";
+            }
+            else
+            {
+                graph.displayName = "Priority Action Layer";
+            }
+        }
+        else if (mode == "blend1d")
         {
             graph.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}};
             Animation::EditableGraphState locomotion;
@@ -632,6 +847,13 @@ namespace Scripting::Asset
             graph.states = {{10, Animation::HashAnimationSlot("Idle"), 60'000'000}, locomotion};
             graph.entryStateGUID = 10;
             graph.transitions = {{10, 11, "speed", Animation::GraphComparison::Greater, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}, {11, 10, "speed", Animation::GraphComparison::LessEqual, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}};
+            graph.displayName = "Locomotion Blend 1D";
+            graph.states[0].displayName = "Idle";
+            graph.states[0].editorPosition = {-220.0f, 0.0f};
+            graph.states[1].displayName = "Locomotion";
+            graph.states[1].editorPosition = {160.0f, 0.0f};
+            graph.states[1].blendSamples[0].displayName = "Walk Forward";
+            graph.states[1].blendSamples[1].displayName = "Run Forward";
         }
         else if (mode == "blend2d")
         {
@@ -648,21 +870,37 @@ namespace Scripting::Asset
             graph.states = {{20, Animation::HashAnimationSlot("Idle"), 60'000'000}, locomotion};
             graph.entryStateGUID = 20;
             graph.transitions = {{20, 21, "magnitude", Animation::GraphComparison::Greater, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}, {21, 20, "magnitude", Animation::GraphComparison::LessEqual, 0.1f, 250'000, Animation::BlendCurve::SmoothStep}};
+            graph.displayName = "Locomotion Blend 2D";
+            graph.states[0].displayName = "Idle";
+            graph.states[0].editorPosition = {-220.0f, 0.0f};
+            graph.states[1].displayName = "Directional Locomotion";
+            graph.states[1].editorPosition = {160.0f, 0.0f};
+            graph.states[1].blendSamples[0].displayName = "Strafe Left";
+            graph.states[1].blendSamples[1].displayName = "Strafe Right";
+            graph.states[1].blendSamples[2].displayName = "Run Forward";
+            graph.states[1].blendSamples[3].displayName = "Run Backward";
         }
         else
         {
-        graph.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}};
-        graph.states = {{1, Animation::HashAnimationSlot("Idle"), 60'000'000}, {2, Animation::HashAnimationSlot("WalkForward"), 60'000'000}, {3, Animation::HashAnimationSlot("RunForward"), 60'000'000}};
-        graph.entryStateGUID = 1;
-        graph.transitions = {
-            {1, 2, "speed", Animation::GraphComparison::Greater, 0.1f, 250'000, Animation::BlendCurve::SmoothStep},
-            {2, 1, "speed", Animation::GraphComparison::LessEqual, 0.1f, 250'000, Animation::BlendCurve::SmoothStep},
-            {2, 3, "speed", Animation::GraphComparison::Greater, 2.0f, 200'000, Animation::BlendCurve::SmoothStep},
-            {3, 2, "speed", Animation::GraphComparison::LessEqual, 2.0f, 200'000, Animation::BlendCurve::SmoothStep},
-        };
+            graph.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}};
+            graph.states = {{1, Animation::HashAnimationSlot("Idle"), 60'000'000}, {2, Animation::HashAnimationSlot("WalkForward"), 60'000'000}, {3, Animation::HashAnimationSlot("RunForward"), 60'000'000}};
+            graph.entryStateGUID = 1;
+            graph.transitions = {
+                {1, 2, "speed", Animation::GraphComparison::Greater, 0.1f, 250'000, Animation::BlendCurve::SmoothStep},
+                {2, 1, "speed", Animation::GraphComparison::LessEqual, 0.1f, 250'000, Animation::BlendCurve::SmoothStep},
+                {2, 3, "speed", Animation::GraphComparison::Greater, 2.0f, 200'000, Animation::BlendCurve::SmoothStep},
+                {3, 2, "speed", Animation::GraphComparison::LessEqual, 2.0f, 200'000, Animation::BlendCurve::SmoothStep},
+            };
+            graph.displayName = "Locomotion State Machine";
+            graph.states[0].displayName = "Idle";
+            graph.states[0].editorPosition = {-300.0f, 0.0f};
+            graph.states[1].displayName = "Walk Forward";
+            graph.states[1].editorPosition = {0.0f, 0.0f};
+            graph.states[2].displayName = "Run Forward";
+            graph.states[2].editorPosition = {300.0f, 0.0f};
         }
         const Animation::GraphCompileResult result = Animation::CompileAnimationGraph(graph);
-        return result ? result.graph : nullptr;
+        return {std::move(graph), result ? result.graph : nullptr};
     }
 
     i32 AssetHandler::BindAnimationController(Zenith* zenith)
@@ -698,8 +936,8 @@ namespace Scripting::Asset
         AssetLoading::Diagnostic setDiagnostic;
         const AnimationLoading::SkeletonAssetView* skeletonView = assets.Get(skeleton, &skeletonDiagnostic);
         const AnimationLoading::AnimationSetAssetView* setView = assets.Get(animationSet, &setDiagnostic);
-        const std::shared_ptr<const Animation::CompiledAnimationGraph> graph = CompilePreviewLocomotionGraph(mode);
-        if (!skeletonView || !setView || !graph)
+        PreviewAnimationGraph graph = CompilePreviewLocomotionGraph(mode);
+        if (!skeletonView || !setView || !graph.compiled)
         {
             assets.Release(animationSet);
             assets.Release(skeleton);
@@ -707,7 +945,7 @@ namespace Scripting::Asset
             zenith->Push(false);
             return 1;
         }
-        const Animation::ControllerPlaybackHandle controller = deformation->CreateControllerPlayback(skeleton, animationSet, *skeletonView, *setView, graph, entityValue);
+        const Animation::ControllerPlaybackHandle controller = deformation->CreateControllerPlayback(skeleton, animationSet, *skeletonView, *setView, graph.compiled, entityValue);
         const Animation::PoseSourceHandle poseSource = deformation->GetControllerPoseSource(controller);
         if (!controller || !poseSource)
         {
@@ -726,8 +964,10 @@ namespace Scripting::Asset
         auto binding = std::make_shared<AnimationPreviewBinding>();
         binding->controller = controller;
         binding->poseSource = poseSource;
+        binding->graphSource = std::make_shared<const Animation::EditableAnimationGraph>(std::move(graph.source));
+        binding->compiledGraph = std::move(graph.compiled);
         s_animationBindingByEntity[entityValue] = std::move(binding);
-        NC_LOG_INFO("ANIMATION_CONTROLLER bound entity={} skeleton={} set={} states={} parameters={} pose_source={}", entityValue, skeletonPath, setPath, graph->states.size(), graph->parameters.size(), poseSource.GetRawValue());
+        NC_LOG_INFO("ANIMATION_CONTROLLER bound entity={} skeleton={} set={} states={} parameters={} pose_source={}", entityValue, skeletonPath, setPath, s_animationBindingByEntity[entityValue]->compiledGraph->states.size(), s_animationBindingByEntity[entityValue]->compiledGraph->parameters.size(), poseSource.GetRawValue());
         zenith->Push(true);
         return 1;
     }
@@ -771,6 +1011,15 @@ namespace Scripting::Asset
         return 1;
     }
 
+    i32 AssetHandler::AnimationSetFloat3Parameter(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        const vec3 value(zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5));
+        zenith->Push(deformation && deformation->SetControllerFloat3(GetParameterToken(binding, zenith->CheckVal<u32>(2)), value));
+        return 1;
+    }
+
     i32 AssetHandler::AnimationSetBoolParameter(Zenith* zenith)
     {
         std::shared_ptr<AnimationPreviewBinding> binding;
@@ -794,6 +1043,366 @@ namespace Scripting::Asset
         const char* name = zenith->CheckVal<const char*>(2);
         const u32 payload = zenith->IsNumber(3) ? zenith->Get<u32>(3) : 0;
         zenith->Push(deformation && name && deformation->QueueControllerAction(binding->controller, Animation::HashAnimationSemantic("animation-action", name), payload));
+        return 1;
+    }
+
+    i32 AssetHandler::BindModelAttachment(Zenith* zenith)
+    {
+        const u32 parentEntityValue = zenith->CheckVal<u32>(1);
+        const u32 childEntityValue = zenith->CheckVal<u32>(2);
+        const char* skeletonPathRaw = zenith->CheckVal<const char*>(3);
+        const char* semanticName = zenith->CheckVal<const char*>(4);
+        const vec3 translation(
+            zenith->IsNumber(5) ? zenith->Get<f32>(5) : 0.0f,
+            zenith->IsNumber(6) ? zenith->Get<f32>(6) : 0.0f,
+            zenith->IsNumber(7) ? zenith->Get<f32>(7) : 0.0f);
+        const vec3 rotationDegrees(
+            zenith->IsNumber(8) ? zenith->Get<f32>(8) : 0.0f,
+            zenith->IsNumber(9) ? zenith->Get<f32>(9) : 0.0f,
+            zenith->IsNumber(10) ? zenith->Get<f32>(10) : 0.0f);
+        const f32 uniformScale = zenith->IsNumber(11) ? zenith->Get<f32>(11) : 1.0f;
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer ? gameRenderer->GetModelSceneBridge() : nullptr;
+        const auto parentBinding = s_animationBindingByEntity.find(parentEntityValue);
+        const entt::entity parentEntity = static_cast<entt::entity>(parentEntityValue);
+        const entt::entity childEntity = static_cast<entt::entity>(childEntityValue);
+        RenderScenes::RenderScene* parentScene = bridge ? bridge->GetScene(parentEntity) : nullptr;
+        RenderScenes::RenderScene* childScene = bridge ? bridge->GetScene(childEntity) : nullptr;
+        Animation::ModelDeformationSystem* deformation = parentScene ? parentScene->GetModelDeformationSystem() : nullptr;
+        if (!skeletonPathRaw || !semanticName || !deformation || parentScene != childScene || parentBinding == s_animationBindingByEntity.end() || s_animationAttachmentByChild.contains(childEntityValue) || uniformScale <= 0.0f)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
+        std::string skeletonPath;
+        FileFormat::AssetID skeletonAssetID = FileFormat::INVALID_ASSET_ID;
+        if (!pactStorage || !ResolveModelAssetPath(skeletonPathRaw, pactStorage, skeletonPath, skeletonAssetID))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        AnimationLoading::AnimationAssetRegistry& assets = gameRenderer->GetRenderAssetResources()->GetAnimationRegistry();
+        const AnimationLoading::SkeletonHandle skeleton = assets.LoadSkeleton(skeletonAssetID);
+        AssetLoading::Diagnostic skeletonDiagnostic;
+        const AnimationLoading::SkeletonAssetView* skeletonView = assets.Get(skeleton, &skeletonDiagnostic);
+        if (!skeletonView)
+        {
+            assets.Release(skeleton);
+            zenith->Push(false);
+            return 1;
+        }
+        const u64 semanticID = Animation::HashAnimationSemantic("skeleton-attachment", semanticName);
+        const Animation::PoseAttachmentHandle attachment = deformation->CreateAttachment(parentBinding->second->poseSource, *skeletonView, semanticID, true, vec3(2.0f));
+        assets.Release(skeleton);
+        if (!attachment)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        const mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), translation);
+        const mat4x4 rotationMatrix = glm::eulerAngleXYZ(glm::radians(rotationDegrees.x), glm::radians(rotationDegrees.y), glm::radians(rotationDegrees.z));
+        const mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), vec3(uniformScale));
+        const mat4x4 childLocalTransform = translationMatrix * rotationMatrix * scaleMatrix;
+        if (!deformation->BindModelAttachment(attachment, parentScene, bridge->Get(parentEntity), bridge->Get(childEntity), childLocalTransform))
+        {
+            deformation->DestroyAttachment(attachment);
+            zenith->Push(false);
+            return 1;
+        }
+        s_animationAttachmentByChild[childEntityValue] = {parentEntityValue, childEntityValue, attachment, childLocalTransform};
+        bridge->SetShadowDynamic(childEntity, true);
+        NC_LOG_INFO("ANIMATION_ATTACHMENT bound parent={} child={} skeleton={} semantic={}", parentEntityValue, childEntityValue, skeletonPath, semanticName);
+        zenith->Push(true);
+        return 1;
+    }
+
+    i32 AssetHandler::SetModelAttachmentTransform(Zenith* zenith)
+    {
+        const u32 childEntityValue = zenith->CheckVal<u32>(1);
+        const auto found = s_animationAttachmentByChild.find(childEntityValue);
+        if (found == s_animationAttachmentByChild.end())
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        const vec3 translation(zenith->CheckVal<f32>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4));
+        const vec3 rotationDegrees(zenith->CheckVal<f32>(5), zenith->CheckVal<f32>(6), zenith->CheckVal<f32>(7));
+        const f32 uniformScale = zenith->CheckVal<f32>(8);
+        if (!std::isfinite(uniformScale) || uniformScale <= 0.0f)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer ? gameRenderer->GetModelSceneBridge() : nullptr;
+        RenderScenes::RenderScene* scene = bridge ? bridge->GetScene(static_cast<entt::entity>(found->second.parentEntity)) : nullptr;
+        Animation::ModelDeformationSystem* deformation = scene ? scene->GetModelDeformationSystem() : nullptr;
+        const mat4x4 childLocalTransform = glm::translate(mat4x4(1.0f), translation) * glm::eulerAngleXYZ(glm::radians(rotationDegrees.x), glm::radians(rotationDegrees.y), glm::radians(rotationDegrees.z)) * glm::scale(mat4x4(1.0f), vec3(uniformScale));
+        if (!deformation || !deformation->SetModelAttachmentLocalTransform(found->second.attachment, childLocalTransform))
+        {
+            zenith->Push(false);
+            return 1;
+        }
+        found->second.childLocalTransform = childLocalTransform;
+        zenith->Push(true);
+        return 1;
+    }
+
+    i32 AssetHandler::GetModelAttachmentPoint(Zenith* zenith)
+    {
+        const u32 childEntityValue = zenith->CheckVal<u32>(1);
+        const auto found = s_animationAttachmentByChild.find(childEntityValue);
+        if (found == s_animationAttachmentByChild.end())
+        {
+            zenith->Push();
+            return 1;
+        }
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer ? gameRenderer->GetModelSceneBridge() : nullptr;
+        RenderScenes::RenderScene* scene = bridge ? bridge->GetScene(static_cast<entt::entity>(found->second.parentEntity)) : nullptr;
+        Animation::ModelDeformationSystem* deformation = scene ? scene->GetModelDeformationSystem() : nullptr;
+        const Animation::PoseAttachment* attachment = deformation ? deformation->GetAttachment(found->second.attachment) : nullptr;
+        if (!attachment || !attachment->valid)
+        {
+            zenith->Push();
+            return 1;
+        }
+        const vec3 localPoint(
+            zenith->IsNumber(2) ? zenith->Get<f32>(2) : 0.0f,
+            zenith->IsNumber(3) ? zenith->Get<f32>(3) : 0.0f,
+            zenith->IsNumber(4) ? zenith->Get<f32>(4) : 0.0f);
+        const vec4 modelPoint = mat4x4(attachment->currentTransform) * found->second.childLocalTransform * vec4(localPoint, 1.0f);
+        zenith->Push(vec3(modelPoint));
+        return 1;
+    }
+
+    i32 AssetHandler::GetModelAttachmentLocalPoint(Zenith* zenith)
+    {
+        const u32 childEntityValue = zenith->CheckVal<u32>(1);
+        const auto found = s_animationAttachmentByChild.find(childEntityValue);
+        if (found == s_animationAttachmentByChild.end())
+        {
+            zenith->Push();
+            return 1;
+        }
+        const vec3 localPoint(
+            zenith->IsNumber(2) ? zenith->Get<f32>(2) : 0.0f,
+            zenith->IsNumber(3) ? zenith->Get<f32>(3) : 0.0f,
+            zenith->IsNumber(4) ? zenith->Get<f32>(4) : 0.0f);
+        zenith->Push(vec3(found->second.childLocalTransform * vec4(localPoint, 1.0f)));
+        return 1;
+    }
+
+    i32 AssetHandler::GetModelAttachmentGripDiagnostics(Zenith* zenith)
+    {
+        const u32 childEntityValue = zenith->CheckVal<u32>(1);
+        const auto found = s_animationAttachmentByChild.find(childEntityValue);
+        if (found == s_animationAttachmentByChild.end())
+        {
+            zenith->Push();
+            return 1;
+        }
+        const vec3 primaryLocal(zenith->CheckVal<f32>(2), zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4));
+        const vec3 secondaryLocal(zenith->CheckVal<f32>(5), zenith->CheckVal<f32>(6), zenith->CheckVal<f32>(7));
+        const vec3 handleAxisLocal(zenith->CheckVal<f32>(8), zenith->CheckVal<f32>(9), zenith->CheckVal<f32>(10));
+        const vec3 bladeEdgeLocal(zenith->CheckVal<f32>(11), zenith->CheckVal<f32>(12), zenith->CheckVal<f32>(13));
+        const vec3 rightGripAxisLocal(zenith->CheckVal<f32>(14), zenith->CheckVal<f32>(15), zenith->CheckVal<f32>(16));
+        const bool draw = zenith->IsBoolean(17) && zenith->ToBoolean(17);
+        const f32 axisLength = zenith->IsNumber(18) ? std::max(zenith->Get<f32>(18), 0.01f) : 0.12f;
+        const f32 positionTolerance = zenith->IsNumber(19) ? std::max(zenith->Get<f32>(19), 0.0f) : 0.015f;
+        const f32 angleToleranceDegrees = zenith->IsNumber(20) ? std::max(zenith->Get<f32>(20), 0.0f) : 8.0f;
+        if (glm::length2(handleAxisLocal) <= 1.0e-8f || glm::length2(bladeEdgeLocal) <= 1.0e-8f || glm::length2(rightGripAxisLocal) <= 1.0e-8f)
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer ? gameRenderer->GetModelSceneBridge() : nullptr;
+        RenderScenes::RenderScene* scene = bridge ? bridge->GetScene(static_cast<entt::entity>(found->second.parentEntity)) : nullptr;
+        Animation::ModelDeformationSystem* deformation = scene ? scene->GetModelDeformationSystem() : nullptr;
+        const Animation::PoseAttachment* attachment = deformation ? deformation->GetAttachment(found->second.attachment) : nullptr;
+        const auto parentBinding = s_animationBindingByEntity.find(found->second.parentEntity);
+        const Animation::PoseSource* pose = deformation && parentBinding != s_animationBindingByEntity.end() ? deformation->GetPoseSource(parentBinding->second->poseSource) : nullptr;
+        const ModelScene::ModelInstanceGPURecord* parentInstance = scene && bridge ? scene->GetModelInstance(bridge->Get(static_cast<entt::entity>(found->second.parentEntity))) : nullptr;
+        if (!attachment || !attachment->valid || !pose || !parentInstance || !gameRenderer)
+        {
+            zenith->Push();
+            return 1;
+        }
+        AnimationLoading::AnimationAssetRegistry& assets = gameRenderer->GetRenderAssetResources()->GetAnimationRegistry();
+        AssetLoading::Diagnostic diagnostic;
+        const AnimationLoading::SkeletonAssetView* skeleton = assets.Get(pose->skeleton, &diagnostic);
+        if (!skeleton)
+        {
+            zenith->Push();
+            return 1;
+        }
+        const u64 leftSemanticID = Animation::HashAnimationSemantic("skeleton-attachment", "left_hand");
+        const auto leftAttachment = std::find_if(skeleton->attachments.begin(), skeleton->attachments.end(), [leftSemanticID](const FileFormat::Animation::SkeletonAttachment& value) { return value.semanticID == leftSemanticID; });
+        if (leftAttachment == skeleton->attachments.end() || leftAttachment->jointIndex >= pose->modelTransforms.size())
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        const mat4x4 primarySocketModel = mat4x4(attachment->currentTransform);
+        const mat4x4 secondarySocketModel = mat4x4(Math::AffineMatrix::MatrixMul(pose->modelTransforms[leftAttachment->jointIndex], Animation::ComposeLocalTransform(leftAttachment->localTransform)));
+        const mat4x4 weaponModel = primarySocketModel * found->second.childLocalTransform;
+        const vec3 primarySocketPosition(primarySocketModel[3]);
+        const vec3 secondarySocketPosition(secondarySocketModel[3]);
+        const vec3 primaryTargetPosition(weaponModel * vec4(primaryLocal, 1.0f));
+        const vec3 secondaryTargetPosition(weaponModel * vec4(secondaryLocal, 1.0f));
+        const vec3 handleAxis = glm::normalize(vec3(weaponModel * vec4(glm::normalize(handleAxisLocal), 0.0f)));
+        const vec3 bladeEdgeAxis = glm::normalize(vec3(weaponModel * vec4(glm::normalize(bladeEdgeLocal), 0.0f)));
+        const vec3 rightGripAxis = glm::normalize(vec3(primarySocketModel * vec4(glm::normalize(rightGripAxisLocal), 0.0f)));
+        const vec3 handSpanVector = secondarySocketPosition - primarySocketPosition;
+        const vec3 handSpanAxis = glm::length2(handSpanVector) > 1.0e-8f ? glm::normalize(handSpanVector) : vec3(0.0f);
+        const auto parallelAngleDegrees = [](const vec3& first, const vec3& second) { return glm::degrees(std::acos(std::clamp(std::abs(glm::dot(first, second)), 0.0f, 1.0f))); };
+        const f32 handleHandSpanDegrees = glm::length2(handSpanAxis) > 0.0f ? parallelAngleDegrees(handleAxis, handSpanAxis) : 180.0f;
+        const f32 primaryPositionError = glm::length(primaryTargetPosition - primarySocketPosition);
+        const f32 secondaryPositionError = glm::length(secondaryTargetPosition - secondarySocketPosition);
+        const f32 bladeHandleDegrees = parallelAngleDegrees(handleAxis, bladeEdgeAxis);
+        const f32 rightGripHandleDegrees = parallelAngleDegrees(handleAxis, rightGripAxis);
+
+        const auto closestAxis = [&parallelAngleDegrees, &handleAxis](const mat4x4& transform, f32& angle) {
+            i32 result = 1;
+            angle = 180.0f;
+            for (i32 axis = 0; axis < 3; ++axis)
+            {
+                const vec3 candidate = glm::normalize(vec3(transform[axis]));
+                const f32 candidateAngle = parallelAngleDegrees(candidate, handleAxis);
+                if (candidateAngle < angle)
+                {
+                    angle = candidateAngle;
+                    result = axis + 1;
+                }
+            }
+            return result;
+        };
+        f32 primaryClosestAxisDegrees = 0.0f;
+        f32 secondaryClosestAxisDegrees = 0.0f;
+        const i32 primaryClosestAxis = closestAxis(primarySocketModel, primaryClosestAxisDegrees);
+        const i32 secondaryClosestAxis = closestAxis(secondarySocketModel, secondaryClosestAxisDegrees);
+        const bool passed = primaryPositionError <= positionTolerance && secondaryPositionError <= positionTolerance && handleHandSpanDegrees <= angleToleranceDegrees && rightGripHandleDegrees <= angleToleranceDegrees && secondaryClosestAxisDegrees <= angleToleranceDegrees;
+
+        if (draw)
+        {
+            DebugRenderer* debugRenderer = gameRenderer->GetDebugRenderer();
+            const mat4x4 parentWorld = parentInstance->currentWorld;
+            const auto worldPoint = [&parentWorld](const vec3& point) { return vec3(parentWorld * vec4(point, 1.0f)); };
+            const auto drawFrame = [debugRenderer, &parentWorld, axisLength](const mat4x4& modelTransform, f32 scale) {
+                const mat4x4 worldTransform = parentWorld * modelTransform;
+                const vec3 origin(worldTransform[3]);
+                debugRenderer->DrawLine3D(origin, origin + glm::normalize(vec3(worldTransform[0])) * axisLength * scale, Color::Red);
+                debugRenderer->DrawLine3D(origin, origin + glm::normalize(vec3(worldTransform[1])) * axisLength * scale, Color::Green);
+                debugRenderer->DrawLine3D(origin, origin + glm::normalize(vec3(worldTransform[2])) * axisLength * scale, Color::Blue);
+            };
+            drawFrame(primarySocketModel, 1.0f);
+            drawFrame(secondarySocketModel, 1.0f);
+            const mat4x4 primaryTargetFrame = glm::translate(weaponModel, primaryLocal);
+            const mat4x4 secondaryTargetFrame = glm::translate(weaponModel, secondaryLocal);
+            drawFrame(primaryTargetFrame, 0.65f);
+            drawFrame(secondaryTargetFrame, 0.65f);
+            const vec3 primaryWorld = worldPoint(primarySocketPosition);
+            const vec3 secondaryWorld = worldPoint(secondarySocketPosition);
+            const vec3 primaryTargetWorld = worldPoint(primaryTargetPosition);
+            const vec3 secondaryTargetWorld = worldPoint(secondaryTargetPosition);
+            const vec3 handleWorld = glm::normalize(vec3(parentWorld * vec4(handleAxis, 0.0f)));
+            const vec3 edgeWorld = glm::normalize(vec3(parentWorld * vec4(bladeEdgeAxis, 0.0f)));
+            const vec3 rightGripWorld = glm::normalize(vec3(parentWorld * vec4(rightGripAxis, 0.0f)));
+            const f32 spanLength = std::max(glm::length(handSpanVector), axisLength * 2.0f);
+            debugRenderer->DrawLine3D(primaryWorld - handleWorld * spanLength, primaryWorld + handleWorld * spanLength * 1.5f, Color::Magenta);
+            debugRenderer->DrawLine3D(primaryWorld - rightGripWorld * spanLength, primaryWorld + rightGripWorld * spanLength, Color::Yellow);
+            const vec3 arrowReference = std::abs(glm::dot(rightGripWorld, vec3(0.0f, 1.0f, 0.0f))) < 0.9f ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f);
+            const vec3 arrowSide = glm::normalize(glm::cross(rightGripWorld, arrowReference));
+            const vec3 arrowUp = glm::normalize(glm::cross(rightGripWorld, arrowSide));
+            const vec3 arrowTip = primaryWorld + rightGripWorld * spanLength;
+            const vec3 arrowBase = arrowTip - rightGripWorld * axisLength * 0.35f;
+            const f32 arrowWidth = axisLength * 0.16f;
+            debugRenderer->DrawLine3D(arrowTip, arrowBase + arrowSide * arrowWidth, Color::Yellow);
+            debugRenderer->DrawLine3D(arrowTip, arrowBase - arrowSide * arrowWidth, Color::Yellow);
+            debugRenderer->DrawLine3D(arrowTip, arrowBase + arrowUp * arrowWidth, Color::Yellow);
+            debugRenderer->DrawLine3D(arrowTip, arrowBase - arrowUp * arrowWidth, Color::Yellow);
+            debugRenderer->DrawLine3D(primaryWorld, secondaryWorld, Color::Cyan);
+            debugRenderer->DrawLine3D(primaryTargetWorld, secondaryTargetWorld, Color::PastelOrange);
+            debugRenderer->DrawLine3D(primaryWorld, primaryTargetWorld, primaryPositionError <= positionTolerance ? Color::Green : Color::Red);
+            debugRenderer->DrawLine3D(secondaryWorld, secondaryTargetWorld, secondaryPositionError <= positionTolerance ? Color::Green : Color::Red);
+            debugRenderer->DrawLine3D(primaryWorld, primaryWorld + edgeWorld * spanLength, Color::White);
+            debugRenderer->DrawSphere3D(primaryWorld, axisLength * 0.08f, 12, Color::Cyan);
+            debugRenderer->DrawSphere3D(secondaryWorld, axisLength * 0.08f, 12, Color::Cyan);
+            debugRenderer->DrawSphere3D(primaryTargetWorld, axisLength * 0.06f, 12, Color::PastelOrange);
+            debugRenderer->DrawSphere3D(secondaryTargetWorld, axisLength * 0.06f, 12, Color::PastelOrange);
+        }
+
+        zenith->CreateTable();
+        zenith->AddTableField("passed", passed);
+        zenith->AddTableField("primaryPositionError", primaryPositionError);
+        zenith->AddTableField("secondaryPositionError", secondaryPositionError);
+        zenith->AddTableField("handleHandSpanDegrees", handleHandSpanDegrees);
+        zenith->AddTableField("bladeHandleDegrees", bladeHandleDegrees);
+        zenith->AddTableField("rightGripHandleDegrees", rightGripHandleDegrees);
+        zenith->AddTableField("primaryClosestAxis", primaryClosestAxis);
+        zenith->AddTableField("primaryClosestAxisDegrees", primaryClosestAxisDegrees);
+        zenith->AddTableField("secondaryClosestAxis", secondaryClosestAxis);
+        zenith->AddTableField("secondaryClosestAxisDegrees", secondaryClosestAxisDegrees);
+        zenith->AddTableField("primarySocketPosition", primarySocketPosition);
+        zenith->AddTableField("secondarySocketPosition", secondarySocketPosition);
+        zenith->AddTableField("primaryTargetPosition", primaryTargetPosition);
+        zenith->AddTableField("secondaryTargetPosition", secondaryTargetPosition);
+        zenith->AddTableField("handleAxis", handleAxis);
+        zenith->AddTableField("bladeEdgeAxis", bladeEdgeAxis);
+        zenith->AddTableField("rightGripAxis", rightGripAxis);
+        zenith->AddTableField("handSpanAxis", handSpanAxis);
+        if (pose->debugIKOperationCount != 0)
+        {
+            const Animation::PoseIKDebugOperation& operation = pose->debugIKOperations[0];
+            zenith->AddTableField("ikFinalError", operation.finalError);
+            zenith->AddTableField("ikStatus", static_cast<u32>(operation.status));
+            zenith->AddTableField("ikClamped", operation.clamped);
+            zenith->AddTableField("ikJointLimitClamped", operation.jointLimitClamped);
+        }
+        return 1;
+    }
+
+    i32 AssetHandler::GetAnimationAttachmentPoint(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        const char* semanticName = zenith->CheckVal<const char*>(2);
+        const Animation::PoseSource* pose = deformation && binding ? deformation->GetPoseSource(binding->poseSource) : nullptr;
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        if (!pose || !gameRenderer || !semanticName)
+        {
+            zenith->Push();
+            return 1;
+        }
+        AnimationLoading::AnimationAssetRegistry& assets = gameRenderer->GetRenderAssetResources()->GetAnimationRegistry();
+        AssetLoading::Diagnostic diagnostic;
+        const AnimationLoading::SkeletonAssetView* skeleton = assets.Get(pose->skeleton, &diagnostic);
+        if (!skeleton)
+        {
+            zenith->Push();
+            return 1;
+        }
+        const u64 semanticID = Animation::HashAnimationSemantic("skeleton-attachment", semanticName);
+        const auto attachment = std::find_if(skeleton->attachments.begin(), skeleton->attachments.end(), [semanticID](const FileFormat::Animation::SkeletonAttachment& value) { return value.semanticID == semanticID; });
+        if (attachment == skeleton->attachments.end() || attachment->jointIndex >= pose->modelTransforms.size())
+        {
+            zenith->Push();
+            return 1;
+        }
+        const bool jointOrigin = zenith->IsBoolean(3) && zenith->ToBoolean(3);
+        if (jointOrigin)
+        {
+            zenith->Push(vec3(pose->modelTransforms[attachment->jointIndex][3]));
+            return 1;
+        }
+        const mat4a socketTransform = Math::AffineMatrix::MatrixMul(pose->modelTransforms[attachment->jointIndex], Animation::ComposeLocalTransform(attachment->localTransform));
+        zenith->Push(vec3(socketTransform[3]));
         return 1;
     }
 
@@ -833,6 +1442,160 @@ namespace Scripting::Asset
         zenith->AddTableField("resolvedFallbackDepth", state.resolvedFallbackDepth);
         zenith->AddTableField("slotResolution", static_cast<u32>(state.slotResolution));
         zenith->AddTableField("synchronizationFallback", state.synchronizationFallback);
+        zenith->AddTableField("activeLayers", state.activeLayers);
+        zenith->AddTableField("activeIKOperations", state.activeIKOperations);
+        zenith->AddTableField("activeActionSemanticID", state.activeActionSemanticID);
+        zenith->AddTableField("activeActionTimeUS", state.activeActionTimeMicroseconds);
+        zenith->AddTableField("activeActionStatus", static_cast<u32>(state.activeActionStatus));
+        std::vector<vec3> parameterValues;
+        if (deformation->GetControllerParameterValues(binding->controller, parameterValues) && binding->graphSource)
+        {
+            zenith->CreateTable();
+            const u32 parameterCount = std::min(static_cast<u32>(parameterValues.size()), static_cast<u32>(binding->graphSource->parameters.size()));
+            for (u32 parameterIndex = 0; parameterIndex < parameterCount; ++parameterIndex)
+            {
+                const Animation::EditableGraphParameter& parameter = binding->graphSource->parameters[parameterIndex];
+                const vec3& value = parameterValues[parameterIndex];
+                if (parameter.type == FileFormat::Animation::GraphValueType::Float3)
+                {
+                    zenith->CreateTable();
+                    zenith->AddTableField("x", value.x);
+                    zenith->AddTableField("y", value.y);
+                    zenith->AddTableField("z", value.z);
+                    zenith->SetTableKey(parameter.name.c_str());
+                }
+                else
+                    zenith->AddTableField(parameter.name.c_str(), value.x);
+            }
+            zenith->SetTableKey("parameters");
+        }
+        return 1;
+    }
+
+    i32 AssetHandler::GetAnimationControllerGraph(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        if (!deformation || !binding->graphSource || !binding->compiledGraph)
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        const Animation::EditableAnimationGraph& source = *binding->graphSource;
+        const Animation::CompiledAnimationGraph& compiled = *binding->compiledGraph;
+        zenith->CreateTable();
+        zenith->AddTableField("name", source.displayName.c_str());
+        zenith->AddTableField("version", source.version);
+        zenith->AddTableField("contentHash", compiled.contentHash);
+        zenith->AddTableField("entryState", compiled.entryState);
+
+        zenith->CreateTable();
+        for (u32 parameterIndex = 0; parameterIndex < source.parameters.size(); ++parameterIndex)
+        {
+            const Animation::EditableGraphParameter& parameter = source.parameters[parameterIndex];
+            zenith->CreateTable();
+            zenith->AddTableField("index", parameterIndex);
+            zenith->AddTableField("name", parameter.name.c_str());
+            zenith->AddTableField("type", static_cast<u32>(parameter.type));
+            zenith->AddTableField("defaultFloat", parameter.defaultFloat);
+            zenith->AddTableField("defaultInt", parameter.defaultInt);
+            zenith->AddTableField("defaultBool", parameter.defaultBool);
+            zenith->AddTableField("defaultX", parameter.defaultFloat3.x);
+            zenith->AddTableField("defaultY", parameter.defaultFloat3.y);
+            zenith->AddTableField("defaultZ", parameter.defaultFloat3.z);
+            zenith->AddTableField("oneFrameTrigger", parameter.oneFrameTrigger);
+            zenith->SetTableKey(parameterIndex + 1);
+        }
+        zenith->SetTableKey("parameters");
+
+        zenith->CreateTable();
+        for (u32 stateIndex = 0; stateIndex < source.states.size(); ++stateIndex)
+        {
+            const Animation::EditableGraphState& state = source.states[stateIndex];
+            zenith->CreateTable();
+            zenith->AddTableField("index", stateIndex);
+            zenith->AddTableField("sourceGUID", state.sourceGUID);
+            zenith->AddTableField("name", state.displayName.c_str());
+            zenith->AddTableField("kind", static_cast<u32>(state.kind));
+            zenith->AddTableField("clipSlotSemanticID", state.clipSlotSemanticID);
+            zenith->AddTableField("durationUS", state.durationMicroseconds);
+            zenith->AddTableField("inputX", state.inputX.c_str());
+            zenith->AddTableField("inputY", state.inputY.c_str());
+            zenith->AddTableField("smoothingHalfLife", state.smoothingHalfLifeSeconds);
+            zenith->AddTableField("wrapX", state.wrapX);
+            zenith->AddTableField("wrapMinimum", state.wrapMinimum);
+            zenith->AddTableField("wrapMaximum", state.wrapMaximum);
+            zenith->AddTableField("positionX", state.editorPosition.x);
+            zenith->AddTableField("positionY", state.editorPosition.y);
+
+            zenith->CreateTable();
+            for (u32 sampleIndex = 0; sampleIndex < state.blendSamples.size(); ++sampleIndex)
+            {
+                const Animation::EditableGraphBlendSample& sample = state.blendSamples[sampleIndex];
+                zenith->CreateTable();
+                zenith->AddTableField("index", sampleIndex);
+                zenith->AddTableField("name", sample.displayName.c_str());
+                zenith->AddTableField("x", sample.position.x);
+                zenith->AddTableField("y", sample.position.y);
+                zenith->AddTableField("clipSlotSemanticID", sample.clipSlotSemanticID);
+                zenith->SetTableKey(sampleIndex + 1);
+            }
+            zenith->SetTableKey("samples");
+
+            zenith->CreateTable();
+            for (u32 triangleIndex = 0; triangleIndex < state.blendTriangles.size(); ++triangleIndex)
+            {
+                const Animation::BlendSpaceTriangle& triangle = state.blendTriangles[triangleIndex];
+                zenith->CreateTable();
+                zenith->AddTableField("a", triangle.samples[0]);
+                zenith->AddTableField("b", triangle.samples[1]);
+                zenith->AddTableField("c", triangle.samples[2]);
+                zenith->SetTableKey(triangleIndex + 1);
+            }
+            zenith->SetTableKey("triangles");
+            zenith->SetTableKey(stateIndex + 1);
+        }
+        zenith->SetTableKey("states");
+
+        zenith->CreateTable();
+        for (u32 transitionIndex = 0; transitionIndex < source.transitions.size(); ++transitionIndex)
+        {
+            const Animation::EditableGraphTransition& transition = source.transitions[transitionIndex];
+            const Animation::CompiledGraphTransition& compiledTransition = compiled.transitions[transitionIndex];
+            zenith->CreateTable();
+            zenith->AddTableField("index", transitionIndex);
+            zenith->AddTableField("sourceState", compiledTransition.sourceState);
+            zenith->AddTableField("targetState", compiledTransition.targetState);
+            zenith->AddTableField("sourceGUID", transition.sourceGUID);
+            zenith->AddTableField("targetGUID", transition.targetGUID);
+            zenith->AddTableField("parameter", transition.parameter.c_str());
+            zenith->AddTableField("comparison", static_cast<u32>(transition.comparison));
+            zenith->AddTableField("threshold", transition.threshold);
+            zenith->AddTableField("durationUS", transition.durationMicroseconds);
+            zenith->AddTableField("curve", static_cast<u32>(transition.curve));
+            zenith->SetTableKey(transitionIndex + 1);
+        }
+        zenith->SetTableKey("transitions");
+
+        zenith->CreateTable();
+        for (u32 operationIndex = 0; operationIndex < source.ikOperations.size(); ++operationIndex)
+        {
+            const Animation::EditableGraphIKOperation& operation = source.ikOperations[operationIndex];
+            zenith->CreateTable();
+            zenith->AddTableField("index", operationIndex);
+            zenith->AddTableField("name", operation.displayName.c_str());
+            zenith->AddTableField("rigAssetID", operation.rigAssetID);
+            zenith->AddTableField("solverSemanticID", operation.solverSemanticID);
+            zenith->AddTableField("goalParameter", operation.goalParameter.c_str());
+            zenith->AddTableField("goalAttachmentSemanticID", operation.goalAttachmentSemanticID);
+            zenith->AddTableField("effectorAttachmentSemanticID", operation.effectorAttachmentSemanticID);
+            zenith->AddTableField("weightParameter", operation.weightParameter.c_str());
+            zenith->AddTableField("constantWeight", operation.constantWeight);
+            zenith->AddTableField("executionOrder", operation.executionOrder);
+            zenith->SetTableKey(operationIndex + 1);
+        }
+        zenith->SetTableKey("ikOperations");
         return 1;
     }
 
@@ -840,6 +1603,8 @@ namespace Scripting::Asset
     {
         const u32 entityValue = zenith->CheckVal<u32>(1);
         const bool hadAnimationBinding = s_animationBindingByEntity.contains(entityValue);
+        ReleaseModelAttachment(entityValue);
+        ReleaseChildAttachments(entityValue);
         ReleaseAnimationBinding(entityValue, true);
         bool destroyed = hadAnimationBinding;
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();

@@ -1,5 +1,6 @@
 #include "Game-Lib/Rendering/Animation/Controller/AnimationBlendSpace.h"
 #include "Game-Lib/Rendering/Animation/Controller/AnimationControllerRuntime.h"
+#include "Game-Lib/Rendering/Animation/Asset/AnimationBoundsSelector.h"
 #include "Game-Lib/Rendering/Animation/Deformation/AnimationDemandPlanner.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationPose.h"
 
@@ -138,6 +139,15 @@ TEST_CASE("Graph compiler is deterministic compact and rejects invalid replaceme
     CHECK(first.graph->states.size() == 3);
     CHECK(first.graph->transitions.size() == 4);
 
+    Animation::EditableAnimationGraph decorated = MakeGraph();
+    decorated.displayName = "Locomotion";
+    decorated.states[0].displayName = "Idle";
+    decorated.states[0].editorPosition = {-250.0f, 30.0f};
+    const Animation::GraphCompileResult decoratedResult = Animation::CompileAnimationGraph(decorated);
+    REQUIRE(decoratedResult);
+    CHECK(decoratedResult.graph->controllerProgram == first.graph->controllerProgram);
+    CHECK(decoratedResult.graph->contentHash == first.graph->contentHash);
+
     Animation::EditableAnimationGraph invalid = MakeGraph();
     invalid.states[2].sourceGUID = invalid.states[1].sourceGUID;
     const Animation::GraphCompileResult failure = Animation::CompileAnimationGraph(invalid);
@@ -193,6 +203,14 @@ TEST_CASE("Native controller batches use the same typed generation-safe paramete
     REQUIRE(secondSpeed);
     std::array<Animation::AnimationControllerBatchInput, 2> inputs = {{{first, firstSpeed, {}, {}, 1.0f}, {second, secondSpeed, {}, {}, 3.0f}}};
     CHECK(store.ApplyBatchInputs(inputs) == 2);
+    std::vector<vec3> firstParameters;
+    std::vector<vec3> secondParameters;
+    REQUIRE(store.GetParameterValues(first, firstParameters));
+    REQUIRE(store.GetParameterValues(second, secondParameters));
+    REQUIRE(firstParameters.size() == compiled.graph->parameters.size());
+    REQUIRE(secondParameters.size() == compiled.graph->parameters.size());
+    CHECK(firstParameters[0].x == Catch::Approx(1.0f));
+    CHECK(secondParameters[0].x == Catch::Approx(3.0f));
     store.Advance(1.0 / 60.0);
     Animation::AnimationControllerState firstState;
     Animation::AnimationControllerState secondState;
@@ -272,6 +290,287 @@ TEST_CASE("Local TRS crossfade matches endpoint and interior golden values", "[A
     CHECK(output[0].translation == outgoing[0].translation);
     REQUIRE(Animation::BlendLocalPoses(outgoing, incoming, 1.0f, output));
     CHECK(output[0].translation == incoming[0].translation);
+}
+
+TEST_CASE("Compiled layers emit bounded ordered operations only while active", "[AnimationController][Layers]")
+{
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.parameters = {{"upperBody", FileFormat::Animation::GraphValueType::Float}};
+    source.states = {{1, IDLE, 1000000}};
+    source.entryStateGUID = 1;
+    source.layers = {
+        {10, WALK, 5001, 1000000, Animation::AnimationLayerType::Override, "upperBody", 1.0f, 20, "Upper body"},
+        {11, RUN, FileFormat::INVALID_ASSET_ID, 800000, Animation::AnimationLayerType::Additive, "", 0.25f, 10, "Breathing"}
+    };
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    REQUIRE(compiled.graph->layers.size() == 2);
+    CHECK(compiled.graph->layers[0].executionOrder == 10);
+    CHECK(compiled.graph->layers[1].executionOrder == 20);
+
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 77});
+    REQUIRE(animator);
+    Animation::PoseRecipe recipe = store.RequestPose(animator, fixture.view, CLIPS);
+    REQUIRE(recipe.layerCount == 1);
+    CHECK(recipe.layers[0].type == Animation::AnimationLayerType::Additive);
+    CHECK(recipe.layers[0].weight == Catch::Approx(0.25f));
+    const Animation::AnimationParameterHandle upperBody = store.ResolveParameter(animator, Animation::HashAnimationName("upperBody"));
+    REQUIRE(upperBody);
+    REQUIRE(store.SetFloat(upperBody, 0.5f));
+    recipe = store.RequestPose(animator, fixture.view, CLIPS);
+    REQUIRE(recipe.layerCount == 2);
+    CHECK(recipe.layers[0].executionOrder < recipe.layers[1].executionOrder);
+    CHECK(recipe.layers[1].maskAssetID == 5001);
+    CHECK(recipe.layers[1].weight == Catch::Approx(0.5f));
+}
+
+TEST_CASE("Actions return generation-safe status and emit crossed events offscreen", "[AnimationController][Actions][Events]")
+{
+    constexpr u64 ATTACK = 0x5001;
+    constexpr u32 HIT_EVENT = 0x6001;
+    const std::array<FileFormat::Animation::AnimationEvent, 2> events = {{{0, 0x6000, 0, 0, 0, 0}, {100000, HIT_EVENT, 0x7001, 0, 0, 2}}};
+    const std::array<u8, 2> payload = {0xAB, 0xCD};
+    std::array<Animation::AnimationClipDomainRecord, 4> clips = CLIPS;
+    clips[2].events = events;
+    clips[2].eventPayloadBytes = payload;
+    clips[2].looping = false;
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.parameters = {{"actionPhase", FileFormat::Animation::GraphValueType::Float}};
+    source.states = {{1, IDLE, 1000000}};
+    source.entryStateGUID = 1;
+    source.actionSlots = {{ATTACK, WALK, FileFormat::INVALID_ASSET_ID, 200000, 20000, 20000, Animation::AnimationLayerType::Override, 10, true, true, "Attack"}};
+    source.outputs = {{0x8001, "actionPhase"}};
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 10});
+    REQUIRE(animator);
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    const Animation::AnimationParameterHandle actionPhase = store.ResolveParameter(animator, Animation::HashAnimationName("actionPhase"));
+    REQUIRE(actionPhase);
+    REQUIRE(store.SetFloat(actionPhase, 0.75f));
+    const Animation::AnimationActionToken action = store.StartAction(animator, ATTACK, 99);
+    REQUIRE(action);
+    Animation::AnimationActionStatus status;
+    REQUIRE(store.GetActionStatus(action, status));
+    CHECK(status == Animation::AnimationActionStatus::Playing);
+    store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetGraphOutputs(animator).size() == 1);
+    CHECK(store.GetGraphOutputs(animator)[0].value.x == Catch::Approx(0.75f));
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].eventTypeID == 0x6000);
+    for (u32 tick = 0; tick < 5; ++tick)
+        store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].eventTypeID == HIT_EVENT);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].payload == std::vector<u8>{0xAB, 0xCD});
+    for (u32 tick = 0; tick < 6; ++tick)
+        store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetActionStatus(action, status));
+    CHECK(status == Animation::AnimationActionStatus::Completed);
+    CHECK(store.GetStats().poseRequests == 0);
+}
+
+TEST_CASE("Action priority interruption cancellation and locomotion continuation are explicit", "[AnimationController][Actions]")
+{
+    constexpr u64 LOW = 0x5101;
+    constexpr u64 HIGH = 0x5102;
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.states = {{1, IDLE, 1'000'000}};
+    source.entryStateGUID = 1;
+    source.actionSlots = {
+        {LOW, WALK, FileFormat::INVALID_ASSET_ID, 200'000, 20'000, 20'000, Animation::AnimationLayerType::Override, 1, false, true, "Low"},
+        {HIGH, RUN, FileFormat::INVALID_ASSET_ID, 200'000, 20'000, 20'000, Animation::AnimationLayerType::Override, 10, true, true, "High"}
+    };
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 10});
+    REQUIRE(store.BindAnimationData(animator, fixture.view, CLIPS));
+    const Animation::AnimationActionToken low = store.StartAction(animator, LOW);
+    REQUIRE(low);
+    const Animation::AnimationActionToken high = store.StartAction(animator, HIGH);
+    REQUIRE(high);
+    Animation::AnimationActionStatus status;
+    REQUIRE(store.GetActionStatus(low, status));
+    CHECK(status == Animation::AnimationActionStatus::Interrupted);
+    REQUIRE(store.GetActionStatus(high, status));
+    CHECK(status == Animation::AnimationActionStatus::Playing);
+    const Animation::AnimationActionToken rejectedLow = store.StartAction(animator, LOW);
+    REQUIRE(rejectedLow);
+    REQUIRE(store.GetActionStatus(rejectedLow, status));
+    CHECK(status == Animation::AnimationActionStatus::Cancelled);
+    Animation::PoseRecipe recipe = store.RequestPose(animator, fixture.view, CLIPS);
+    REQUIRE(recipe.sampleCount == 1);
+    REQUIRE(recipe.layerCount == 1);
+    CHECK((recipe.samples[0].clipAssetID == IDLE_CLIP_A || recipe.samples[0].clipAssetID == IDLE_CLIP_B));
+    CHECK(recipe.layers[0].sample.clipAssetID == RUN_CLIP);
+    REQUIRE(store.CancelAction(high));
+    REQUIRE(store.GetActionStatus(high, status));
+    CHECK(status == Animation::AnimationActionStatus::Cancelled);
+}
+
+TEST_CASE("Authoritative and cosmetic event queues have separate bounded overflow policy", "[AnimationController][Events]")
+{
+    constexpr u64 ACTION = 0x5201;
+    std::vector<FileFormat::Animation::AnimationEvent> events;
+    for (u32 index = 0; index < 70; ++index)
+    {
+        events.push_back({0, 0x6400 + index, 0, 0, 0, 0});
+        events.push_back({0, 0x6500 + index, 0, 1, 0, 0});
+    }
+    std::array<Animation::AnimationClipDomainRecord, 4> clips = CLIPS;
+    clips[2].events = events;
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.states = {{1, IDLE, 1'000'000}};
+    source.entryStateGUID = 1;
+    source.actionSlots = {{ACTION, WALK, FileFormat::INVALID_ASSET_ID, 200'000, 0, 0, Animation::AnimationLayerType::Override, 1, true, true, "Event burst"}};
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 10});
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    REQUIRE(store.StartAction(animator, ACTION));
+    store.Advance(1.0 / 60.0);
+    CHECK(store.GetAuthoritativeEvents(animator).size() == 64);
+    CHECK(store.GetCosmeticEvents(animator).size() == 64);
+    CHECK(store.GetStats().authoritativeEventOverflows == 6);
+    CHECK(store.GetStats().cosmeticEventDrops == 6);
+}
+
+TEST_CASE("State events scan loop wraps offscreen from one deterministic leader", "[AnimationController][Events]")
+{
+    const std::array<FileFormat::Animation::AnimationEvent, 2> events = {{{0, 0x6100, 0, 0, 0, 0}, {25'000, 0x6101, 0, 1, 0, 0}}};
+    std::array<Animation::AnimationClipDomainRecord, 4> clips = CLIPS;
+    clips[0].durationMicroseconds = 50'000;
+    clips[0].events = events;
+    clips[0].looping = true;
+    clips[1].durationMicroseconds = 50'000;
+    clips[1].events = events;
+    clips[1].looping = true;
+    clips[1].durationMicroseconds = 50'000;
+    clips[1].events = events;
+    clips[1].looping = true;
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.states = {{1, IDLE, 50'000}};
+    source.entryStateGUID = 1;
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 42});
+    REQUIRE(animator);
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].eventTypeID == 0x6100);
+    CHECK(store.GetCosmeticEvents(animator).empty());
+    store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetCosmeticEvents(animator).size() == 1);
+    CHECK(store.GetCosmeticEvents(animator)[0].eventTypeID == 0x6101);
+    store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].eventTypeID == 0x6100);
+    CHECK(store.GetStats().poseRequests == 0);
+}
+
+TEST_CASE("Seek and reverse-time updates follow explicit no-replay policies", "[AnimationController][Events][Seek]")
+{
+    const std::array<FileFormat::Animation::AnimationEvent, 1> events = {{{25'000, 0x6150, 0, 0, 0, 0}}};
+    std::array<Animation::AnimationClipDomainRecord, 4> clips = CLIPS;
+    clips[0].durationMicroseconds = 50'000;
+    clips[0].events = events;
+    clips[0].looping = true;
+    clips[1].durationMicroseconds = 50'000;
+    clips[1].events = events;
+    clips[1].looping = true;
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.states = {{1, IDLE, 50'000}};
+    source.entryStateGUID = 1;
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 42});
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    store.Advance(2.0 / 60.0);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
+    REQUIRE(store.Seek(animator, 40'000));
+    CHECK(store.GetAuthoritativeEvents(animator).empty());
+    Animation::AnimationControllerState before;
+    REQUIRE(store.GetState(animator, before));
+    store.Advance(-1.0);
+    Animation::AnimationControllerState after;
+    REQUIRE(store.GetState(animator, after));
+    CHECK(after.stateTimeMicroseconds == before.stateTimeMicroseconds);
+    CHECK(store.GetAuthoritativeEvents(animator).empty());
+}
+
+TEST_CASE("Blend spaces emit events from only their synchronization leader", "[AnimationController][BlendSpace][Events]")
+{
+    const std::array<FileFormat::Animation::AnimationEvent, 1> events = {{{25'000, 0x6200, 0, 0, 0, 0}}};
+    std::array<Animation::AnimationClipDomainRecord, 4> clips = CLIPS;
+    clips[2].events = events;
+    clips[2].looping = true;
+    clips[3].events = events;
+    clips[3].looping = true;
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.parameters = {{"speed", FileFormat::Animation::GraphValueType::Float}};
+    Animation::EditableGraphState state;
+    state.sourceGUID = 1;
+    state.durationMicroseconds = 1'000'000;
+    state.kind = Animation::GraphStateKind::BlendSpace1D;
+    state.inputX = "speed";
+    state.blendSamples = {{{1.0f, 0.0f}, WALK}, {{3.0f, 0.0f}, RUN}};
+    source.states = {state};
+    source.entryStateGUID = 1;
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 42});
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    REQUIRE(store.SetFloat(store.ResolveParameter(animator, Animation::HashAnimationName("speed")), 2.0f));
+    store.Advance(1.0 / 60.0);
+    const Animation::PoseRecipe recipe = store.RequestPose(animator, fixture.view, clips);
+    REQUIRE(recipe.sampleCount == 2);
+    store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].eventTypeID == 0x6200);
+}
+
+TEST_CASE("Graph layers emit events only when independently declared", "[AnimationController][Layers][Events]")
+{
+    const std::array<FileFormat::Animation::AnimationEvent, 1> idleEvents = {{{0, 0x6300, 0, 0, 0, 0}}};
+    const std::array<FileFormat::Animation::AnimationEvent, 1> layerEvents = {{{0, 0x6301, 0, 0, 0, 0}}};
+    std::array<Animation::AnimationClipDomainRecord, 4> clips = CLIPS;
+    clips[0].events = idleEvents;
+    clips[0].looping = true;
+    clips[1].events = idleEvents;
+    clips[1].looping = true;
+    clips[2].events = layerEvents;
+    clips[2].looping = true;
+    SetFixture fixture;
+    Animation::EditableAnimationGraph source;
+    source.states = {{1, IDLE, 1'000'000}};
+    source.entryStateGUID = 1;
+    Animation::EditableGraphLayer layer = {2, WALK, FileFormat::INVALID_ASSET_ID, 1'366'667, Animation::AnimationLayerType::Override, "", 1.0f, 0, "Independent events"};
+    layer.emitEvents = true;
+    source.layers = {layer};
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 42});
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    store.Advance(1.0 / 60.0);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 2);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].eventTypeID == 0x6300);
+    CHECK(store.GetAuthoritativeEvents(animator)[1].eventTypeID == 0x6301);
 }
 
 TEST_CASE("Compiled blend spaces produce bounded continuous deterministic weights", "[AnimationController][BlendSpace]")
@@ -551,4 +850,88 @@ TEST_CASE("Animation demand frustum uses transformed conservative bounds before 
     edge[0][0] = 4.0f;
     edge[3] = vec4(1.9f, 0.0f, 0.0f, 1.0f);
     CHECK(Animation::IntersectsFrustum(Animation::TransformAnimationBounds(local, edge), camera));
+}
+
+TEST_CASE("IK conservative expansion is included in pre-pose culling bounds", "[AnimationDeformation][AnimationBounds][IK]")
+{
+    FileFormat::Animation::Bounds base;
+    base.center = vec3(0.0f, 1.0f, 0.0f);
+    base.extents = vec3(0.25f, 0.75f, 0.2f);
+    base.sphereRadius = 0.85f;
+    const vec3 authoredExpansion(0.5f, 0.25f, 0.75f);
+    const FileFormat::Animation::Bounds expanded = AnimationLoading::ExpandAnimationBounds(base, authoredExpansion);
+    CHECK(expanded.center == base.center);
+    CHECK(expanded.extents == vec3(0.75f, 1.0f, 0.95f));
+    CHECK(expanded.sphereRadius == Catch::Approx(base.sphereRadius + glm::length(authoredExpansion)));
+}
+
+TEST_CASE("Graph IK operations compile into bounded target-domain pose recipes", "[AnimationController][IK]")
+{
+    Animation::EditableAnimationGraph source;
+    Animation::EditableGraphParameter goal;
+    goal.name = "leftHandGoal";
+    goal.type = FileFormat::Animation::GraphValueType::Float3;
+    goal.defaultFloat3 = vec3(0.25f, 1.0f, 0.5f);
+    Animation::EditableGraphParameter weight;
+    weight.name = "ikWeight";
+    weight.type = FileFormat::Animation::GraphValueType::Float;
+    weight.defaultFloat = 0.5f;
+    source.parameters = {goal, weight};
+    source.states = {{1, IDLE, 1'000'000}};
+    source.entryStateGUID = 1;
+    Animation::EditableGraphIKOperation operation;
+    operation.sourceGUID = 2;
+    operation.rigAssetID = 0x7001;
+    operation.solverSemanticID = 0x7002;
+    operation.goalAttachmentSemanticID = 0x7003;
+    operation.effectorAttachmentSemanticID = 0x7004;
+    operation.effectorAlignmentAxis = vec3(1.0f, 0.0f, 0.0f);
+    operation.goalParameter = "leftHandGoal";
+    operation.weightParameter = "ikWeight";
+    operation.constantWeight = 0.8f;
+    source.ikOperations = {operation};
+    const Animation::GraphCompileResult compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    REQUIRE(compiled.graph->ikOperations.size() == 1);
+    CHECK(compiled.graph->ikOperations[0].goalAttachmentSemanticID == 0x7003);
+    CHECK(compiled.graph->ikOperations[0].effectorAttachmentSemanticID == 0x7004);
+    CHECK(compiled.graph->ikOperations[0].effectorAlignmentAxis == vec3(1.0f, 0.0f, 0.0f));
+
+    SetFixture fixture;
+    Animation::AnimationControllerStore store;
+    const Animation::AnimatorHandle animator = store.Create({SKELETON, 1, compiled.graph, 42});
+    REQUIRE(animator);
+    const Animation::AnimationParameterHandle goalHandle = store.ResolveParameter(animator, Animation::HashAnimationName("leftHandGoal"));
+    const Animation::AnimationParameterHandle weightHandle = store.ResolveParameter(animator, Animation::HashAnimationName("ikWeight"));
+    REQUIRE(store.SetFloat3(goalHandle, vec3(1.0f, 2.0f, 3.0f)));
+    REQUIRE(store.SetFloat(weightHandle, 0.25f));
+    const Animation::PoseRecipe recipe = store.RequestPose(animator, fixture.view, CLIPS);
+    REQUIRE(recipe.ikOperationCount == 1);
+    CHECK(recipe.ikOperations[0].rigAssetID == 0x7001);
+    CHECK(recipe.ikOperations[0].solverSemanticID == 0x7002);
+    CHECK(recipe.ikOperations[0].goalAttachmentSemanticID == 0x7003);
+    CHECK(recipe.ikOperations[0].effectorAttachmentSemanticID == 0x7004);
+    CHECK(recipe.ikOperations[0].effectorAlignmentAxis == vec3(1.0f, 0.0f, 0.0f));
+    CHECK(recipe.ikOperations[0].goalModel == vec3(1.0f, 2.0f, 3.0f));
+    CHECK(recipe.ikOperations[0].weight == Catch::Approx(0.2f));
+    Animation::AnimationControllerState state;
+    REQUIRE(store.GetState(animator, state));
+    CHECK(state.activeIKOperations == 1);
+
+    FileFormat::AssetID boundsClip = FileFormat::INVALID_ASSET_ID;
+    u64 boundsTime = 0;
+    bool tightBounds = true;
+    REQUIRE(store.GetBoundsMetadata(animator, fixture.view, CLIPS, boundsClip, boundsTime, tightBounds));
+    CHECK_FALSE(tightBounds);
+    REQUIRE(store.SetFloat(weightHandle, 0.0f));
+    CHECK(store.RequestPose(animator, fixture.view, CLIPS).ikOperationCount == 0);
+    REQUIRE(store.GetState(animator, state));
+    CHECK(state.activeIKOperations == 0);
+
+    Animation::EditableAnimationGraph invalid = source;
+    invalid.parameters[0].type = FileFormat::Animation::GraphValueType::Float;
+    CHECK_FALSE(Animation::CompileAnimationGraph(invalid));
+    invalid = source;
+    invalid.ikOperations.resize(5, operation);
+    CHECK_FALSE(Animation::CompileAnimationGraph(invalid));
 }

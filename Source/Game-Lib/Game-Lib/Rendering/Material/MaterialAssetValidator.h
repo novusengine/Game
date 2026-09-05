@@ -3,8 +3,8 @@
 
 namespace MaterialLoading
 {
-    // Performs opt-in CPU-side structural and semantic validation of decoded material assets.
-    // It catches malformed offline data before unsafe offsets or bindings reach GPU-backed storage.
+    // Performs opt-in semantic validation of structurally decoded material assets.
+    // It verifies parameter layouts, resource bindings, and cross-asset compatibility.
     class MaterialAssetValidator
     {
       public:

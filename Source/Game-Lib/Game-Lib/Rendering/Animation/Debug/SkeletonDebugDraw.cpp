@@ -13,7 +13,10 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <limits>
+
+#include <glm/gtc/constants.hpp>
 
 namespace
 {
@@ -25,6 +28,9 @@ namespace
     AutoCVar_Int CVAR_AnimationDebugSkeletonBounds(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonBounds", "draw bounds around Animation V2 debug joints", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugBoundsEnabled(CVarCategory::Client | CVarCategory::Rendering, "animationDebugBoundsEnabled", "draw selected pre-pose and actual CPU post-skin Animation V2 bounds; red indicates a containment violation", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonDepthColor(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonDepthColor", "color Animation V2 joints by hierarchy depth", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
+    AutoCVar_Int CVAR_AnimationDebugSkeletonWeights(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonWeights", "color Animation V2 joints by final layer weight", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
+    AutoCVar_Int CVAR_AnimationDebugIK(CVarCategory::Client | CVarCategory::Rendering, "animationDebugIK", "draw Animation V2 IK chains, goals, poles, and reach", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
+    AutoCVar_Int CVAR_AnimationDebugAttachments(CVarCategory::Client | CVarCategory::Rendering, "animationDebugAttachments", "draw Animation V2 semantic attachment sockets and local axes", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonSelectedJoint(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonSelectedJoint", "highlight one Animation V2 joint index, or -1", -1, CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonUseSelection(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonUseSelection", "place Animation V2 skeleton at the selected entity transform", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Float CVAR_AnimationDebugSkeletonJointRadius(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonJointRadius", "Animation V2 joint cross radius", 0.015, CVarFlags::EditFloatDrag | CVarFlags::DoNotSave);
@@ -115,6 +121,18 @@ namespace Animation
         _currentLocalPose.assign(localPose.begin(), localPose.end());
     }
 
+    void SkeletonDebugDraw::SetJointWeights(std::span<const f32> weights)
+    {
+        _jointWeights.assign(weights.begin(), weights.end());
+    }
+
+    void SkeletonDebugDraw::SetIKOperations(std::span<const PoseIKDebugOperation> operations)
+    {
+        _ikOperations = {};
+        _ikOperationCount = static_cast<u32>(std::min(operations.size(), _ikOperations.size()));
+        std::copy_n(operations.begin(), _ikOperationCount, _ikOperations.begin());
+    }
+
     void SkeletonDebugDraw::ClearCurrentLocalPose()
     {
         _currentLocalPose.clear();
@@ -201,6 +219,11 @@ namespace Animation
             boundsMin = glm::min(boundsMin, position);
             boundsMax = glm::max(boundsMax, position);
             Color color = CVAR_AnimationDebugSkeletonDepthColor.Get() != 0 ? DEPTH_COLORS[joint.hierarchyDepth % DEPTH_COLORS.size()] : Color::PastelBlue;
+            if (CVAR_AnimationDebugSkeletonWeights.Get() != 0 && _jointWeights.size() == _skeleton->joints.size())
+            {
+                const f32 weight = std::clamp(_jointWeights[jointIndex], 0.0f, 1.0f);
+                color = weight <= 0.001f ? Color::PastelBlue : (weight < 0.5f ? Color::Cyan : (weight < 0.999f ? Color::Yellow : Color::Red));
+            }
             if (static_cast<i32>(jointIndex) == selectedJoint)
                 color = Color::Yellow;
 
@@ -228,6 +251,63 @@ namespace Animation
                 DrawLabel(jointIndex, position + axisY * radius, axisX, axisY, color, 4);
             else if (labelMode == 2 && static_cast<i32>(jointIndex) == selectedJoint)
                 DrawLabel(joint.semanticID, position + axisY * radius, axisX, axisY, color, 16);
+        }
+
+        if (CVAR_AnimationDebugIK.Get() != 0)
+        {
+            for (u32 operationIndex = 0; operationIndex < _ikOperationCount; ++operationIndex)
+            {
+                const PoseIKDebugOperation& operation = _ikOperations[operationIndex];
+                if (operation.jointCount == 0 || operation.jointIndices[0] >= _evaluatedPose.modelTransforms.size())
+                    continue;
+                const Color chainColor = operation.clamped ? Color::Red : Color::PastelOrange;
+                const vec3 root = WorldTransformPoint(worldTransform, _evaluatedPose.modelTransforms[operation.jointIndices[0]][3]);
+                const vec3 goal = WorldTransformPoint(worldTransform, operation.goalModel);
+                const vec3 pole = WorldTransformPoint(worldTransform, operation.poleModel);
+                for (u32 joint = 1; joint < operation.jointCount; ++joint)
+                {
+                    if (operation.jointIndices[joint - 1] >= _evaluatedPose.modelTransforms.size() || operation.jointIndices[joint] >= _evaluatedPose.modelTransforms.size())
+                        continue;
+                    EmitLine(WorldTransformPoint(worldTransform, _evaluatedPose.modelTransforms[operation.jointIndices[joint - 1]][3]), WorldTransformPoint(worldTransform, _evaluatedPose.modelTransforms[operation.jointIndices[joint]][3]), chainColor);
+                }
+                EmitLine(root, goal, chainColor);
+                EmitLine(root, pole, Color::Cyan);
+                EmitLine(goal - vec3(radius, 0.0f, 0.0f), goal + vec3(radius, 0.0f, 0.0f), chainColor);
+                EmitLine(goal - vec3(0.0f, radius, 0.0f), goal + vec3(0.0f, radius, 0.0f), chainColor);
+                EmitLine(goal - vec3(0.0f, 0.0f, radius), goal + vec3(0.0f, 0.0f, radius), chainColor);
+                _debugRenderer->DrawSphere3D(goal, radius * 2.5f, 16, chainColor);
+                if (operation.maximumReach > 0.0f)
+                {
+                    constexpr u32 reachSegments = 24;
+                    for (u32 segment = 0; segment < reachSegments; ++segment)
+                    {
+                        const f32 first = glm::two_pi<f32>() * static_cast<f32>(segment) / static_cast<f32>(reachSegments);
+                        const f32 second = glm::two_pi<f32>() * static_cast<f32>(segment + 1u) / static_cast<f32>(reachSegments);
+                        EmitLine(root + vec3(std::cos(first), std::sin(first), 0.0f) * operation.maximumReach, root + vec3(std::cos(second), std::sin(second), 0.0f) * operation.maximumReach, chainColor);
+                    }
+                }
+            }
+        }
+
+        if (CVAR_AnimationDebugAttachments.Get() != 0)
+        {
+            const std::array<Color, 3> attachmentColors = {Color::Cyan, Color::PastelOrange, Color::PastelPurple};
+            for (u32 attachmentIndex = 0; attachmentIndex < _skeleton->attachments.size(); ++attachmentIndex)
+            {
+                const FileFormat::Animation::SkeletonAttachment& attachment = _skeleton->attachments[attachmentIndex];
+                if (attachment.jointIndex >= _evaluatedPose.modelTransforms.size())
+                    continue;
+                const mat4a socketModel = Math::AffineMatrix::MatrixMul(_evaluatedPose.modelTransforms[attachment.jointIndex], ComposeLocalTransform(attachment.localTransform));
+                const vec3 socket = WorldTransformPoint(worldTransform, socketModel[3]);
+                const vec3 axisX = glm::normalize(WorldTransformVector(worldTransform, socketModel[0]));
+                const vec3 axisY = glm::normalize(WorldTransformVector(worldTransform, socketModel[1]));
+                const vec3 axisZ = glm::normalize(WorldTransformVector(worldTransform, socketModel[2]));
+                const Color color = attachmentColors[attachmentIndex % attachmentColors.size()];
+                _debugRenderer->DrawSphere3D(socket, radius * 2.0f, 12, color);
+                EmitLine(socket, socket + axisX * axisLength * 1.5f, Color::Red);
+                EmitLine(socket, socket + axisY * axisLength * 1.5f, Color::Green);
+                EmitLine(socket, socket + axisZ * axisLength * 1.5f, Color::Blue);
+            }
         }
 
         if (CVAR_AnimationDebugSkeletonBounds.Get() != 0 && !_skeleton->joints.empty())

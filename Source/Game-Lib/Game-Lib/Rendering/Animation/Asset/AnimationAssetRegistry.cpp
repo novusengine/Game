@@ -1,4 +1,7 @@
 #include "AnimationAssetRegistry.h"
+#include "AnimationAssetValidator.h"
+
+#include "Game-Lib/Rendering/Asset/AssetValidation.h"
 
 #include <Filesystem/PactStorage.h>
 
@@ -15,15 +18,39 @@ namespace
     }
 
     template <typename Result>
-    Result ReadRigFamily(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadRigFamily(payload, AssetLoading::ValidationMode::Full); }
-    AnimationLoading::SkeletonAssetReadResult ReadSkeleton(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadSkeleton(payload, AssetLoading::ValidationMode::Full); }
-    AnimationLoading::AnimationClipAssetReadResult ReadAnimationClip(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationClip(payload, AssetLoading::ValidationMode::Full); }
-    AnimationLoading::AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationSet(payload, AssetLoading::ValidationMode::Full); }
+    Result ReadRigFamily(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadRigFamily(payload); }
+    AnimationLoading::SkeletonAssetReadResult ReadSkeleton(std::span<const u8> payload)
+    {
+        AnimationLoading::SkeletonAssetReadResult result = AnimationLoading::AnimationAssetReader::ReadSkeleton(payload);
+        return result && AssetLoading::ShouldPerformFullValidation() ? AnimationLoading::AnimationAssetValidator::Validate(std::move(result)) : result;
+    }
+    AnimationLoading::AnimationClipAssetReadResult ReadAnimationClip(std::span<const u8> payload)
+    {
+        AnimationLoading::AnimationClipAssetReadResult result = AnimationLoading::AnimationAssetReader::ReadAnimationClip(payload);
+        return result && AssetLoading::ShouldPerformFullValidation() ? AnimationLoading::AnimationAssetValidator::Validate(std::move(result)) : result;
+    }
+    AnimationLoading::AnimationSetAssetReadResult ReadAnimationSet(std::span<const u8> payload)
+    {
+        AnimationLoading::AnimationSetAssetReadResult result = AnimationLoading::AnimationAssetReader::ReadAnimationSet(payload);
+        return result && AssetLoading::ShouldPerformFullValidation() ? AnimationLoading::AnimationAssetValidator::Validate(std::move(result)) : result;
+    }
     AnimationLoading::AnimationGraphAssetReadResult ReadAnimationGraph(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationGraph(payload); }
-    AnimationLoading::BoneMaskAssetReadResult ReadBoneMask(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadBoneMask(payload); }
-    AnimationLoading::IKRigAssetReadResult ReadIKRig(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadIKRig(payload); }
+    AnimationLoading::BoneMaskAssetReadResult ReadBoneMask(std::span<const u8> payload)
+    {
+        AnimationLoading::BoneMaskAssetReadResult result = AnimationLoading::AnimationAssetReader::ReadBoneMask(payload);
+        return result && AssetLoading::ShouldPerformFullValidation() ? AnimationLoading::AnimationAssetValidator::Validate(std::move(result)) : result;
+    }
+    AnimationLoading::IKRigAssetReadResult ReadIKRig(std::span<const u8> payload)
+    {
+        AnimationLoading::IKRigAssetReadResult result = AnimationLoading::AnimationAssetReader::ReadIKRig(payload);
+        return result && AssetLoading::ShouldPerformFullValidation() ? AnimationLoading::AnimationAssetValidator::Validate(std::move(result)) : result;
+    }
     AnimationLoading::RetargetProfileAssetReadResult ReadRetargetProfile(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadRetargetProfile(payload); }
-    AnimationLoading::AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload, AssetLoading::ValidationMode::Full); }
+    AnimationLoading::AnimationBoundsAssetReadResult ReadAnimationBounds(std::span<const u8> payload)
+    {
+        AnimationLoading::AnimationBoundsAssetReadResult result = AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload);
+        return result && AssetLoading::ShouldPerformFullValidation() ? AnimationLoading::AnimationAssetValidator::Validate(std::move(result)) : result;
+    }
 } // namespace
 
 namespace AnimationLoading

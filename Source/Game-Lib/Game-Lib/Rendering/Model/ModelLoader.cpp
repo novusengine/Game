@@ -15,10 +15,12 @@
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Asset/AssetValidation.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelAssetReader.h"
+#include "Game-Lib/Rendering/Model/Asset/ModelAssetValidator.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelSceneBridge.h"
 #include "Game-Lib/Rendering/Model/DisplayResolver.h"
 #include "Game-Lib/Rendering/Model/ModelParameterOverrides.h"
@@ -65,7 +67,9 @@ namespace
     std::unique_ptr<ModelLoading::LoadedModelData> ReadModelData(const void* data, size_t size)
     {
         const std::span<const u8> payload(static_cast<const u8*>(data), size);
-        const ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full);
+        ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetReader::Read(payload);
+        if (result && AssetLoading::ShouldPerformFullValidation())
+            result = ModelLoading::ModelAssetValidator::Validate(std::move(result));
         if (!result)
         {
             NC_LOG_ERROR("ModelLoader : Model asset validation failed: {}", AssetLoading::Describe(result.diagnostic));

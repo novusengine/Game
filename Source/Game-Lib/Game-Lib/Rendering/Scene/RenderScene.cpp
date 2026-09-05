@@ -212,6 +212,24 @@ namespace RenderScenes
         return true;
     }
 
+    bool RenderScene::SetModelAttachmentTransform(ModelInstanceHandle handle, const mat4x4& currentTransform, const mat4x4& previousTransform, bool motionValid)
+    {
+        const ModelScene::ModelInstanceGPURecord* oldRecord = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* instanceResources = _instances.GetResources(handle);
+        const bool hasShadowState = oldRecord && instanceResources && _geometryStorage->HasModel(instanceResources->model);
+        const mat4x4 oldTransform = hasShadowState ? oldRecord->currentWorld : currentTransform;
+        const bool visible = hasShadowState && _instances.IsVisible(handle) && (oldRecord->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0;
+        if (!_instances.SetTransformHistory(handle, currentTransform, previousTransform, motionValid))
+            return false;
+        if (hasShadowState)
+        {
+            const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(instanceResources->model).bounds;
+            if (_shadowState.ModelTransformChanged(handle, bounds, oldTransform, currentTransform, visible))
+                _instances.SetShadowDynamic(handle, true);
+        }
+        return true;
+    }
+
     bool RenderScene::SetModelVisible(ModelInstanceHandle handle, bool visible)
     {
         const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);

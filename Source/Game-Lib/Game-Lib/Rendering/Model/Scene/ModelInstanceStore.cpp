@@ -167,6 +167,27 @@ namespace ModelScene
         return true;
     }
 
+    bool ModelInstanceStore::SetTransformHistory(RenderScenes::ModelInstanceHandle handle, const mat4x4& currentTransform, const mat4x4& previousTransform, bool motionValid)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        ModelInstanceGPURecord& record = _records[RenderScenes::GetModelInstanceSlot(handle)];
+        record.currentWorld = currentTransform;
+        record.previousWorld = motionValid ? previousTransform : currentTransform;
+        record.flags &= ~ModelInstanceFlagTeleported;
+        if (motionValid && slot->state == SlotState::Live && slot->desiredVisible)
+            record.flags |= ModelInstanceFlagMotionValid;
+        else
+            record.flags &= ~ModelInstanceFlagMotionValid;
+        _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        return true;
+    }
+
     bool ModelInstanceStore::SetVisible(RenderScenes::ModelInstanceHandle handle, bool visible,
                                         bool& outNeedsHistoryClear)
     {

@@ -2,13 +2,6 @@
 
 namespace AssetLoading
 {
-    enum class ValidationMode
-    {
-        Default,
-        Minimal,
-        Full
-    };
-
     enum class FailureInjection
     {
         Texture = 1,
@@ -18,6 +11,6 @@ namespace AssetLoading
         Animation
     };
 
-    bool ShouldPerformFullValidation(ValidationMode mode);
+    bool ShouldPerformFullValidation();
     bool ShouldInjectFailure(FailureInjection type);
 } // namespace AssetLoading

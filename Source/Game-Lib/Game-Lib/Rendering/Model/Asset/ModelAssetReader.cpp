@@ -1,5 +1,4 @@
 #include "ModelAssetReader.h"
-#include "ModelAssetValidator.h"
 
 #include <Base/Memory/Bytebuffer.h>
 
@@ -44,7 +43,7 @@ namespace
 
 namespace ModelLoading
 {
-    ModelAssetReadResult ModelAssetReader::Read(std::span<const u8> payload, AssetLoading::ValidationMode validationMode)
+    ModelAssetReadResult ModelAssetReader::Read(std::span<const u8> payload)
     {
         if (payload.size() < sizeof(Model::ModelAsset))
             return Fail(DiagnosticCode::PayloadTooSmall, "ModelAsset", Diagnostic::NO_INDEX, payload.size(), sizeof(Model::ModelAsset));
@@ -102,9 +101,6 @@ namespace ModelLoading
         SET_ROOT_SECTION(embeddedInstances, numEmbeddedInstances, Model::EmbeddedInstance);
         SET_ROOT_SECTION(physicsData, numPhysicsDataBytes, u8);
 #undef SET_ROOT_SECTION
-
-        if (AssetLoading::ShouldPerformFullValidation(validationMode))
-            return ModelAssetValidator::Validate(result);
 
         return result;
     }

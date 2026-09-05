@@ -1,4 +1,5 @@
 #include "Game-Lib/Rendering/Material/MaterialAssetReader.h"
+#include "Game-Lib/Rendering/Material/MaterialAssetValidator.h"
 
 #include <Base/Memory/Bytebuffer.h>
 
@@ -55,11 +56,10 @@ namespace
 TEST_CASE("Material readers accept matching flat material assets", "[Rendering][MaterialAssetReader]")
 {
     const MaterialPayloads payloads = MakeMaterialPayloads();
-    const auto material = MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full);
+    const auto material = MaterialLoading::MaterialAssetValidator::ValidateMaterial(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material));
     REQUIRE(material);
 
-    const auto instance =
-        MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance, material.view, AssetLoading::ValidationMode::Full);
+    const auto instance = MaterialLoading::MaterialAssetValidator::ValidateMaterialInstance(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance), material.view);
     REQUIRE(instance);
     CHECK(instance.view.parameterData.size() == 32);
     CHECK(instance.view.textureBindings.size() == 1);
@@ -70,7 +70,7 @@ TEST_CASE("Material instance structural decode discovers its dependency without 
     MaterialPayloads payloads = MakeMaterialPayloads();
     ++At<Material::MaterialInstanceAsset>(payloads.instance, 0).parameterLayoutHash;
 
-    const auto decoded = MaterialLoading::MaterialAssetReader::DecodeMaterialInstance(payloads.instance);
+    const auto decoded = MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance);
     REQUIRE(decoded);
     CHECK(decoded.view.root.materialAssetID == 77);
     CHECK(decoded.view.parameterData.size() == 32);
@@ -81,11 +81,11 @@ TEST_CASE("Material reader rejects invalid parameter patches and compatibility",
     SECTION("Texture binding outside the declared slot table")
     {
         MaterialPayloads payloads = MakeMaterialPayloads();
-        const auto material = MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full);
+        const auto material = MaterialLoading::MaterialAssetValidator::ValidateMaterial(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material));
         REQUIRE(material);
         const Material::MaterialInstanceAsset& root = At<Material::MaterialInstanceAsset>(payloads.instance, 0);
         At<Material::TextureBinding>(payloads.instance, root.textureBindingsOffset).textureSlot = 1;
-        CHECK(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance, material.view, AssetLoading::ValidationMode::Full)
+        CHECK(MaterialLoading::MaterialAssetValidator::ValidateMaterialInstance(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance), material.view)
                   .diagnostic.code ==
               AssetLoading::DiagnosticCode::InvalidRange);
     }
@@ -93,10 +93,10 @@ TEST_CASE("Material reader rejects invalid parameter patches and compatibility",
     SECTION("Layout hash mismatch")
     {
         MaterialPayloads payloads = MakeMaterialPayloads();
-        const auto material = MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full);
+        const auto material = MaterialLoading::MaterialAssetValidator::ValidateMaterial(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material));
         REQUIRE(material);
         ++At<Material::MaterialInstanceAsset>(payloads.instance, 0).parameterLayoutHash;
-        CHECK(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance, material.view, AssetLoading::ValidationMode::Full)
+        CHECK(MaterialLoading::MaterialAssetValidator::ValidateMaterialInstance(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance), material.view)
                   .diagnostic.code ==
               AssetLoading::DiagnosticCode::LayoutHashMismatch);
     }
@@ -104,11 +104,11 @@ TEST_CASE("Material reader rejects invalid parameter patches and compatibility",
     SECTION("Required texture reference is invalid")
     {
         MaterialPayloads payloads = MakeMaterialPayloads();
-        const auto material = MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full);
+        const auto material = MaterialLoading::MaterialAssetValidator::ValidateMaterial(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material));
         REQUIRE(material);
         const Material::MaterialInstanceAsset& root = At<Material::MaterialInstanceAsset>(payloads.instance, 0);
         At<Material::TextureBinding>(payloads.instance, root.textureBindingsOffset).resourceAssetID = FileFormat::INVALID_ASSET_ID;
-        CHECK(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance, material.view, AssetLoading::ValidationMode::Full)
+        CHECK(MaterialLoading::MaterialAssetValidator::ValidateMaterialInstance(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance), material.view)
                   .diagnostic.code ==
               AssetLoading::DiagnosticCode::MissingRequiredReference);
     }
@@ -117,7 +117,7 @@ TEST_CASE("Material reader rejects invalid parameter patches and compatibility",
     {
         MaterialPayloads payloads = MakeMaterialPayloads();
         At<Material::MaterialAsset>(payloads.material, 0).flags = 1u << 31;
-        CHECK(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full).diagnostic.code ==
+        CHECK(MaterialLoading::MaterialAssetValidator::ValidateMaterial(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material)).diagnostic.code ==
               AssetLoading::DiagnosticCode::UnsupportedFlags);
     }
 }
@@ -128,8 +128,8 @@ TEST_CASE("Material semantic validation is optional", "[Rendering][MaterialAsset
     At<Material::MaterialAsset>(payloads.material, 0).flags = 1u << 31;
 
     CHECK(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material));
-    CHECK(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Minimal));
-    CHECK(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full).diagnostic.code ==
+    CHECK(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material));
+    CHECK(MaterialLoading::MaterialAssetValidator::ValidateMaterial(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material)).diagnostic.code ==
           AssetLoading::DiagnosticCode::UnsupportedFlags);
 }
 

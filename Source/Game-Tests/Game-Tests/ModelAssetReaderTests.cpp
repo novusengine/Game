@@ -1,4 +1,5 @@
 #include "Game-Lib/Rendering/Model/Asset/ModelAssetReader.h"
+#include "Game-Lib/Rendering/Model/Asset/ModelAssetValidator.h"
 
 #include <Base/Memory/Bytebuffer.h>
 
@@ -63,8 +64,7 @@ namespace
 TEST_CASE("Model asset reader accepts a minimal cooker-final payload", "[Rendering][ModelAssetReader]")
 {
     const std::vector<u8> payload = MakeModelPayload();
-    const ModelLoading::ModelAssetReadResult result =
-        ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full);
+    const ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload));
 
     REQUIRE(result);
     CHECK(result.view.meshes.size() == 1);
@@ -82,7 +82,7 @@ TEST_CASE("Model asset reader accepts a missing default material reference", "[R
     const Model::ModelAsset& root = At<Model::ModelAsset>(payload, 0);
     At<Model::MaterialSlot>(payload, root.materialSlotsOffset).defaultMaterialInstanceAssetID = FileFormat::INVALID_ASSET_ID;
 
-    CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full));
+    CHECK(ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload)));
 }
 
 TEST_CASE("Model asset reader rejects truncated and overflowed root sections", "[Rendering][ModelAssetReader]")
@@ -109,7 +109,7 @@ TEST_CASE("Model asset reader rejects invalid nested geometry ranges", "[Renderi
         std::vector<u8> payload = MakeModelPayload();
         Model::ModelAsset& root = At<Model::ModelAsset>(payload, 0);
         At<Model::Mesh>(payload, root.meshesOffset).lodOffset = 1;
-        CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full).diagnostic.code ==
+        CHECK(ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload)).diagnostic.code ==
               AssetLoading::DiagnosticCode::InvalidRange);
     }
 
@@ -118,7 +118,7 @@ TEST_CASE("Model asset reader rejects invalid nested geometry ranges", "[Renderi
         std::vector<u8> payload = MakeModelPayload();
         Model::ModelAsset& root = At<Model::ModelAsset>(payload, 0);
         At<Model::MeshLOD>(payload, root.meshLODsOffset).numVertexAttributes = 2;
-        CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full).diagnostic.code ==
+        CHECK(ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload)).diagnostic.code ==
               AssetLoading::DiagnosticCode::CountMismatch);
     }
 
@@ -127,7 +127,7 @@ TEST_CASE("Model asset reader rejects invalid nested geometry ranges", "[Renderi
         std::vector<u8> payload = MakeModelPayload();
         Model::ModelAsset& root = At<Model::ModelAsset>(payload, 0);
         At<Model::Meshlet>(payload, root.meshletsOffset).vertexCount = Model::MAX_MESHLET_VERTICES + 1;
-        CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full).diagnostic.code ==
+        CHECK(ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload)).diagnostic.code ==
               AssetLoading::DiagnosticCode::InvalidValue);
     }
 
@@ -136,7 +136,7 @@ TEST_CASE("Model asset reader rejects invalid nested geometry ranges", "[Renderi
         std::vector<u8> payload = MakeModelPayload();
         Model::ModelAsset& root = At<Model::ModelAsset>(payload, 0);
         At<Model::PackedMeshletTriangle>(payload, root.meshletTrianglesOffset).localVertexIndices |= 0x80000000u;
-        CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full).diagnostic.code ==
+        CHECK(ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload)).diagnostic.code ==
               AssetLoading::DiagnosticCode::InvalidIndex);
     }
 
@@ -144,7 +144,7 @@ TEST_CASE("Model asset reader rejects invalid nested geometry ranges", "[Renderi
     {
         std::vector<u8> payload = MakeModelPayload();
         At<Model::ModelAsset>(payload, 0).flags = 1u << 31;
-        CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full).diagnostic.code ==
+        CHECK(ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload)).diagnostic.code ==
               AssetLoading::DiagnosticCode::UnsupportedFlags);
     }
 }
@@ -155,8 +155,8 @@ TEST_CASE("Model asset semantic validation is optional", "[Rendering][ModelAsset
     At<Model::ModelAsset>(payload, 0).flags = 1u << 31;
 
     CHECK(ModelLoading::ModelAssetReader::Read(payload));
-    CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Minimal));
-    CHECK(ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full).diagnostic.code ==
+    CHECK(ModelLoading::ModelAssetReader::Read(payload));
+    CHECK(ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload)).diagnostic.code ==
           AssetLoading::DiagnosticCode::UnsupportedFlags);
 }
 
@@ -177,7 +177,7 @@ TEST_CASE("NBS Phase 1 skinned Model export passes the Game semantic validator",
     std::vector<u8> payload(static_cast<size_t>(size));
     REQUIRE(stream.read(reinterpret_cast<char*>(payload.data()), size));
 
-    const ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetReader::Read(payload, AssetLoading::ValidationMode::Full);
+    const ModelLoading::ModelAssetReadResult result = ModelLoading::ModelAssetValidator::Validate(ModelLoading::ModelAssetReader::Read(payload));
     REQUIRE(result);
     REQUIRE(result.view.meshes.size() == 1);
     CHECK((result.view.meshes[0].flags & Model::MeshFlags_Skinned) != 0);

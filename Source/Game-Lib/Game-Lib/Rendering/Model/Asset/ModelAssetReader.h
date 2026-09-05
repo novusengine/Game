@@ -1,6 +1,5 @@
 #pragma once
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
-#include "Game-Lib/Rendering/Asset/AssetValidation.h"
 
 #include <FileFormat/Novus/Model/Model.h>
 
@@ -54,6 +53,6 @@ namespace ModelLoading
     {
       public:
         // Returned spans borrow payload and remain valid only while it remains alive.
-        static ModelAssetReadResult Read(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
+        static ModelAssetReadResult Read(std::span<const u8> payload);
     };
 } // namespace ModelLoading

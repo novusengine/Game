@@ -1,5 +1,7 @@
 #include "AnimationControllerRuntime.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -7,6 +9,8 @@
 
 namespace
 {
+    AutoCVar_Float CVAR_AnimationControllerTimeScale(CVarCategory::Client | CVarCategory::Rendering, "animationControllerTimeScale", "Animation V2 controller time scale", 1.0f, CVarFlags::EditFloatDrag | CVarFlags::DoNotSave);
+
     template <typename T>
     void Append(std::vector<u8>& bytes, const T& value)
     {
@@ -22,6 +26,7 @@ namespace
             case FileFormat::Animation::GraphValueType::Bool: return 1;
             case FileFormat::Animation::GraphValueType::Int: return 4;
             case FileFormat::Animation::GraphValueType::Float: return 4;
+            case FileFormat::Animation::GraphValueType::Float3: return 12;
             default: return 0;
         }
     }
@@ -100,8 +105,10 @@ namespace Animation
                 graph->defaultParameters[parameterOffset] = parameter.defaultBool ? 1 : 0;
             else if (parameter.type == FileFormat::Animation::GraphValueType::Int)
                 std::memcpy(graph->defaultParameters.data() + parameterOffset, &parameter.defaultInt, sizeof(i32));
-            else
+            else if (parameter.type == FileFormat::Animation::GraphValueType::Float)
                 std::memcpy(graph->defaultParameters.data() + parameterOffset, &parameter.defaultFloat, sizeof(f32));
+            else if (parameter.type == FileFormat::Animation::GraphValueType::Float3)
+                std::memcpy(graph->defaultParameters.data() + parameterOffset, &parameter.defaultFloat3, sizeof(vec3));
             parameterOffset += size;
         }
         graph->parameterBytes = parameterOffset;
@@ -198,6 +205,120 @@ namespace Animation
             graph->transitions.push_back(compiled);
         }
 
+        if (source.layers.size() > 4)
+            Fail("layers", std::numeric_limits<u32>::max(), "layer count exceeds the fixed pose recipe limit");
+        for (u32 index = 0; index < source.layers.size(); ++index)
+        {
+            const EditableGraphLayer& layer = source.layers[index];
+            if (layer.sourceGUID == 0 || layer.clipSlotSemanticID == 0 || layer.durationMicroseconds == 0 || layer.type > AnimationLayerType::Additive || !std::isfinite(layer.constantWeight) || layer.constantWeight < 0.0f || layer.constantWeight > 1.0f)
+            {
+                Fail("layers", index, "layer identity, clip, duration, type, or weight is invalid");
+                continue;
+            }
+            if (std::any_of(graph->layers.begin(), graph->layers.end(), [&layer](const CompiledGraphLayer& value) { return value.sourceGUID == layer.sourceGUID || value.executionOrder == layer.executionOrder; }))
+            {
+                Fail("layers", index, "layer GUID or execution order is duplicated");
+                continue;
+            }
+            CompiledGraphLayer compiled;
+            compiled.sourceGUID = layer.sourceGUID;
+            compiled.clipSlotSemanticID = layer.clipSlotSemanticID;
+            compiled.maskAssetID = layer.maskAssetID;
+            compiled.durationMicroseconds = layer.durationMicroseconds;
+            compiled.type = layer.type;
+            compiled.constantWeight = layer.constantWeight;
+            compiled.executionOrder = layer.executionOrder;
+            compiled.emitEvents = layer.emitEvents;
+            if (!layer.weightParameter.empty())
+            {
+                const u64 hash = HashAnimationName(layer.weightParameter);
+                const auto parameter = std::find_if(graph->parameters.begin(), graph->parameters.end(), [hash](const CompiledGraphParameter& value) { return value.nameHash == hash; });
+                if (parameter == graph->parameters.end() || parameter->type != FileFormat::Animation::GraphValueType::Float)
+                {
+                    Fail("layers", index, "layer weight parameter is missing or is not a float");
+                    continue;
+                }
+                compiled.weightParameter = static_cast<u16>(std::distance(graph->parameters.begin(), parameter));
+            }
+            graph->layers.push_back(compiled);
+        }
+        std::sort(graph->layers.begin(), graph->layers.end(), [](const CompiledGraphLayer& first, const CompiledGraphLayer& second) { return first.executionOrder < second.executionOrder; });
+        if (source.actionSlots.size() > source.actionCapacity || source.layers.size() + (source.actionSlots.empty() ? 0u : 1u) > 4)
+            Fail("actionSlots", std::numeric_limits<u32>::max(), "action slots exceed the queue or pose recipe limits");
+        for (u32 index = 0; index < source.actionSlots.size(); ++index)
+        {
+            const EditableGraphActionSlot& slot = source.actionSlots[index];
+            if (slot.semanticID == 0 || slot.clipSlotSemanticID == 0 || slot.durationMicroseconds == 0 || slot.type > AnimationLayerType::Additive || slot.blendInMicroseconds > slot.durationMicroseconds || slot.blendOutMicroseconds > slot.durationMicroseconds)
+            {
+                Fail("actionSlots", index, "action semantic, clip, duration, type, or blend interval is invalid");
+                continue;
+            }
+            if (std::any_of(graph->actionSlots.begin(), graph->actionSlots.end(), [&slot](const CompiledGraphActionSlot& value) { return value.semanticID == slot.semanticID; }))
+            {
+                Fail("actionSlots", index, "action semantic is duplicated");
+                continue;
+            }
+            graph->actionSlots.push_back({slot.semanticID, slot.clipSlotSemanticID, slot.maskAssetID, slot.durationMicroseconds, slot.blendInMicroseconds, slot.blendOutMicroseconds, slot.type, slot.priority, slot.queueWhenBlocked, slot.continueUnderlyingState});
+        }
+        for (u32 index = 0; index < source.outputs.size(); ++index)
+        {
+            const EditableGraphOutput& output = source.outputs[index];
+            const u64 parameterHash = HashAnimationName(output.parameter);
+            const auto parameter = std::find_if(graph->parameters.begin(), graph->parameters.end(), [parameterHash](const CompiledGraphParameter& value) { return value.nameHash == parameterHash; });
+            if (output.semanticID == 0 || parameter == graph->parameters.end())
+            {
+                Fail("outputs", index, "output semantic or parameter is invalid");
+                continue;
+            }
+            if (std::any_of(graph->outputs.begin(), graph->outputs.end(), [&output](const CompiledGraphOutput& value) { return value.semanticID == output.semanticID; }))
+            {
+                Fail("outputs", index, "output semantic is duplicated");
+                continue;
+            }
+            graph->outputs.push_back({output.semanticID, static_cast<u16>(std::distance(graph->parameters.begin(), parameter))});
+        }
+        if (source.ikOperations.size() > 4)
+            Fail("ikOperations", std::numeric_limits<u32>::max(), "IK operation count exceeds the fixed pose recipe limit");
+        for (u32 index = 0; index < source.ikOperations.size(); ++index)
+        {
+            const EditableGraphIKOperation& operation = source.ikOperations[index];
+            const u64 goalHash = HashAnimationName(operation.goalParameter);
+            const auto goal = std::find_if(graph->parameters.begin(), graph->parameters.end(), [goalHash](const CompiledGraphParameter& value) { return value.nameHash == goalHash; });
+            if (operation.sourceGUID == 0 || operation.rigAssetID == FileFormat::INVALID_ASSET_ID || operation.solverSemanticID == 0 || goal == graph->parameters.end() || goal->type != FileFormat::Animation::GraphValueType::Float3 || !std::isfinite(operation.constantWeight) || operation.constantWeight < 0.0f || operation.constantWeight > 1.0f)
+            {
+                Fail("ikOperations", index, "IK identity, rig, solver, goal, or weight is invalid");
+                continue;
+            }
+            if (std::any_of(graph->ikOperations.begin(), graph->ikOperations.end(), [&operation](const CompiledGraphIKOperation& value) { return value.sourceGUID == operation.sourceGUID || value.executionOrder == operation.executionOrder; }))
+            {
+                Fail("ikOperations", index, "IK GUID or execution order is duplicated");
+                continue;
+            }
+            CompiledGraphIKOperation compiled;
+            compiled.sourceGUID = operation.sourceGUID;
+            compiled.rigAssetID = operation.rigAssetID;
+            compiled.solverSemanticID = operation.solverSemanticID;
+            compiled.goalParameter = static_cast<u16>(std::distance(graph->parameters.begin(), goal));
+            compiled.goalAttachmentSemanticID = operation.goalAttachmentSemanticID;
+            compiled.effectorAttachmentSemanticID = operation.effectorAttachmentSemanticID;
+            compiled.effectorAlignmentAxis = operation.effectorAlignmentAxis;
+            compiled.constantWeight = operation.constantWeight;
+            compiled.executionOrder = operation.executionOrder;
+            if (!operation.weightParameter.empty())
+            {
+                const u64 weightHash = HashAnimationName(operation.weightParameter);
+                const auto weight = std::find_if(graph->parameters.begin(), graph->parameters.end(), [weightHash](const CompiledGraphParameter& value) { return value.nameHash == weightHash; });
+                if (weight == graph->parameters.end() || weight->type != FileFormat::Animation::GraphValueType::Float)
+                {
+                    Fail("ikOperations", index, "IK weight parameter is missing or is not a float");
+                    continue;
+                }
+                compiled.weightParameter = static_cast<u16>(std::distance(graph->parameters.begin(), weight));
+            }
+            graph->ikOperations.push_back(compiled);
+        }
+        std::sort(graph->ikOperations.begin(), graph->ikOperations.end(), [](const CompiledGraphIKOperation& first, const CompiledGraphIKOperation& second) { return first.executionOrder < second.executionOrder; });
+
         if (!graph->states.empty() && graph->entryState < graph->states.size())
         {
             std::vector<bool> reachable(graph->states.size(), false);
@@ -231,9 +352,17 @@ namespace Animation
         const u32 parameterCount = static_cast<u32>(graph->parameters.size());
         const u32 stateCount = static_cast<u32>(graph->states.size());
         const u32 transitionCount = static_cast<u32>(graph->transitions.size());
+        const u32 layerCount = static_cast<u32>(graph->layers.size());
+        const u32 actionSlotCount = static_cast<u32>(graph->actionSlots.size());
+        const u32 outputCount = static_cast<u32>(graph->outputs.size());
+        const u32 ikOperationCount = static_cast<u32>(graph->ikOperations.size());
         Append(graph->controllerProgram, parameterCount);
         Append(graph->controllerProgram, stateCount);
         Append(graph->controllerProgram, transitionCount);
+        Append(graph->controllerProgram, layerCount);
+        Append(graph->controllerProgram, actionSlotCount);
+        Append(graph->controllerProgram, outputCount);
+        Append(graph->controllerProgram, ikOperationCount);
         Append(graph->controllerProgram, graph->parameterBytes);
         for (const CompiledGraphParameter& value : graph->parameters)
         {
@@ -278,6 +407,49 @@ namespace Animation
             Append(graph->controllerProgram, value.threshold);
             Append(graph->controllerProgram, value.durationMicroseconds);
         }
+        for (const CompiledGraphLayer& value : graph->layers)
+        {
+            Append(graph->controllerProgram, value.sourceGUID);
+            Append(graph->controllerProgram, value.clipSlotSemanticID);
+            Append(graph->controllerProgram, value.maskAssetID);
+            Append(graph->controllerProgram, value.durationMicroseconds);
+            Append(graph->controllerProgram, static_cast<u8>(value.type));
+            Append(graph->controllerProgram, value.weightParameter);
+            Append(graph->controllerProgram, value.constantWeight);
+            Append(graph->controllerProgram, value.executionOrder);
+            Append(graph->controllerProgram, static_cast<u8>(value.emitEvents ? 1 : 0));
+        }
+        for (const CompiledGraphActionSlot& value : graph->actionSlots)
+        {
+            Append(graph->controllerProgram, value.semanticID);
+            Append(graph->controllerProgram, value.clipSlotSemanticID);
+            Append(graph->controllerProgram, value.maskAssetID);
+            Append(graph->controllerProgram, value.durationMicroseconds);
+            Append(graph->controllerProgram, value.blendInMicroseconds);
+            Append(graph->controllerProgram, value.blendOutMicroseconds);
+            Append(graph->controllerProgram, static_cast<u8>(value.type));
+            Append(graph->controllerProgram, value.priority);
+            Append(graph->controllerProgram, static_cast<u8>(value.queueWhenBlocked ? 1 : 0));
+            Append(graph->controllerProgram, static_cast<u8>(value.continueUnderlyingState ? 1 : 0));
+        }
+        for (const CompiledGraphOutput& value : graph->outputs)
+        {
+            Append(graph->controllerProgram, value.semanticID);
+            Append(graph->controllerProgram, value.parameterIndex);
+        }
+        for (const CompiledGraphIKOperation& value : graph->ikOperations)
+        {
+            Append(graph->controllerProgram, value.sourceGUID);
+            Append(graph->controllerProgram, value.rigAssetID);
+            Append(graph->controllerProgram, value.solverSemanticID);
+            Append(graph->controllerProgram, value.goalParameter);
+            Append(graph->controllerProgram, value.goalAttachmentSemanticID);
+            Append(graph->controllerProgram, value.effectorAttachmentSemanticID);
+            Append(graph->controllerProgram, value.effectorAlignmentAxis);
+            Append(graph->controllerProgram, value.weightParameter);
+            Append(graph->controllerProgram, value.constantWeight);
+            Append(graph->controllerProgram, value.executionOrder);
+        }
         u64 hash = 0xCBF29CE484222325ull;
         for (u8 byte : graph->controllerProgram)
         {
@@ -301,11 +473,42 @@ namespace Animation
             bool active = false;
         };
 
+        struct ActionRecord
+        {
+            u32 serial = 0;
+            u16 slotIndex = 0;
+            u64 semanticID = 0;
+            FileFormat::AssetID clipAssetID = FileFormat::INVALID_ASSET_ID;
+            u32 payload = 0;
+            u64 timeMicroseconds = 0;
+            AnimationActionStatus status = AnimationActionStatus::Pending;
+        };
+
+        struct BoundClip
+        {
+            FileFormat::AssetID clipAssetID = FileFormat::INVALID_ASSET_ID;
+            FileFormat::Animation::PoseDomainType domainType = FileFormat::Animation::PoseDomainType::RigFamily;
+            FileFormat::AssetID domainAssetID = FileFormat::INVALID_ASSET_ID;
+            u64 durationMicroseconds = 0;
+            std::vector<FileFormat::Animation::SynchronizationMarker> synchronizationMarkers;
+            std::vector<FileFormat::Animation::AnimationEvent> events;
+            std::vector<u8> eventPayloadBytes;
+            bool looping = false;
+        };
+
         AnimationControllerConfig config;
         std::vector<u8> parameters;
         std::vector<u32> variations;
         std::vector<AnimationControllerOutput> commands;
         std::vector<AnimationControllerOutput> actions;
+        std::vector<ActionRecord> actionRecords;
+        std::vector<AnimationEventOutput> authoritativeEvents;
+        std::vector<AnimationEventOutput> cosmeticEvents;
+        std::vector<AnimationGraphOutput> graphOutputs;
+        FileFormat::Animation::AnimationSetAsset boundSetRoot;
+        std::vector<FileFormat::Animation::AnimationSetSlot> boundSetSlots;
+        std::vector<FileFormat::Animation::AnimationClipVariant> boundSetVariants;
+        std::vector<BoundClip> boundClips;
         std::vector<AnimationControllerOutput> outputs;
         std::vector<FileFormat::Animation::LocalTransform> continuitySnapshot;
         std::vector<vec2> smoothedBlendInputs;
@@ -313,6 +516,8 @@ namespace Animation
         std::vector<BlendSampleClock> blendSampleClocks;
         u32 generation = 1;
         u32 graphGeneration = 1;
+        u32 nextActionSerial = 1;
+        u32 activeActionRecord = std::numeric_limits<u32>::max();
         u16 currentState = 0;
         u16 transitionSource = 0;
         u16 transitionTarget = 0;
@@ -323,6 +528,9 @@ namespace Animation
         bool live = false;
         bool transitioning = false;
         bool interruptionNeedsSnapshot = false;
+        u32 activeLayers = 0;
+        std::array<f32, 4> activeLayerWeights = {};
+        u32 activeIKOperations = 0;
         u32 activeBlendSamples = 0;
         u32 activeBlendTriangle = std::numeric_limits<u32>::max();
         std::array<f32, 3> activeBlendWeights = {};
@@ -366,11 +574,23 @@ namespace Animation
         slot.live = true;
         slot.config = config;
         slot.parameters = config.graph->defaultParameters;
-        slot.variations.assign(config.graph->states.size() + config.graph->blendSamples.size(), 0);
+        slot.variations.assign(config.graph->states.size() + config.graph->blendSamples.size() + config.graph->layers.size() + config.graph->actionSlots.size(), 0);
         slot.commands.clear();
         slot.commands.reserve(config.graph->commandCapacity);
         slot.actions.clear();
         slot.actions.reserve(config.graph->actionCapacity);
+        slot.actionRecords.clear();
+        slot.actionRecords.reserve(config.graph->actionCapacity);
+        slot.authoritativeEvents.clear();
+        slot.cosmeticEvents.clear();
+        slot.graphOutputs.clear();
+        slot.graphOutputs.reserve(config.graph->outputs.size());
+        slot.boundSetRoot = {};
+        slot.boundSetSlots.clear();
+        slot.boundSetVariants.clear();
+        slot.boundClips.clear();
+        slot.nextActionSerial = 1;
+        slot.activeActionRecord = std::numeric_limits<u32>::max();
         slot.outputs.clear();
         slot.outputs.reserve(config.graph->commandCapacity + config.graph->actionCapacity);
         slot.continuitySnapshot.clear();
@@ -538,18 +758,152 @@ namespace Animation
 
     bool AnimationControllerStore::QueueAction(AnimatorHandle handle, u64 semanticID, u32 payload)
     {
+        return static_cast<bool>(StartAction(handle, semanticID, payload));
+    }
+
+    AnimationActionToken AnimationControllerStore::StartAction(AnimatorHandle handle, u64 semanticID, u32 payload)
+    {
+        if (_updating)
+        {
+            ++_stats.reentrantMutationRejects;
+            return {};
+        }
+        Slot* slot = GetSlot(handle);
+        if (!slot || semanticID == 0)
+            return {};
+        const auto actionSlot = std::find_if(slot->config.graph->actionSlots.begin(), slot->config.graph->actionSlots.end(), [semanticID](const CompiledGraphActionSlot& value) { return value.semanticID == semanticID; });
+        if (actionSlot == slot->config.graph->actionSlots.end())
+            return {};
+        if (slot->actionRecords.size() >= slot->config.graph->actionCapacity)
+        {
+            const auto terminal = std::find_if(slot->actionRecords.begin(), slot->actionRecords.end(), [](const Slot::ActionRecord& value) { return value.status == AnimationActionStatus::Completed || value.status == AnimationActionStatus::Interrupted || value.status == AnimationActionStatus::Cancelled; });
+            if (terminal == slot->actionRecords.end())
+            {
+                ++_stats.queueOverflows;
+                return {};
+            }
+            const u32 removed = static_cast<u32>(std::distance(slot->actionRecords.begin(), terminal));
+            slot->actionRecords.erase(terminal);
+            if (slot->activeActionRecord != std::numeric_limits<u32>::max() && slot->activeActionRecord > removed)
+                --slot->activeActionRecord;
+        }
+        u32 serial = slot->nextActionSerial++;
+        if (serial == 0)
+            serial = slot->nextActionSerial++;
+        Slot::ActionRecord record;
+        record.serial = serial;
+        record.slotIndex = static_cast<u16>(std::distance(slot->config.graph->actionSlots.begin(), actionSlot));
+        record.semanticID = semanticID;
+        record.payload = payload;
+        AnimationLoading::AnimationSetAssetView boundSet = {slot->boundSetRoot, slot->boundSetSlots, slot->boundSetVariants};
+        std::vector<AnimationClipDomainRecord> boundDomains;
+        boundDomains.reserve(slot->boundClips.size());
+        for (const Slot::BoundClip& clip : slot->boundClips)
+            boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping});
+        const ResolvedAnimationSlot resolved = ResolveAnimationSlot(boundSet, boundDomains, actionSlot->clipSlotSemanticID, slot->config.stableSeed ^ semanticID ^ serial);
+        if (!resolved)
+            return {};
+        record.clipAssetID = resolved.clipAssetID;
+        if (slot->activeActionRecord == std::numeric_limits<u32>::max())
+            record.status = AnimationActionStatus::Playing;
+        else
+        {
+            Slot::ActionRecord& active = slot->actionRecords[slot->activeActionRecord];
+            const CompiledGraphActionSlot& activeSlot = slot->config.graph->actionSlots[active.slotIndex];
+            if (actionSlot->priority > activeSlot.priority)
+            {
+                active.status = AnimationActionStatus::Interrupted;
+                record.status = AnimationActionStatus::Playing;
+                slot->activeActionRecord = std::numeric_limits<u32>::max();
+            }
+            else if (!actionSlot->queueWhenBlocked)
+                record.status = AnimationActionStatus::Cancelled;
+        }
+        slot->actionRecords.push_back(record);
+        if (record.status == AnimationActionStatus::Playing)
+            slot->activeActionRecord = static_cast<u32>(slot->actionRecords.size() - 1);
+        slot->actions.push_back({semanticID, payload});
+        return {handle, serial};
+    }
+
+    bool AnimationControllerStore::CancelAction(AnimationActionToken token)
+    {
+        if (_updating)
+        {
+            ++_stats.reentrantMutationRejects;
+            return false;
+        }
+        Slot* slot = GetSlot(token.animator);
+        if (!slot)
+            return false;
+        const auto found = std::find_if(slot->actionRecords.begin(), slot->actionRecords.end(), [&token](const Slot::ActionRecord& value) { return value.serial == token.serial; });
+        if (found == slot->actionRecords.end() || (found->status != AnimationActionStatus::Pending && found->status != AnimationActionStatus::Playing))
+            return false;
+        const u32 index = static_cast<u32>(std::distance(slot->actionRecords.begin(), found));
+        found->status = AnimationActionStatus::Cancelled;
+        if (slot->activeActionRecord == index)
+            slot->activeActionRecord = std::numeric_limits<u32>::max();
+        return true;
+    }
+
+    bool AnimationControllerStore::SetFloat3(AnimationParameterHandle handle, const vec3& value)
+    {
+        if (_updating)
+        {
+            ++_stats.reentrantMutationRejects;
+            return false;
+        }
+        Slot* slot = nullptr;
+        if (!ValidateParameter(handle, FileFormat::Animation::GraphValueType::Float3, slot) || !std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z))
+        {
+            if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z))
+                ++_stats.rejectedWrites;
+            return false;
+        }
+        std::memcpy(slot->parameters.data() + slot->config.graph->parameters[handle.parameterIndex].byteOffset, &value, sizeof(value));
+        return true;
+    }
+
+    bool AnimationControllerStore::BindAnimationData(AnimatorHandle handle, const AnimationLoading::AnimationSetAssetView& set, std::span<const AnimationClipDomainRecord> clips)
+    {
         if (_updating)
         {
             ++_stats.reentrantMutationRejects;
             return false;
         }
         Slot* slot = GetSlot(handle);
-        if (!slot || semanticID == 0 || slot->actions.size() >= slot->config.graph->actionCapacity)
-        {
-            ++_stats.queueOverflows;
+        if (!slot)
             return false;
+        slot->boundSetRoot = set.root;
+        slot->boundSetSlots.assign(set.slots.begin(), set.slots.end());
+        slot->boundSetVariants.assign(set.variants.begin(), set.variants.end());
+        slot->boundClips.clear();
+        slot->boundClips.reserve(clips.size());
+        for (const AnimationClipDomainRecord& clip : clips)
+        {
+            Slot::BoundClip bound;
+            bound.clipAssetID = clip.clipAssetID;
+            bound.domainType = clip.domainType;
+            bound.domainAssetID = clip.domainAssetID;
+            bound.durationMicroseconds = clip.durationMicroseconds;
+            bound.synchronizationMarkers.assign(clip.synchronizationMarkers.begin(), clip.synchronizationMarkers.end());
+            bound.events.assign(clip.events.begin(), clip.events.end());
+            bound.eventPayloadBytes.assign(clip.eventPayloadBytes.begin(), clip.eventPayloadBytes.end());
+            bound.looping = clip.looping;
+            slot->boundClips.push_back(std::move(bound));
         }
-        slot->actions.push_back({semanticID, payload});
+        return true;
+    }
+
+    bool AnimationControllerStore::GetActionStatus(AnimationActionToken token, AnimationActionStatus& status) const
+    {
+        const Slot* slot = GetSlot(token.animator);
+        if (!slot)
+            return false;
+        const auto found = std::find_if(slot->actionRecords.begin(), slot->actionRecords.end(), [&token](const Slot::ActionRecord& value) { return value.serial == token.serial; });
+        if (found == slot->actionRecords.end())
+            return false;
+        status = found->status;
         return true;
     }
 
@@ -583,7 +937,7 @@ namespace Animation
         _updating = true;
         constexpr f64 fixedStepSeconds = 1.0 / 60.0;
         constexpr u64 fixedStepMicroseconds = 16667;
-        _accumulatorSeconds += std::max(deltaSeconds, 0.0);
+        _accumulatorSeconds += std::max(deltaSeconds, 0.0) * std::clamp(static_cast<f64>(CVAR_AnimationControllerTimeScale.Get()), 0.0, 4.0);
         const u32 ticks = static_cast<u32>(std::floor((_accumulatorSeconds + 1.0e-12) / fixedStepSeconds));
         _accumulatorSeconds -= static_cast<f64>(ticks) * fixedStepSeconds;
         for (Slot& slot : _slots)
@@ -591,6 +945,8 @@ namespace Animation
             if (!slot.live)
                 continue;
             slot.outputs.clear();
+            slot.authoritativeEvents.clear();
+            slot.cosmeticEvents.clear();
             slot.outputs.insert(slot.outputs.end(), slot.commands.begin(), slot.commands.end());
             slot.outputs.insert(slot.outputs.end(), slot.actions.begin(), slot.actions.end());
             slot.commands.clear();
@@ -603,6 +959,90 @@ namespace Animation
                 if (!slot.live)
                     continue;
                 ++_stats.advances;
+                auto EmitEvent = [&](const Slot::BoundClip& clip, const FileFormat::Animation::AnimationEvent& event) {
+                    AnimationEventOutput output;
+                    output.eventTypeID = event.eventTypeID;
+                    output.payloadTypeID = event.payloadTypeID;
+                    output.flags = event.flags;
+                    output.payload.assign(clip.eventPayloadBytes.begin() + event.payloadOffset, clip.eventPayloadBytes.begin() + event.payloadOffset + event.payloadSize);
+                    constexpr size_t eventCapacity = 64;
+                    if ((event.flags & 1u) != 0)
+                    {
+                        if (slot.cosmeticEvents.size() >= eventCapacity)
+                            ++_stats.cosmeticEventDrops;
+                        else
+                            slot.cosmeticEvents.push_back(std::move(output));
+                    }
+                    else if (slot.authoritativeEvents.size() >= eventCapacity)
+                    {
+                        ++_stats.authoritativeEventOverflows;
+                        ++_stats.queueOverflows;
+                    }
+                    else
+                        slot.authoritativeEvents.push_back(std::move(output));
+                };
+                auto ScanEvents = [&](const Slot::BoundClip& clip, u64 previousTime, u64 currentTime, bool looping) {
+                    if (clip.durationMicroseconds == 0 || currentTime < previousTime)
+                        return;
+                    for (const FileFormat::Animation::AnimationEvent& event : clip.events)
+                    {
+                        if (!looping)
+                        {
+                            if ((event.timeMicroseconds > previousTime && event.timeMicroseconds <= currentTime) || (previousTime == 0 && event.timeMicroseconds == 0))
+                                EmitEvent(clip, event);
+                            continue;
+                        }
+                        u64 occurrence = event.timeMicroseconds;
+                        if (occurrence == 0 && previousTime == 0)
+                            EmitEvent(clip, event);
+                        if (occurrence <= previousTime)
+                            occurrence += ((previousTime - occurrence) / clip.durationMicroseconds + 1u) * clip.durationMicroseconds;
+                        while (occurrence <= currentTime)
+                        {
+                            EmitEvent(clip, event);
+                            if (std::numeric_limits<u64>::max() - occurrence < clip.durationMicroseconds)
+                                break;
+                            occurrence += clip.durationMicroseconds;
+                        }
+                    }
+                };
+                if (slot.activeActionRecord == std::numeric_limits<u32>::max())
+                {
+                    u32 selected = std::numeric_limits<u32>::max();
+                    for (u32 actionIndex = 0; actionIndex < slot.actionRecords.size(); ++actionIndex)
+                    {
+                        if (slot.actionRecords[actionIndex].status != AnimationActionStatus::Pending)
+                            continue;
+                        if (selected == std::numeric_limits<u32>::max() || slot.config.graph->actionSlots[slot.actionRecords[actionIndex].slotIndex].priority > slot.config.graph->actionSlots[slot.actionRecords[selected].slotIndex].priority)
+                            selected = actionIndex;
+                    }
+                    if (selected != std::numeric_limits<u32>::max())
+                    {
+                        slot.actionRecords[selected].status = AnimationActionStatus::Playing;
+                        slot.activeActionRecord = selected;
+                    }
+                }
+                bool advanceUnderlying = true;
+                if (slot.activeActionRecord != std::numeric_limits<u32>::max())
+                {
+                    Slot::ActionRecord& action = slot.actionRecords[slot.activeActionRecord];
+                    const CompiledGraphActionSlot& actionSlot = slot.config.graph->actionSlots[action.slotIndex];
+                    const u64 previousActionTime = action.timeMicroseconds;
+                    action.timeMicroseconds += fixedStepMicroseconds;
+                    action.timeMicroseconds = std::min(action.timeMicroseconds, actionSlot.durationMicroseconds);
+                    const auto clip = std::find_if(slot.boundClips.begin(), slot.boundClips.end(), [&action](const Slot::BoundClip& value) { return value.clipAssetID == action.clipAssetID; });
+                    if (clip != slot.boundClips.end())
+                        ScanEvents(*clip, previousActionTime, action.timeMicroseconds, false);
+                    advanceUnderlying = actionSlot.continueUnderlyingState;
+                    if (action.timeMicroseconds >= actionSlot.durationMicroseconds)
+                    {
+                        action.status = AnimationActionStatus::Completed;
+                        slot.activeActionRecord = std::numeric_limits<u32>::max();
+                        advanceUnderlying = true;
+                    }
+                }
+                if (!advanceUnderlying)
+                    continue;
                 for (u32 stateIndex = 0; stateIndex < slot.config.graph->states.size(); ++stateIndex)
                 {
                     const CompiledGraphState& state = slot.config.graph->states[stateIndex];
@@ -622,9 +1062,64 @@ namespace Animation
                 {
                     if (!clock.active || !clock.initialized || clock.durationMicroseconds == 0)
                         continue;
-                    clock.timeMicroseconds = std::fmod(clock.timeMicroseconds + static_cast<f64>(fixedStepMicroseconds) * static_cast<f64>(clock.playbackRate), static_cast<f64>(clock.durationMicroseconds));
+                    const f64 previousClockTime = clock.timeMicroseconds;
+                    const f64 unwrappedClockTime = previousClockTime + static_cast<f64>(fixedStepMicroseconds) * static_cast<f64>(clock.playbackRate);
+                    if (clock.clipAssetID == slot.activeSynchronizationLeader)
+                    {
+                        const auto eventLeader = std::find_if(slot.boundClips.begin(), slot.boundClips.end(), [&clock](const Slot::BoundClip& value) { return value.clipAssetID == clock.clipAssetID; });
+                        if (eventLeader != slot.boundClips.end())
+                            ScanEvents(*eventLeader, static_cast<u64>(previousClockTime), static_cast<u64>(unwrappedClockTime), true);
+                    }
+                    clock.timeMicroseconds = std::fmod(unwrappedClockTime, static_cast<f64>(clock.durationMicroseconds));
                 }
+                const u64 previousStateTime = slot.stateTimeMicroseconds;
                 slot.stateTimeMicroseconds += fixedStepMicroseconds;
+                const u16 eventStateIndex = slot.transitioning ? slot.transitionTarget : slot.currentState;
+                if (eventStateIndex < slot.config.graph->states.size())
+                {
+                    const CompiledGraphState& eventState = slot.config.graph->states[eventStateIndex];
+                    if (eventState.kind == GraphStateKind::Clip)
+                    {
+                        AnimationLoading::AnimationSetAssetView boundSet = {slot.boundSetRoot, slot.boundSetSlots, slot.boundSetVariants};
+                        std::vector<AnimationClipDomainRecord> boundDomains;
+                        boundDomains.reserve(slot.boundClips.size());
+                        for (const Slot::BoundClip& clip : slot.boundClips)
+                            boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping});
+                        const ResolvedAnimationSlot eventLeader = ResolveAnimationSlot(boundSet, boundDomains, eventState.clipSlotSemanticID, slot.config.stableSeed ^ eventState.sourceGUID, slot.variations[eventStateIndex]);
+                        if (eventLeader)
+                        {
+                            slot.variations[eventStateIndex] = eventLeader.stableVariationID;
+                            const auto clip = std::find_if(slot.boundClips.begin(), slot.boundClips.end(), [&eventLeader](const Slot::BoundClip& value) { return value.clipAssetID == eventLeader.clipAssetID; });
+                            if (clip != slot.boundClips.end())
+                                ScanEvents(*clip, previousStateTime, slot.stateTimeMicroseconds, clip->looping);
+                        }
+                    }
+                }
+                AnimationLoading::AnimationSetAssetView boundSet = {slot.boundSetRoot, slot.boundSetSlots, slot.boundSetVariants};
+                std::vector<AnimationClipDomainRecord> boundDomains;
+                boundDomains.reserve(slot.boundClips.size());
+                for (const Slot::BoundClip& clip : slot.boundClips)
+                    boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping});
+                for (u32 layerIndex = 0; layerIndex < slot.config.graph->layers.size(); ++layerIndex)
+                {
+                    const CompiledGraphLayer& layer = slot.config.graph->layers[layerIndex];
+                    if (!layer.emitEvents)
+                        continue;
+                    f32 layerWeight = layer.constantWeight;
+                    if (layer.weightParameter != std::numeric_limits<u16>::max())
+                    {
+                        f32 parameterWeight = 0.0f;
+                        std::memcpy(&parameterWeight, slot.parameters.data() + slot.config.graph->parameters[layer.weightParameter].byteOffset, sizeof(parameterWeight));
+                        layerWeight *= parameterWeight;
+                    }
+                    if (layerWeight <= 0.0f)
+                        continue;
+                    const u32 variationIndex = static_cast<u32>(slot.config.graph->states.size() + slot.config.graph->blendSamples.size()) + layerIndex;
+                    const ResolvedAnimationSlot eventSource = ResolveAnimationSlot(boundSet, boundDomains, layer.clipSlotSemanticID, slot.config.stableSeed ^ layer.sourceGUID, slot.variations[variationIndex]);
+                    const auto clip = std::find_if(slot.boundClips.begin(), slot.boundClips.end(), [&eventSource](const Slot::BoundClip& value) { return value.clipAssetID == eventSource.clipAssetID; });
+                    if (clip != slot.boundClips.end())
+                        ScanEvents(*clip, previousStateTime, slot.stateTimeMicroseconds, clip->looping);
+                }
                 if (slot.transitioning)
                 {
                     slot.transitionSourceTimeMicroseconds += fixedStepMicroseconds;
@@ -689,7 +1184,57 @@ namespace Animation
                         slot.parameters[parameter.byteOffset] = 0;
             }
         }
+        for (Slot& slot : _slots)
+        {
+            if (!slot.live)
+                continue;
+            slot.graphOutputs.clear();
+            for (const CompiledGraphOutput& output : slot.config.graph->outputs)
+            {
+                const CompiledGraphParameter& parameter = slot.config.graph->parameters[output.parameterIndex];
+                AnimationGraphOutput value;
+                value.semanticID = output.semanticID;
+                value.type = parameter.type;
+                if (parameter.type == FileFormat::Animation::GraphValueType::Bool)
+                    value.value.x = slot.parameters[parameter.byteOffset] != 0 ? 1.0f : 0.0f;
+                else if (parameter.type == FileFormat::Animation::GraphValueType::Int)
+                {
+                    i32 integer = 0;
+                    std::memcpy(&integer, slot.parameters.data() + parameter.byteOffset, sizeof(integer));
+                    value.value.x = static_cast<f32>(integer);
+                }
+                else if (parameter.type == FileFormat::Animation::GraphValueType::Float3)
+                    std::memcpy(&value.value.x, slot.parameters.data() + parameter.byteOffset, sizeof(vec3));
+                else
+                    std::memcpy(&value.value.x, slot.parameters.data() + parameter.byteOffset, sizeof(f32));
+                slot.graphOutputs.push_back(value);
+            }
+        }
         _updating = false;
+    }
+
+    bool AnimationControllerStore::Seek(AnimatorHandle handle, u64 timeMicroseconds, AnimationSeekEventPolicy eventPolicy)
+    {
+        if (_updating || eventPolicy != AnimationSeekEventPolicy::ResetWithoutReplay)
+        {
+            if (_updating)
+                ++_stats.reentrantMutationRejects;
+            return false;
+        }
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+            return false;
+        slot->stateTimeMicroseconds = timeMicroseconds;
+        slot->transitionSourceTimeMicroseconds = timeMicroseconds;
+        slot->transitionTimeMicroseconds = 0;
+        slot->transitioning = false;
+        slot->continuitySnapshot.clear();
+        slot->interruptionNeedsSnapshot = false;
+        slot->authoritativeEvents.clear();
+        slot->cosmeticEvents.clear();
+        slot->synchronizationLeaders.assign(slot->config.graph->states.size(), FileFormat::INVALID_ASSET_ID);
+        slot->blendSampleClocks.assign(slot->config.graph->blendSamples.size(), {});
+        return true;
     }
 
     PoseRecipe AnimationControllerStore::RequestPose(AnimatorHandle handle, const AnimationLoading::AnimationSetAssetView& set, std::span<const AnimationClipDomainRecord> clips, std::span<const FileFormat::Animation::LocalTransform> continuityPose)
@@ -730,6 +1275,9 @@ namespace Animation
         slot->resolvedFallbackDepth = 0;
         slot->slotResolution = AnimationSlotResolution::MissingSlot;
         slot->synchronizationFallback = false;
+        slot->activeLayers = 0;
+        slot->activeLayerWeights = {};
+        slot->activeIKOperations = 0;
         for (Slot::BlendSampleClock& clock : slot->blendSampleClocks)
             clock.active = false;
 
@@ -846,6 +1394,82 @@ namespace Animation
         if (slot->transitioning && !recipe.usesSnapshot)
             AddState(slot->transitionSource, slot->transitionSourceTimeMicroseconds, 1.0f - targetWeight);
         AddState(recipe.targetState, slot->stateTimeMicroseconds, slot->transitioning ? targetWeight : 1.0f);
+        for (u32 layerIndex = 0; layerIndex < slot->config.graph->layers.size() && recipe.layerCount < recipe.layers.size(); ++layerIndex)
+        {
+            const CompiledGraphLayer& layer = slot->config.graph->layers[layerIndex];
+            f32 layerWeight = layer.constantWeight;
+            if (layer.weightParameter != std::numeric_limits<u16>::max())
+            {
+                const CompiledGraphParameter& parameter = slot->config.graph->parameters[layer.weightParameter];
+                std::memcpy(&layerWeight, slot->parameters.data() + parameter.byteOffset, sizeof(layerWeight));
+                layerWeight *= layer.constantWeight;
+            }
+            layerWeight = std::clamp(layerWeight, 0.0f, 1.0f);
+            if (layerWeight <= 0.0f)
+                continue;
+            const u32 variationIndex = static_cast<u32>(slot->config.graph->states.size() + slot->config.graph->blendSamples.size()) + layerIndex;
+            const ResolvedAnimationSlot resolved = ResolveAnimationSlot(set, clips, layer.clipSlotSemanticID, slot->config.stableSeed ^ layer.sourceGUID, slot->variations[variationIndex]);
+            if (!resolved)
+                continue;
+            slot->variations[variationIndex] = resolved.stableVariationID;
+            PoseRecipeLayer& recipeLayer = recipe.layers[recipe.layerCount++];
+            recipeLayer.sample = {resolved.clipAssetID, slot->stateTimeMicroseconds % layer.durationMicroseconds, 1.0f, resolved.stableVariationID};
+            recipeLayer.maskAssetID = layer.maskAssetID;
+            recipeLayer.weight = layerWeight;
+            recipeLayer.type = layer.type;
+            recipeLayer.executionOrder = layer.executionOrder;
+            slot->activeLayerWeights[slot->activeLayers++] = layerWeight;
+        }
+        if (slot->activeActionRecord != std::numeric_limits<u32>::max() && recipe.layerCount < recipe.layers.size())
+        {
+            Slot::ActionRecord& action = slot->actionRecords[slot->activeActionRecord];
+            const CompiledGraphActionSlot& actionSlot = slot->config.graph->actionSlots[action.slotIndex];
+            const u32 variationIndex = static_cast<u32>(slot->config.graph->states.size() + slot->config.graph->blendSamples.size() + slot->config.graph->layers.size()) + action.slotIndex;
+            if (variationIndex >= slot->variations.size())
+                slot->variations.resize(variationIndex + 1, 0);
+            const ResolvedAnimationSlot resolved = ResolveAnimationSlot(set, clips, actionSlot.clipSlotSemanticID, slot->config.stableSeed ^ actionSlot.semanticID ^ action.serial, slot->variations[variationIndex]);
+            if (resolved)
+            {
+                slot->variations[variationIndex] = resolved.stableVariationID;
+                f32 weight = 1.0f;
+                if (actionSlot.blendInMicroseconds != 0)
+                    weight = std::min(weight, static_cast<f32>(action.timeMicroseconds) / static_cast<f32>(actionSlot.blendInMicroseconds));
+                if (actionSlot.blendOutMicroseconds != 0)
+                    weight = std::min(weight, static_cast<f32>(actionSlot.durationMicroseconds - action.timeMicroseconds) / static_cast<f32>(actionSlot.blendOutMicroseconds));
+                PoseRecipeLayer& recipeLayer = recipe.layers[recipe.layerCount++];
+                recipeLayer.sample = {resolved.clipAssetID, action.timeMicroseconds, 1.0f, resolved.stableVariationID};
+                recipeLayer.maskAssetID = actionSlot.maskAssetID;
+                recipeLayer.weight = std::clamp(weight, 0.0f, 1.0f);
+                recipeLayer.type = actionSlot.type;
+                recipeLayer.executionOrder = std::numeric_limits<u16>::max();
+                slot->activeLayerWeights[slot->activeLayers++] = recipeLayer.weight;
+            }
+        }
+        for (const CompiledGraphIKOperation& operation : slot->config.graph->ikOperations)
+        {
+            f32 weight = operation.constantWeight;
+            if (operation.weightParameter != std::numeric_limits<u16>::max())
+            {
+                const CompiledGraphParameter& parameter = slot->config.graph->parameters[operation.weightParameter];
+                f32 parameterWeight = 0.0f;
+                std::memcpy(&parameterWeight, slot->parameters.data() + parameter.byteOffset, sizeof(parameterWeight));
+                weight *= parameterWeight;
+            }
+            weight = std::clamp(weight, 0.0f, 1.0f);
+            if (weight <= 0.0f || recipe.ikOperationCount >= recipe.ikOperations.size())
+                continue;
+            const CompiledGraphParameter& goalParameter = slot->config.graph->parameters[operation.goalParameter];
+            PoseRecipeIKOperation& recipeOperation = recipe.ikOperations[recipe.ikOperationCount++];
+            recipeOperation.rigAssetID = operation.rigAssetID;
+            recipeOperation.solverSemanticID = operation.solverSemanticID;
+            std::memcpy(&recipeOperation.goalModel, slot->parameters.data() + goalParameter.byteOffset, sizeof(vec3));
+            recipeOperation.goalAttachmentSemanticID = operation.goalAttachmentSemanticID;
+            recipeOperation.effectorAttachmentSemanticID = operation.effectorAttachmentSemanticID;
+            recipeOperation.effectorAlignmentAxis = operation.effectorAlignmentAxis;
+            recipeOperation.weight = weight;
+            recipeOperation.executionOrder = operation.executionOrder;
+            ++slot->activeIKOperations;
+        }
         return recipe;
     }
 
@@ -875,6 +1499,52 @@ namespace Animation
         state.resolvedFallbackDepth = slot->resolvedFallbackDepth;
         state.slotResolution = slot->slotResolution;
         state.synchronizationFallback = slot->synchronizationFallback;
+        state.activeLayers = slot->activeLayers;
+        state.activeLayerWeights = slot->activeLayerWeights;
+        state.activeIKOperations = slot->activeIKOperations;
+        state.activeActionSemanticID = 0;
+        state.activeActionTimeMicroseconds = 0;
+        state.activeActionStatus = AnimationActionStatus::Completed;
+        if (slot->activeActionRecord != std::numeric_limits<u32>::max())
+        {
+            const Slot::ActionRecord& action = slot->actionRecords[slot->activeActionRecord];
+            state.activeActionSemanticID = action.semanticID;
+            state.activeActionTimeMicroseconds = action.timeMicroseconds;
+            state.activeActionStatus = action.status;
+        }
+        return true;
+    }
+
+    bool AnimationControllerStore::GetParameterValues(AnimatorHandle handle, std::vector<vec3>& values) const
+    {
+        const Slot* slot = GetSlot(handle);
+        if (!slot)
+            return false;
+        values.clear();
+        values.reserve(slot->config.graph->parameters.size());
+        for (const CompiledGraphParameter& parameter : slot->config.graph->parameters)
+        {
+            if (parameter.type == FileFormat::Animation::GraphValueType::Bool)
+                values.emplace_back(slot->parameters[parameter.byteOffset] != 0 ? 1.0f : 0.0f, 0.0f, 0.0f);
+            else if (parameter.type == FileFormat::Animation::GraphValueType::Int)
+            {
+                i32 value = 0;
+                std::memcpy(&value, slot->parameters.data() + parameter.byteOffset, sizeof(value));
+                values.emplace_back(static_cast<f32>(value), 0.0f, 0.0f);
+            }
+            else if (parameter.type == FileFormat::Animation::GraphValueType::Float3)
+            {
+                vec3 value = {};
+                std::memcpy(&value, slot->parameters.data() + parameter.byteOffset, sizeof(value));
+                values.push_back(value);
+            }
+            else
+            {
+                f32 value = 0.0f;
+                std::memcpy(&value, slot->parameters.data() + parameter.byteOffset, sizeof(value));
+                values.emplace_back(value, 0.0f, 0.0f);
+            }
+        }
         return true;
     }
 
@@ -886,6 +1556,30 @@ namespace Animation
         supportsTightBounds = false;
         if (!slot || slot->transitioning || slot->currentState >= slot->config.graph->states.size())
             return slot != nullptr;
+        for (const CompiledGraphLayer& layer : slot->config.graph->layers)
+        {
+            f32 weight = layer.constantWeight;
+            if (layer.weightParameter != std::numeric_limits<u16>::max())
+            {
+                const CompiledGraphParameter& parameter = slot->config.graph->parameters[layer.weightParameter];
+                std::memcpy(&weight, slot->parameters.data() + parameter.byteOffset, sizeof(weight));
+                weight *= layer.constantWeight;
+            }
+            if (weight > 0.0f)
+                return true;
+        }
+        for (const CompiledGraphIKOperation& operation : slot->config.graph->ikOperations)
+        {
+            f32 weight = operation.constantWeight;
+            if (operation.weightParameter != std::numeric_limits<u16>::max())
+            {
+                const CompiledGraphParameter& parameter = slot->config.graph->parameters[operation.weightParameter];
+                std::memcpy(&weight, slot->parameters.data() + parameter.byteOffset, sizeof(weight));
+                weight *= operation.constantWeight;
+            }
+            if (weight > 0.0f)
+                return true;
+        }
         const CompiledGraphState& state = slot->config.graph->states[slot->currentState];
         if (state.kind != GraphStateKind::Clip)
             return true;
@@ -903,6 +1597,24 @@ namespace Animation
     {
         const Slot* slot = GetSlot(handle);
         return slot ? std::span<const AnimationControllerOutput>(slot->outputs) : std::span<const AnimationControllerOutput>();
+    }
+
+    std::span<const AnimationEventOutput> AnimationControllerStore::GetAuthoritativeEvents(AnimatorHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot ? std::span<const AnimationEventOutput>(slot->authoritativeEvents) : std::span<const AnimationEventOutput>();
+    }
+
+    std::span<const AnimationEventOutput> AnimationControllerStore::GetCosmeticEvents(AnimatorHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot ? std::span<const AnimationEventOutput>(slot->cosmeticEvents) : std::span<const AnimationEventOutput>();
+    }
+
+    std::span<const AnimationGraphOutput> AnimationControllerStore::GetGraphOutputs(AnimatorHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot ? std::span<const AnimationGraphOutput>(slot->graphOutputs) : std::span<const AnimationGraphOutput>();
     }
 
     void AnimationControllerStore::ClearOutputs(AnimatorHandle handle)
@@ -939,8 +1651,20 @@ namespace Animation
         slot->synchronizationLeaders.assign(slot->config.graph->states.size(), FileFormat::INVALID_ASSET_ID);
         slot->blendSampleClocks.assign(slot->config.graph->blendSamples.size(), {});
         slot->currentState = slot->config.graph->entryState;
+        slot->stateTimeMicroseconds = 0;
+        slot->transitionSourceTimeMicroseconds = 0;
+        slot->transitionTimeMicroseconds = 0;
         slot->transitioning = false;
         slot->continuitySnapshot.clear();
+        slot->interruptionNeedsSnapshot = false;
+        slot->authoritativeEvents.clear();
+        slot->cosmeticEvents.clear();
+        for (Slot::ActionRecord& action : slot->actionRecords)
+        {
+            if (action.status == AnimationActionStatus::Pending || action.status == AnimationActionStatus::Playing)
+                action.status = AnimationActionStatus::Interrupted;
+        }
+        slot->activeActionRecord = std::numeric_limits<u32>::max();
         if (++slot->graphGeneration == 0)
             slot->graphGeneration = 1;
         return true;

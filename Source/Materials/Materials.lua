@@ -21,7 +21,7 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     }
 
     local cookerPath = Solution.Projects.Current.BinDir ..
-        "/%{cfg.buildcfg}/ShaderCookerStandalone.%{systemToExecutableExtensionMap[cfg.system]}"
+        "/%{cfg.buildcfg}/ShaderCookerStandalone%{systemToExecutableExtensionMap[cfg.system]}"
     local command = '"' .. cookerPath .. '"' ..
         ' --material-cook "' .. manifestPath .. '"' ..
         ' "' .. reportPath .. '"' ..

@@ -312,7 +312,7 @@ void ShapeTextureRenderer::AddShapePass(Renderer::RenderGraph* renderGraph, Rend
             }
 
             _drawRequests.clear();
-        });
+        }, Renderer::RenderPassFlags::SideEffect);
 }
 
 ShapeTextureRenderer::SurfaceID ShapeTextureRenderer::CreateSurface(const uvec2& size, const std::string& name)

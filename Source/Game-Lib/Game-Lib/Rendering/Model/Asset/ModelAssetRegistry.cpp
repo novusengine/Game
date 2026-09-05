@@ -1,6 +1,7 @@
 #include "ModelAssetRegistry.h"
 
 #include "FallbackModel.h"
+#include "ModelAssetValidator.h"
 #include "ModelGeometryStorage.h"
 
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
@@ -109,6 +110,8 @@ namespace ModelLoading
                         reinterpret_cast<const u8*>(completion.result.file.GetData()),
                         completion.result.file.GetSize());
                     completion.result.decoded = ModelAssetReader::Read(payload);
+                    if (completion.result.decoded && AssetLoading::ShouldPerformFullValidation())
+                        completion.result.decoded = ModelAssetValidator::Validate(std::move(completion.result.decoded));
                 }
                 completions->enqueue(std::move(completion));
             }

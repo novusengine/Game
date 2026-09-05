@@ -17,6 +17,7 @@ namespace
     constexpr u16 SKELETON_JOINT_FLAGS = Animation::SkeletonJointFlags_Deformation | Animation::SkeletonJointFlags_Helper | Animation::SkeletonJointFlags_Extension;
     constexpr u32 TRACK_FLAGS = Animation::AnimationTrackFlags_HasTranslationSamples | Animation::AnimationTrackFlags_HasRotationSamples | Animation::AnimationTrackFlags_HasScaleSamples;
     constexpr u8 CLIP_FLAGS = Animation::AnimationClipFlags_Looping | Animation::AnimationClipFlags_Additive;
+    constexpr u32 EVENT_FLAGS = 1u;
     constexpr f32 QUATERNION_LENGTH_TOLERANCE = 0.01f;
     constexpr f32 INVERSE_BIND_TOLERANCE = 0.005f;
 
@@ -345,8 +346,8 @@ namespace AnimationLoading
             const Animation::AnimationEvent& event = result.view.events[index];
             if (event.timeMicroseconds > root.durationMicroseconds || (index > 0 && event.timeMicroseconds < previousTime))
                 return Fail<AnimationClipAssetReadResult>(DiagnosticCode::InvalidValue, "events.timeMicroseconds", index, event.timeMicroseconds, root.durationMicroseconds);
-            if (event.flags != 0)
-                return Fail<AnimationClipAssetReadResult>(DiagnosticCode::UnsupportedFlags, "events.flags", index, event.flags, 0);
+            if ((event.flags & ~EVENT_FLAGS) != 0)
+                return Fail<AnimationClipAssetReadResult>(DiagnosticCode::UnsupportedFlags, "events.flags", index, event.flags, EVENT_FLAGS);
             if (!IsRangeValid(event.payloadOffset, event.payloadSize, result.view.eventPayloadBytes.size()))
                 return Fail<AnimationClipAssetReadResult>(DiagnosticCode::InvalidRange, "events.payload", index, event.payloadOffset, event.payloadSize);
             previousTime = event.timeMicroseconds;
@@ -398,6 +399,72 @@ namespace AnimationLoading
                     if (result.view.variants[slot.variantOffset + previous].stableVariationID == variant.stableVariationID)
                         return Fail<AnimationSetAssetReadResult>(DiagnosticCode::InvalidValue, "variants.stableVariationID", slot.variantOffset + local, variant.stableVariationID);
             }
+        }
+        return result;
+    }
+
+    BoneMaskAssetReadResult AnimationAssetValidator::Validate(BoneMaskAssetReadResult result)
+    {
+        const Animation::BoneMaskAsset& root = result.view.root;
+        if (root.poseDomainAssetID == FileFormat::INVALID_ASSET_ID)
+            return FailDependency<BoneMaskAssetReadResult>("BoneMaskAsset.poseDomainAssetID", root.poseDomainAssetID);
+        if (root.poseDomainType > Animation::PoseDomainType::Skeleton)
+            return Fail<BoneMaskAssetReadResult>(DiagnosticCode::UnsupportedEnum, "BoneMaskAsset.poseDomainType", Diagnostic::NO_INDEX, static_cast<u8>(root.poseDomainType));
+        if (!IsReservedZero(root.reserved0, std::size(root.reserved0)) || root.flags != 0)
+            return Fail<BoneMaskAssetReadResult>(DiagnosticCode::ReservedValueNonZero, "BoneMaskAsset.reservedOrFlags");
+        if (result.view.jointWeights.empty())
+            return Fail<BoneMaskAssetReadResult>(DiagnosticCode::EmptyRequiredRange, "jointWeights");
+        return result;
+    }
+
+    IKRigAssetReadResult AnimationAssetValidator::Validate(IKRigAssetReadResult result)
+    {
+        const Animation::IKRigAsset& root = result.view.root;
+        if (root.skeletonAssetID == FileFormat::INVALID_ASSET_ID)
+            return FailDependency<IKRigAssetReadResult>("IKRigAsset.skeletonAssetID", root.skeletonAssetID);
+        if (root.flags != 0 || root.reserved != 0)
+            return Fail<IKRigAssetReadResult>(DiagnosticCode::ReservedValueNonZero, "IKRigAsset.reservedOrFlags");
+        if (!IsFinite(root.conservativeExtentExpansion) || root.conservativeExtentExpansion.x < 0.0f || root.conservativeExtentExpansion.y < 0.0f || root.conservativeExtentExpansion.z < 0.0f || !std::isfinite(root.maximumGoalDistance) || root.maximumGoalDistance < 0.0f)
+            return Fail<IKRigAssetReadResult>(DiagnosticCode::NonFiniteValue, "IKRigAsset.bounds");
+        if (result.view.chains.empty() || result.view.solvers.empty())
+            return Fail<IKRigAssetReadResult>(DiagnosticCode::EmptyRequiredRange, "chainsOrSolvers");
+
+        for (u32 index = 0; index < result.view.jointLimits.size(); ++index)
+        {
+            const Animation::IKJointLimit& limit = result.view.jointLimits[index];
+            if (!IsFinite(limit.minimumRadians) || !IsFinite(limit.maximumRadians) || limit.reserved0 != 0.0f || limit.reserved1 != 0.0f || glm::any(glm::greaterThan(limit.minimumRadians, limit.maximumRadians)))
+                return Fail<IKRigAssetReadResult>(DiagnosticCode::InvalidValue, "jointLimits", index);
+        }
+
+        for (u32 index = 0; index < result.view.chains.size(); ++index)
+        {
+            const Animation::IKChain& chain = result.view.chains[index];
+            if (chain.semanticID == 0 || chain.numJointIndices < 2 || !IsRangeValid(chain.jointIndexOffset, chain.numJointIndices, result.view.chainJointIndices.size()) || !IsRangeValid(chain.jointLimitOffset, chain.numJointLimits, result.view.jointLimits.size()) || (chain.numJointLimits != 0 && chain.numJointLimits != chain.numJointIndices) || !IsFinite(chain.preferredBendDirection) || !std::isfinite(chain.maximumReach) || chain.maximumReach <= 0.0f)
+                return Fail<IKRigAssetReadResult>(DiagnosticCode::InvalidRange, "chains", index);
+            for (u32 previous = 0; previous < index; ++previous)
+                if (result.view.chains[previous].semanticID == chain.semanticID)
+                    return Fail<IKRigAssetReadResult>(DiagnosticCode::InvalidValue, "chains.semanticID", index, chain.semanticID);
+            bool containsEffector = false;
+            for (u32 localIndex = 0; localIndex < chain.numJointIndices; ++localIndex)
+            {
+                const u32 jointIndex = result.view.chainJointIndices[chain.jointIndexOffset + localIndex];
+                containsEffector |= jointIndex == chain.effectorJointIndex;
+                for (u32 previous = 0; previous < localIndex; ++previous)
+                    if (result.view.chainJointIndices[chain.jointIndexOffset + previous] == jointIndex)
+                        return Fail<IKRigAssetReadResult>(DiagnosticCode::InvalidValue, "chains.duplicateJointIndex", index, jointIndex);
+            }
+            if (!containsEffector || chain.effectorJointIndex != result.view.chainJointIndices[chain.jointIndexOffset + chain.numJointIndices - 1])
+                return Fail<IKRigAssetReadResult>(DiagnosticCode::InvalidValue, "chains.effectorJointIndex", index, chain.effectorJointIndex);
+        }
+
+        for (u32 index = 0; index < result.view.solvers.size(); ++index)
+        {
+            const Animation::IKSolver& solver = result.view.solvers[index];
+            if (solver.semanticID == 0 || solver.chainIndex >= result.view.chains.size() || solver.type > Animation::IKSolverType::IterativeChain || solver.goalSpace > Animation::IKGoalSpace::Joint || solver.flags != 0 || solver.reserved0 != 0 || solver.reserved1 != 0 || solver.maximumIterations == 0 || solver.maximumIterations > 64 || !std::isfinite(solver.convergenceTolerance) || solver.convergenceTolerance <= 0.0f || !std::isfinite(solver.maximumReachScale) || solver.maximumReachScale <= 0.0f || solver.maximumReachScale > 1.0f)
+                return Fail<IKRigAssetReadResult>(DiagnosticCode::InvalidValue, "solvers", index);
+            for (u32 previous = 0; previous < index; ++previous)
+                if (result.view.solvers[previous].semanticID == solver.semanticID)
+                    return Fail<IKRigAssetReadResult>(DiagnosticCode::InvalidValue, "solvers.semanticID", index, solver.semanticID);
         }
         return result;
     }

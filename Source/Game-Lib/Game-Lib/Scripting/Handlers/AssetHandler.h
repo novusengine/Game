@@ -37,10 +37,18 @@ namespace Scripting::Asset
         static i32 BindAnimationController(Zenith* zenith);
         static i32 ResolveAnimationParameter(Zenith* zenith);
         static i32 AnimationSetFloatParameter(Zenith* zenith);
+        static i32 AnimationSetFloat3Parameter(Zenith* zenith);
         static i32 AnimationSetBoolParameter(Zenith* zenith);
         static i32 AnimationTriggerParameter(Zenith* zenith);
         static i32 AnimationQueueAction(Zenith* zenith);
+        static i32 BindModelAttachment(Zenith* zenith);
+        static i32 SetModelAttachmentTransform(Zenith* zenith);
+        static i32 GetModelAttachmentPoint(Zenith* zenith);
+        static i32 GetModelAttachmentLocalPoint(Zenith* zenith);
+        static i32 GetModelAttachmentGripDiagnostics(Zenith* zenith);
+        static i32 GetAnimationAttachmentPoint(Zenith* zenith);
         static i32 GetAnimationControllerState(Zenith* zenith);
+        static i32 GetAnimationControllerGraph(Zenith* zenith);
         static i32 DestroyAnimatedModel(Zenith* zenith);
         static i32 BeginDragSpawn(Zenith* zenith);
         static i32 LoadRenderModel(Zenith* zenith);
@@ -70,10 +78,18 @@ namespace Scripting::Asset
         { "BindAnimationController", AssetHandler::BindAnimationController, Scripting::LuaMethodFlags::DeveloperOnly },
         { "ResolveAnimationParameter", AssetHandler::ResolveAnimationParameter, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationSetFloatParameter", AssetHandler::AnimationSetFloatParameter, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationSetFloat3Parameter", AssetHandler::AnimationSetFloat3Parameter, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationSetBoolParameter", AssetHandler::AnimationSetBoolParameter, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationTriggerParameter", AssetHandler::AnimationTriggerParameter, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationQueueAction", AssetHandler::AnimationQueueAction, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "BindModelAttachment", AssetHandler::BindModelAttachment, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetModelAttachmentTransform", AssetHandler::SetModelAttachmentTransform, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetModelAttachmentPoint", AssetHandler::GetModelAttachmentPoint, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetModelAttachmentLocalPoint", AssetHandler::GetModelAttachmentLocalPoint, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetModelAttachmentGripDiagnostics", AssetHandler::GetModelAttachmentGripDiagnostics, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetAnimationAttachmentPoint", AssetHandler::GetAnimationAttachmentPoint, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetAnimationControllerState", AssetHandler::GetAnimationControllerState, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetAnimationControllerGraph", AssetHandler::GetAnimationControllerGraph, Scripting::LuaMethodFlags::DeveloperOnly },
         { "DestroyAnimatedModel", AssetHandler::DestroyAnimatedModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BeginDragSpawn", AssetHandler::BeginDragSpawn, Scripting::LuaMethodFlags::DeveloperOnly },
         { "LoadRenderModel", AssetHandler::LoadRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },

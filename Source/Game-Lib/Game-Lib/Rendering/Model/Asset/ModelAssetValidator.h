@@ -3,8 +3,8 @@
 
 namespace ModelLoading
 {
-    // Performs opt-in CPU-side structural and semantic validation of decoded model assets.
-    // It catches malformed offline data before unsafe geometry ranges reach GPU-backed storage.
+    // Performs opt-in CPU-side semantic validation of structurally decoded model assets.
+    // It verifies offline cooker contracts before geometry reaches GPU-backed storage.
     class ModelAssetValidator
     {
       public:

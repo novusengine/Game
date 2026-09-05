@@ -31,6 +31,8 @@ local bar = MenuBar.New(canvas, vec.New(0, -IMGUI_MENU_BAR_HEIGHT), vec.New(CANV
             { label = "Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("Inspector") end },
             { label = "Asset Browser", enabled = true, onClick = function() EditorRegistry.Toggle("AssetBrowser") end },
             { label = "Animation Debug", enabled = true, onClick = function() EditorRegistry.Toggle("AnimationDebug") end },
+            { label = "Attachment Grip Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("AttachmentGripDebug") end },
+            { label = "Animation Graph", enabled = true, onClick = function() EditorRegistry.Toggle("AnimationGraph") end },
             { label = "Console Variables", enabled = true, onClick = function() EditorRegistry.Toggle("CVarEditor") end },
         }},
         { label = "Editor", items = {

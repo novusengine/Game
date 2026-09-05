@@ -2,6 +2,7 @@ local mod = Solution.Util.CreateModuleTable("Shaders", {})
 
 Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDir, mod.Dependencies, function()
     dependson { "Materials" }
+    links { "Materials" }
 
     if os.target() == "windows" then
         fastuptodate "Off"

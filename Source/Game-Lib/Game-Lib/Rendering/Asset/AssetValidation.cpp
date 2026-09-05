@@ -15,13 +15,8 @@ namespace
 
 namespace AssetLoading
 {
-    bool ShouldPerformFullValidation(ValidationMode mode)
+    bool ShouldPerformFullValidation()
     {
-        if (mode == ValidationMode::Full)
-            return true;
-        if (mode == ValidationMode::Minimal)
-            return false;
-
         return CVAR_RenderAssetFullValidation.Get() != 0;
     }
 

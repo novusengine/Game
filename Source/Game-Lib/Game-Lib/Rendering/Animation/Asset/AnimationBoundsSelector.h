@@ -22,6 +22,14 @@ namespace AnimationLoading
         u32 segmentIndex = std::numeric_limits<u32>::max();
     };
 
+    inline FileFormat::Animation::Bounds ExpandAnimationBounds(const FileFormat::Animation::Bounds& bounds, const vec3& extentExpansion)
+    {
+        FileFormat::Animation::Bounds expanded = bounds;
+        expanded.extents += extentExpansion;
+        expanded.sphereRadius += glm::length(extentExpansion);
+        return expanded;
+    }
+
     // Selects tight clip bounds when available and a conservative fallback otherwise.
     // Binding checks prevent bounds authored for another model or skeleton from being used.
     inline SelectedAnimationBounds SelectAnimationBounds(const AnimationBoundsAssetView* asset, FileFormat::AssetID modelAssetID, FileFormat::AssetID skeletonAssetID, FileFormat::AssetID clipAssetID, u64 timeMicroseconds, bool supportsTightBounds, const FileFormat::Animation::Bounds& staticFallback)

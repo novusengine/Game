@@ -124,9 +124,9 @@ namespace
 
 TEST_CASE("Animation V2 has focused structural readers for every asset root", "[AnimationAsset]")
 {
-    CHECK(AnimationLoading::AnimationAssetReader::ReadRigFamily(SaveEmptyAsset<Animation::RigFamilyAsset, Animation::RigFamilyData>(), AssetLoading::ValidationMode::Minimal));
-    CHECK(AnimationLoading::AnimationAssetReader::ReadSkeleton(SaveEmptyAsset<Animation::SkeletonAsset, Animation::SkeletonData>(), AssetLoading::ValidationMode::Minimal));
-    CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationClip(SaveEmptyAsset<Animation::AnimationClipAsset, Animation::AnimationClipData>(), AssetLoading::ValidationMode::Minimal));
+    CHECK(AnimationLoading::AnimationAssetReader::ReadRigFamily(SaveEmptyAsset<Animation::RigFamilyAsset, Animation::RigFamilyData>()));
+    CHECK(AnimationLoading::AnimationAssetReader::ReadSkeleton(SaveEmptyAsset<Animation::SkeletonAsset, Animation::SkeletonData>()));
+    CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationClip(SaveEmptyAsset<Animation::AnimationClipAsset, Animation::AnimationClipData>()));
     CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationSet(SaveEmptyAsset<Animation::AnimationSetAsset, Animation::AnimationSetData>()));
     CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationGraph(SaveEmptyAsset<Animation::AnimationGraphAsset, Animation::AnimationGraphData>()));
     CHECK(AnimationLoading::AnimationAssetReader::ReadBoneMask(SaveEmptyAsset<Animation::BoneMaskAsset, Animation::BoneMaskData>()));
@@ -138,7 +138,7 @@ TEST_CASE("Animation V2 has focused structural readers for every asset root", "[
 TEST_CASE("Animation V2 readers accept valid Skeleton and Clip assets without creating runtime poses", "[AnimationAsset]")
 {
     const std::vector<u8> skeletonPayload = SaveSkeleton();
-    const AnimationLoading::SkeletonAssetReadResult skeleton = AnimationLoading::AnimationAssetReader::ReadSkeleton(skeletonPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::SkeletonAssetReadResult skeleton = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadSkeleton(skeletonPayload));
     REQUIRE(skeleton);
     CHECK(skeleton.view.joints.size() == 2);
     CHECK(skeleton.view.hierarchyDepthRanges.size() == 2);
@@ -146,7 +146,7 @@ TEST_CASE("Animation V2 readers accept valid Skeleton and Clip assets without cr
     CHECK(skeleton.view.root.rigFamilyAssetID == FileFormat::INVALID_ASSET_ID);
 
     const std::vector<u8> clipPayload = SaveClip();
-    const AnimationLoading::AnimationClipAssetReadResult clip = AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationClipAssetReadResult clip = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload));
     REQUIRE(clip);
     CHECK(clip.view.tracks.size() == 1);
     CHECK(clip.view.root.sampleCount == 3);
@@ -179,7 +179,7 @@ TEST_CASE("Animation V2 semantic validation rejects hierarchy sample and domain 
     Animation::SkeletonAsset& skeletonRoot = Root<Animation::SkeletonAsset>(skeletonPayload);
     auto* joints = reinterpret_cast<Animation::SkeletonJoint*>(skeletonPayload.data() + skeletonRoot.jointsOffset);
     joints[1].parentJointIndex = 1;
-    const AnimationLoading::SkeletonAssetReadResult hierarchyFailure = AnimationLoading::AnimationAssetReader::ReadSkeleton(skeletonPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::SkeletonAssetReadResult hierarchyFailure = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadSkeleton(skeletonPayload));
     CHECK(hierarchyFailure.diagnostic.code == AssetLoading::DiagnosticCode::InvalidIndex);
     CHECK(hierarchyFailure.diagnostic.stage == AssetLoading::DiagnosticStage::Validate);
     CHECK(hierarchyFailure.diagnostic.field == "joints.parentJointIndex");
@@ -188,11 +188,11 @@ TEST_CASE("Animation V2 semantic validation rejects hierarchy sample and domain 
     Animation::AnimationClipAsset& clipRoot = Root<Animation::AnimationClipAsset>(clipPayload);
     auto* tracks = reinterpret_cast<Animation::AnimationTrack*>(clipPayload.data() + clipRoot.tracksOffset);
     tracks[0].numRotations = 2;
-    const AnimationLoading::AnimationClipAssetReadResult sampleFailure = AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationClipAssetReadResult sampleFailure = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload));
     CHECK(sampleFailure.diagnostic.code == AssetLoading::DiagnosticCode::InvalidRange);
     CHECK(sampleFailure.diagnostic.field == "tracks.rotations");
 
-    const AnimationLoading::AnimationClipAssetReadResult validClip = AnimationLoading::AnimationAssetReader::ReadAnimationClip(SaveClip(), AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationClipAssetReadResult validClip = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationClip(SaveClip()));
     REQUIRE(validClip);
     const AssetLoading::Diagnostic domainFailure = AnimationLoading::AnimationAssetValidator::ValidateDomain(validClip.view, Animation::PoseDomainType::RigFamily, 123);
     CHECK(domainFailure.code == AssetLoading::DiagnosticCode::IncompatibleDomain);
@@ -202,7 +202,7 @@ TEST_CASE("Animation V2 semantic validation rejects hierarchy sample and domain 
 TEST_CASE("Animation bounds validate and select tight or explicit conservative fallback bounds", "[AnimationAsset][AnimationBounds]")
 {
     const std::vector<u8> validPayload = SaveBounds();
-    const AnimationLoading::AnimationBoundsAssetReadResult valid = AnimationLoading::AnimationAssetReader::ReadAnimationBounds(validPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationBoundsAssetReadResult valid = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(validPayload));
     REQUIRE(valid);
     REQUIRE(valid.view.clips.size() == 1);
     CHECK(valid.view.clips[0].animationClipAssetID == 30);
@@ -226,12 +226,12 @@ TEST_CASE("Animation bounds validate and select tight or explicit conservative f
     Animation::AnimationBoundsAsset& root = Root<Animation::AnimationBoundsAsset>(corrupt);
     auto* segments = reinterpret_cast<Animation::AnimatedBoundsSegment*>(corrupt.data() + root.segmentsOffset);
     segments[1].startTimeMicroseconds++;
-    CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(corrupt, AssetLoading::ValidationMode::Full).diagnostic.code == AssetLoading::DiagnosticCode::InvalidValue);
+    CHECK(AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(corrupt)).diagnostic.code == AssetLoading::DiagnosticCode::InvalidValue);
     corrupt = SaveBounds();
     Animation::AnimationBoundsAsset& boundsRoot = Root<Animation::AnimationBoundsAsset>(corrupt);
     auto* clips = reinterpret_cast<Animation::ClipBounds*>(corrupt.data() + boundsRoot.clipsOffset);
     clips[0].fallbackBounds.extents = vec3(0.5f);
-    CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(corrupt, AssetLoading::ValidationMode::Full).diagnostic.code == AssetLoading::DiagnosticCode::InvalidValue);
+    CHECK(AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(corrupt)).diagnostic.code == AssetLoading::DiagnosticCode::InvalidValue);
 }
 
 TEST_CASE("Game validates the current NBS binding-dependent AnimationBounds fixture", "[AnimationAsset][AnimationBounds][NBS]")
@@ -242,7 +242,7 @@ TEST_CASE("Game validates the current NBS binding-dependent AnimationBounds fixt
     std::ifstream input(path, std::ios::binary);
     REQUIRE(input);
     const std::vector<u8> payload((std::istreambuf_iterator<char>(input)), {});
-    const AnimationLoading::AnimationBoundsAssetReadResult bounds = AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationBoundsAssetReadResult bounds = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload));
     INFO("diagnostic=" << static_cast<u32>(bounds.diagnostic.code) << " field=" << bounds.diagnostic.field << " index=" << bounds.diagnostic.index << " observed=" << bounds.diagnostic.observed << " expected=" << bounds.diagnostic.expected);
     REQUIRE(bounds);
     CHECK(bounds.view.root.modelAssetID == 0x1C60093F74E4AA33ull);
@@ -256,7 +256,7 @@ TEST_CASE("Game validates the current NBS binding-dependent AnimationBounds fixt
 TEST_CASE("Animation bounds use a validated global fallback for graph compositions and missing clips", "[AnimationAsset][AnimationBounds]")
 {
     const std::vector<u8> payload = SaveBounds(true);
-    const AnimationLoading::AnimationBoundsAssetReadResult valid = AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationBoundsAssetReadResult valid = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(payload));
     REQUIRE(valid);
     Animation::Bounds staticFallback;
     staticFallback.extents = vec3(100.0f);
@@ -269,7 +269,7 @@ TEST_CASE("Animation bounds use a validated global fallback for graph compositio
     Animation::AnimationBoundsAsset& root = Root<Animation::AnimationBoundsAsset>(corrupt);
     auto* clips = reinterpret_cast<Animation::ClipBounds*>(corrupt.data() + root.clipsOffset);
     clips[0].fallbackBounds.extents = vec3(1.0f);
-    CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(corrupt, AssetLoading::ValidationMode::Full).diagnostic.code == AssetLoading::DiagnosticCode::InvalidValue);
+    CHECK(AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(corrupt)).diagnostic.code == AssetLoading::DiagnosticCode::InvalidValue);
 }
 
 TEST_CASE("Game validates NBS AnimationSet and synchronization marker fixtures", "[AnimationAsset][AnimationSet][Synchronization][NBS]")
@@ -281,7 +281,7 @@ TEST_CASE("Game validates NBS AnimationSet and synchronization marker fixtures",
     std::ifstream setInput(setPath, std::ios::binary);
     REQUIRE(setInput);
     const std::vector<u8> setPayload((std::istreambuf_iterator<char>(setInput)), {});
-    const AnimationLoading::AnimationSetAssetReadResult animationSet = AnimationLoading::AnimationAssetReader::ReadAnimationSet(setPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationSetAssetReadResult animationSet = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationSet(setPayload));
     INFO(AssetLoading::Describe(animationSet.diagnostic));
     REQUIRE(animationSet);
     CHECK(animationSet.view.root.declaredPoseDomainType == Animation::PoseDomainType::Skeleton);
@@ -293,7 +293,7 @@ TEST_CASE("Game validates NBS AnimationSet and synchronization marker fixtures",
     std::ifstream clipInput(clipPath, std::ios::binary);
     REQUIRE(clipInput);
     const std::vector<u8> clipPayload((std::istreambuf_iterator<char>(clipInput)), {});
-    const AnimationLoading::AnimationClipAssetReadResult clip = AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload, AssetLoading::ValidationMode::Full);
+    const AnimationLoading::AnimationClipAssetReadResult clip = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipPayload));
     INFO(AssetLoading::Describe(clip.diagnostic));
     REQUIRE(clip);
     REQUIRE(clip.view.synchronizationMarkers.size() == 2);

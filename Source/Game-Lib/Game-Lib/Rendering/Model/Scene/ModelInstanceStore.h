@@ -99,6 +99,7 @@ namespace ModelScene
         bool Destroy(RenderScenes::ModelInstanceHandle handle, ModelInstanceResources& outResources);
         bool SetTransform(RenderScenes::ModelInstanceHandle handle, const mat4x4& transform, bool teleported,
                           bool& outNeedsHistoryClear);
+        bool SetTransformHistory(RenderScenes::ModelInstanceHandle handle, const mat4x4& currentTransform, const mat4x4& previousTransform, bool motionValid);
         bool SetVisible(RenderScenes::ModelInstanceHandle handle, bool visible, bool& outNeedsHistoryClear);
         bool SetHighlight(RenderScenes::ModelInstanceHandle handle, f32 intensity, u32 packedColor = 0xFFFFFFFFu);
         bool SetOpacity(RenderScenes::ModelInstanceHandle handle, f32 opacity, bool forceTransparent = false);

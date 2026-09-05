@@ -35,10 +35,17 @@ namespace Animation
         BlendSpace2D
     };
 
+    enum class AnimationLayerType : u8
+    {
+        Override,
+        Additive
+    };
+
     struct EditableGraphBlendSample
     {
         vec2 position = {};
         u64 clipSlotSemanticID = 0;
+        std::string displayName;
     };
 
     struct EditableGraphParameter
@@ -49,6 +56,7 @@ namespace Animation
         i32 defaultInt = 0;
         bool defaultBool = false;
         bool oneFrameTrigger = false;
+        vec3 defaultFloat3 = {};
     };
 
     struct EditableGraphState
@@ -65,6 +73,8 @@ namespace Animation
         f32 wrapMaximum = 0.0f;
         std::vector<EditableGraphBlendSample> blendSamples;
         std::vector<BlendSpaceTriangle> blendTriangles;
+        std::string displayName;
+        vec2 editorPosition = {};
     };
 
     struct EditableGraphTransition
@@ -78,17 +88,72 @@ namespace Animation
         BlendCurve curve = BlendCurve::Linear;
     };
 
+    struct EditableGraphLayer
+    {
+        u64 sourceGUID = 0;
+        u64 clipSlotSemanticID = 0;
+        FileFormat::AssetID maskAssetID = FileFormat::INVALID_ASSET_ID;
+        u64 durationMicroseconds = 0;
+        AnimationLayerType type = AnimationLayerType::Override;
+        std::string weightParameter;
+        f32 constantWeight = 1.0f;
+        u16 executionOrder = 0;
+        std::string displayName;
+        bool emitEvents = false;
+    };
+
+    struct EditableGraphActionSlot
+    {
+        u64 semanticID = 0;
+        u64 clipSlotSemanticID = 0;
+        FileFormat::AssetID maskAssetID = FileFormat::INVALID_ASSET_ID;
+        u64 durationMicroseconds = 0;
+        u64 blendInMicroseconds = 0;
+        u64 blendOutMicroseconds = 0;
+        AnimationLayerType type = AnimationLayerType::Override;
+        u16 priority = 0;
+        bool queueWhenBlocked = true;
+        bool continueUnderlyingState = true;
+        std::string displayName;
+    };
+
+    struct EditableGraphOutput
+    {
+        u64 semanticID = 0;
+        std::string parameter;
+    };
+
+    struct EditableGraphIKOperation
+    {
+        u64 sourceGUID = 0;
+        FileFormat::AssetID rigAssetID = FileFormat::INVALID_ASSET_ID;
+        u64 solverSemanticID = 0;
+        std::string goalParameter;
+        u64 goalAttachmentSemanticID = 0;
+        u64 effectorAttachmentSemanticID = 0;
+        vec3 effectorAlignmentAxis = {};
+        std::string weightParameter;
+        f32 constantWeight = 1.0f;
+        u16 executionOrder = 0;
+        std::string displayName;
+    };
+
     struct EditableAnimationGraph
     {
-        static constexpr u16 CURRENT_VERSION = 1;
+        static constexpr u16 CURRENT_VERSION = 3;
         u16 version = CURRENT_VERSION;
         std::vector<EditableGraphParameter> parameters;
         std::vector<EditableGraphState> states;
         std::vector<EditableGraphTransition> transitions;
+        std::vector<EditableGraphLayer> layers;
+        std::vector<EditableGraphActionSlot> actionSlots;
+        std::vector<EditableGraphOutput> outputs;
+        std::vector<EditableGraphIKOperation> ikOperations;
         u64 entryStateGUID = 0;
         u32 maximumSnapshotJoints = 256;
         u32 commandCapacity = 8;
         u32 actionCapacity = 8;
+        std::string displayName;
     };
 
     struct CompiledGraphParameter
@@ -134,6 +199,53 @@ namespace Animation
         u64 durationMicroseconds = 0;
     };
 
+    struct CompiledGraphLayer
+    {
+        u64 sourceGUID = 0;
+        u64 clipSlotSemanticID = 0;
+        FileFormat::AssetID maskAssetID = FileFormat::INVALID_ASSET_ID;
+        u64 durationMicroseconds = 0;
+        AnimationLayerType type = AnimationLayerType::Override;
+        u16 weightParameter = std::numeric_limits<u16>::max();
+        f32 constantWeight = 1.0f;
+        u16 executionOrder = 0;
+        bool emitEvents = false;
+    };
+
+    struct CompiledGraphActionSlot
+    {
+        u64 semanticID = 0;
+        u64 clipSlotSemanticID = 0;
+        FileFormat::AssetID maskAssetID = FileFormat::INVALID_ASSET_ID;
+        u64 durationMicroseconds = 0;
+        u64 blendInMicroseconds = 0;
+        u64 blendOutMicroseconds = 0;
+        AnimationLayerType type = AnimationLayerType::Override;
+        u16 priority = 0;
+        bool queueWhenBlocked = true;
+        bool continueUnderlyingState = true;
+    };
+
+    struct CompiledGraphOutput
+    {
+        u64 semanticID = 0;
+        u16 parameterIndex = 0;
+    };
+
+    struct CompiledGraphIKOperation
+    {
+        u64 sourceGUID = 0;
+        FileFormat::AssetID rigAssetID = FileFormat::INVALID_ASSET_ID;
+        u64 solverSemanticID = 0;
+        u16 goalParameter = std::numeric_limits<u16>::max();
+        u64 goalAttachmentSemanticID = 0;
+        u64 effectorAttachmentSemanticID = 0;
+        vec3 effectorAlignmentAxis = {};
+        u16 weightParameter = std::numeric_limits<u16>::max();
+        f32 constantWeight = 1.0f;
+        u16 executionOrder = 0;
+    };
+
     struct CompiledAnimationGraph
     {
         u64 contentHash = 0;
@@ -148,6 +260,10 @@ namespace Animation
         std::vector<CompiledGraphBlendSample> blendSamples;
         std::vector<BlendSpaceTriangle> blendTriangles;
         std::vector<CompiledGraphTransition> transitions;
+        std::vector<CompiledGraphLayer> layers;
+        std::vector<CompiledGraphActionSlot> actionSlots;
+        std::vector<CompiledGraphOutput> outputs;
+        std::vector<CompiledGraphIKOperation> ikOperations;
         std::vector<u8> controllerProgram;
     };
 
@@ -188,6 +304,27 @@ namespace Animation
         u64 _value = 0;
     };
 
+    enum class AnimationActionStatus : u8
+    {
+        Pending,
+        Playing,
+        Completed,
+        Interrupted,
+        Cancelled
+    };
+
+    enum class AnimationSeekEventPolicy : u8
+    {
+        ResetWithoutReplay = 0
+    };
+
+    struct AnimationActionToken
+    {
+        AnimatorHandle animator;
+        u32 serial = 0;
+        explicit operator bool() const { return animator && serial != 0; }
+    };
+
     struct AnimationParameterHandle
     {
         AnimatorHandle animator;
@@ -211,6 +348,21 @@ namespace Animation
         u32 payload = 0;
     };
 
+    struct AnimationEventOutput
+    {
+        u32 eventTypeID = 0;
+        u32 payloadTypeID = 0;
+        u32 flags = 0;
+        std::vector<u8> payload;
+    };
+
+    struct AnimationGraphOutput
+    {
+        u64 semanticID = 0;
+        FileFormat::Animation::GraphValueType type = FileFormat::Animation::GraphValueType::Float;
+        vec4 value = {};
+    };
+
     struct PoseRecipeSample
     {
         FileFormat::AssetID clipAssetID = FileFormat::INVALID_ASSET_ID;
@@ -219,10 +371,35 @@ namespace Animation
         u32 stableVariationID = 0;
     };
 
+    struct PoseRecipeLayer
+    {
+        PoseRecipeSample sample;
+        FileFormat::AssetID maskAssetID = FileFormat::INVALID_ASSET_ID;
+        f32 weight = 0.0f;
+        AnimationLayerType type = AnimationLayerType::Override;
+        u16 executionOrder = 0;
+    };
+
+    struct PoseRecipeIKOperation
+    {
+        FileFormat::AssetID rigAssetID = FileFormat::INVALID_ASSET_ID;
+        u64 solverSemanticID = 0;
+        vec3 goalModel = {};
+        u64 goalAttachmentSemanticID = 0;
+        u64 effectorAttachmentSemanticID = 0;
+        vec3 effectorAlignmentAxis = {};
+        f32 weight = 0.0f;
+        u16 executionOrder = 0;
+    };
+
     struct PoseRecipe
     {
         std::array<PoseRecipeSample, 6> samples = {};
+        std::array<PoseRecipeLayer, 4> layers = {};
+        std::array<PoseRecipeIKOperation, 4> ikOperations = {};
         u32 sampleCount = 0;
+        u32 layerCount = 0;
+        u32 ikOperationCount = 0;
         u16 sourceState = 0;
         u16 targetState = 0;
         f32 transitionWeight = 0.0f;
@@ -252,6 +429,12 @@ namespace Animation
         u32 resolvedFallbackDepth = 0;
         AnimationSlotResolution slotResolution = AnimationSlotResolution::MissingSlot;
         bool synchronizationFallback = false;
+        u32 activeLayers = 0;
+        std::array<f32, 4> activeLayerWeights = {};
+        u32 activeIKOperations = 0;
+        u64 activeActionSemanticID = 0;
+        u64 activeActionTimeMicroseconds = 0;
+        AnimationActionStatus activeActionStatus = AnimationActionStatus::Completed;
     };
 
     struct AnimationControllerStats
@@ -265,6 +448,8 @@ namespace Animation
         u64 snapshots = 0;
         u64 rejectedWrites = 0;
         u64 queueOverflows = 0;
+        u64 authoritativeEventOverflows = 0;
+        u64 cosmeticEventDrops = 0;
         u64 reentrantMutationRejects = 0;
     };
 
@@ -292,15 +477,25 @@ namespace Animation
         bool SetBool(AnimationParameterHandle handle, bool value);
         bool SetInt(AnimationParameterHandle handle, i32 value);
         bool SetFloat(AnimationParameterHandle handle, f32 value);
+        bool SetFloat3(AnimationParameterHandle handle, const vec3& value);
         bool Trigger(AnimationParameterHandle handle);
+        bool BindAnimationData(AnimatorHandle handle, const AnimationLoading::AnimationSetAssetView& set, std::span<const AnimationClipDomainRecord> clips);
         bool QueueCommand(AnimatorHandle handle, u64 semanticID, u32 payload = 0);
         bool QueueAction(AnimatorHandle handle, u64 semanticID, u32 payload = 0);
+        AnimationActionToken StartAction(AnimatorHandle handle, u64 semanticID, u32 payload = 0);
+        bool CancelAction(AnimationActionToken token);
+        bool GetActionStatus(AnimationActionToken token, AnimationActionStatus& status) const;
         u32 ApplyBatchInputs(std::span<const AnimationControllerBatchInput> inputs);
         void Advance(f64 deltaSeconds);
+        bool Seek(AnimatorHandle handle, u64 timeMicroseconds, AnimationSeekEventPolicy eventPolicy = AnimationSeekEventPolicy::ResetWithoutReplay);
         PoseRecipe RequestPose(AnimatorHandle handle, const AnimationLoading::AnimationSetAssetView& set, std::span<const AnimationClipDomainRecord> clips, std::span<const FileFormat::Animation::LocalTransform> continuityPose = {});
         bool GetState(AnimatorHandle handle, AnimationControllerState& state) const;
+        bool GetParameterValues(AnimatorHandle handle, std::vector<vec3>& values) const;
         bool GetBoundsMetadata(AnimatorHandle handle, const AnimationLoading::AnimationSetAssetView& set, std::span<const AnimationClipDomainRecord> clips, FileFormat::AssetID& clipAssetID, u64& timeMicroseconds, bool& supportsTightBounds);
         std::span<const AnimationControllerOutput> GetOutputs(AnimatorHandle handle) const;
+        std::span<const AnimationEventOutput> GetAuthoritativeEvents(AnimatorHandle handle) const;
+        std::span<const AnimationEventOutput> GetCosmeticEvents(AnimatorHandle handle) const;
+        std::span<const AnimationGraphOutput> GetGraphOutputs(AnimatorHandle handle) const;
         void ClearOutputs(AnimatorHandle handle);
         bool ReplaceGraph(AnimatorHandle handle, FileFormat::AssetID graphAssetID, std::shared_ptr<const CompiledAnimationGraph> graph);
         AnimationControllerStats GetStats() const;

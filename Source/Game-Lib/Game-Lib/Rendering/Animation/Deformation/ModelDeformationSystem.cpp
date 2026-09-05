@@ -70,6 +70,35 @@ namespace
 
 namespace Animation
 {
+    bool ModelDeformationSystem::BindModelAttachment(PoseAttachmentHandle attachment, RenderScenes::RenderScene* scene, RenderScenes::ModelInstanceHandle parent, RenderScenes::ModelInstanceHandle child, const mat4x4& childLocalTransform)
+    {
+        if (!attachment || !scene || !scene->GetModelInstance(parent) || !scene->GetModelInstance(child))
+            return false;
+        const auto existing = std::find_if(_modelAttachments.begin(), _modelAttachments.end(), [attachment](const ModelAttachmentBinding& binding) { return binding.attachment == attachment; });
+        if (existing != _modelAttachments.end())
+            return false;
+        _modelAttachments.push_back({attachment, scene, parent, child, childLocalTransform});
+        return true;
+    }
+
+    bool ModelDeformationSystem::SetModelAttachmentLocalTransform(PoseAttachmentHandle attachment, const mat4x4& childLocalTransform)
+    {
+        const auto existing = std::find_if(_modelAttachments.begin(), _modelAttachments.end(), [attachment](const ModelAttachmentBinding& binding) { return binding.attachment == attachment; });
+        if (existing == _modelAttachments.end())
+            return false;
+        existing->childLocalTransform = childLocalTransform;
+        return true;
+    }
+
+    bool ModelDeformationSystem::UnbindModelAttachment(PoseAttachmentHandle attachment)
+    {
+        const auto existing = std::find_if(_modelAttachments.begin(), _modelAttachments.end(), [attachment](const ModelAttachmentBinding& binding) { return binding.attachment == attachment; });
+        if (existing == _modelAttachments.end())
+            return false;
+        _modelAttachments.erase(existing);
+        return true;
+    }
+
     ModelDeformationSystem::ModelDeformationSystem(Renderer::Renderer* renderer, GameRenderer* gameRenderer, bool validateTransfers)
         : _renderer(renderer), _gameRenderer(gameRenderer), _descriptorSet(Renderer::DescriptorSetSlot::PER_PASS), _palettes(validateTransfers), _work(validateTransfers), _records(validateTransfers), _positions(validateTransfers), _vertexAttributes(validateTransfers)
     {
@@ -174,6 +203,7 @@ namespace Animation
                     ++_stats.conservativeBoundsFallbacks;
                 break;
             }
+            selectedBounds = AnimationLoading::ExpandAnimationBounds(selectedBounds, pose->conservativeBoundsExpansion + pose->attachmentBoundsExpansion);
             const WorldAnimationBounds worldBounds = TransformAnimationBounds(selectedBounds, instance->currentWorld);
             bool demandedByView = false;
             for (const RenderScenes::RenderView* view : views)
@@ -221,6 +251,8 @@ namespace Animation
                 continue;
             }
             _gameRenderer->GetSkeletonDebugDraw()->SetCurrentLocalPose(pose->localPose);
+            _gameRenderer->GetSkeletonDebugDraw()->SetJointWeights(pose->debugJointWeights);
+            _gameRenderer->GetSkeletonDebugDraw()->SetIKOperations(std::span<const PoseIKDebugOperation>(pose->debugIKOperations.data(), pose->debugIKOperationCount));
             const u64 bindingKey = resources->poseSource.GetRawValue() ^ (static_cast<u64>(static_cast<RenderAssets::ModelHandle::type>(resources->model)) << 1u) ^ (pose->poseGeneration * 0x9E3779B97F4A7C15ull);
             auto tableIt = bindingTableOffsets.find(bindingKey);
             u32 tableBase = RenderScenes::INVALID_SCENE_INDEX;
@@ -389,6 +421,25 @@ namespace Animation
         _stats.paletteMatrices = _palettes.Count();
         if (_records.Count() != 0)
             _records.SetDirty();
+        _poseSources.ResolveAttachments(_demandFrame);
+        for (auto binding = _modelAttachments.begin(); binding != _modelAttachments.end();)
+        {
+            const PoseAttachment* attachment = _poseSources.GetAttachment(binding->attachment);
+            const ModelScene::ModelInstanceGPURecord* parent = binding->scene ? binding->scene->GetModelInstance(binding->parent) : nullptr;
+            if (!attachment || !parent || !binding->scene->GetModelInstance(binding->child))
+            {
+                binding = _modelAttachments.erase(binding);
+                continue;
+            }
+            if (attachment->valid)
+            {
+                const mat4x4 currentWorld = parent->currentWorld * mat4x4(attachment->currentTransform) * binding->childLocalTransform;
+                const mat4x4 previousWorld = parent->previousWorld * mat4x4(attachment->previousTransform) * binding->childLocalTransform;
+                binding->scene->SetModelAttachmentTransform(binding->child, currentWorld, previousWorld, attachment->motionValid && (parent->flags & ModelScene::ModelInstanceFlagMotionValid) != 0);
+            }
+            ++binding;
+        }
+        _poseSources.ResolvePoseQueries();
     }
 
     void ModelDeformationSystem::Upload()

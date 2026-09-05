@@ -3,6 +3,7 @@
 #include "AnimationControllerRuntime.h"
 #include "Game-Lib/Rendering/Animation/Asset/AnimationAssetRegistry.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationClipSampler.h"
+#include "Game-Lib/Rendering/Animation/Pose/AnimationIK.h"
 #include "Game-Lib/Rendering/Animation/Pose/PoseSourceStore.h"
 
 #include <robinhood/robinhood.h>
@@ -35,6 +36,9 @@ namespace Animation
         u64 poseRequests = 0;
         u64 poseEvaluations = 0;
         u64 blendedSamples = 0;
+        u64 layerOperations = 0;
+        u64 ikOperations = 0;
+        u64 ikClampedGoals = 0;
         u64 snapshotBlends = 0;
         u64 failures = 0;
     };
@@ -54,9 +58,11 @@ namespace Animation
         bool SetBool(AnimationParameterHandle handle, bool value) { return _controllers.SetBool(handle, value); }
         bool SetInt(AnimationParameterHandle handle, i32 value) { return _controllers.SetInt(handle, value); }
         bool SetFloat(AnimationParameterHandle handle, f32 value) { return _controllers.SetFloat(handle, value); }
+        bool SetFloat3(AnimationParameterHandle handle, const vec3& value) { return _controllers.SetFloat3(handle, value); }
         bool Trigger(AnimationParameterHandle handle) { return _controllers.Trigger(handle); }
         bool QueueAction(ControllerPlaybackHandle handle, u64 semanticID, u32 payload = 0);
         bool GetState(ControllerPlaybackHandle handle, AnimationControllerState& state) const;
+        bool GetParameterValues(ControllerPlaybackHandle handle, std::vector<vec3>& values) const;
         const ControllerPosePlayerStats& GetStats() const { return _stats; }
         AnimationControllerStats GetControllerStats() const { return _controllers.GetStats(); }
 
@@ -66,6 +72,17 @@ namespace Animation
             FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
             AnimationLoading::AnimationClipHandle handle;
         };
+        struct MaskRecord
+        {
+            FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
+            AnimationLoading::BoneMaskHandle handle;
+            std::vector<f32> weights;
+        };
+        struct IKRigRecord
+        {
+            FileFormat::AssetID assetID = FileFormat::INVALID_ASSET_ID;
+            AnimationLoading::IKRigHandle handle;
+        };
         struct Slot
         {
             AnimationLoading::SkeletonHandle skeleton;
@@ -73,9 +90,13 @@ namespace Animation
             AnimatorHandle animator;
             PoseSourceHandle poseSource;
             std::vector<ClipRecord> clips;
+            std::vector<MaskRecord> masks;
+            std::vector<IKRigRecord> ikRigs;
             std::vector<AnimationClipDomainRecord> clipDomains;
             std::vector<FileFormat::Animation::LocalTransform> localPose;
             std::vector<FileFormat::Animation::LocalTransform> samplePose;
+            std::vector<FileFormat::Animation::LocalTransform> ikBestPose;
+            IKPoseWorkspace ikWorkspace;
             u64 lastRecipeHash = 0;
             u32 generation = 1;
             bool live = false;
@@ -84,6 +105,8 @@ namespace Animation
         Slot* GetSlot(ControllerPlaybackHandle handle);
         const Slot* GetSlot(ControllerPlaybackHandle handle) const;
         const AnimationLoading::AnimationClipAssetView* FindClip(const Slot& slot, FileFormat::AssetID assetID) const;
+        const MaskRecord* FindMask(const Slot& slot, FileFormat::AssetID assetID) const;
+        const IKRigRecord* FindIKRig(const Slot& slot, FileFormat::AssetID assetID) const;
         AnimationControllerStore _controllers;
         PoseSourceStore* _poseSources = nullptr;
         AnimationLoading::AnimationAssetRegistry* _assets = nullptr;

@@ -84,6 +84,7 @@ namespace RenderScenes
         bool SetModelShadowDynamic(ModelInstanceHandle handle, bool dynamic) { return _instances.SetShadowDynamic(handle, dynamic); }
         bool SetModelPoseSource(ModelInstanceHandle handle, Animation::PoseSourceHandle poseSource) { return _instances.SetPoseSource(handle, poseSource); }
         bool SetModelDeformationHandle(ModelInstanceHandle handle, u32 deformationHandle) { return _instances.SetDeformationHandle(handle, deformationHandle); }
+        bool SetModelAttachmentTransform(ModelInstanceHandle handle, const mat4x4& currentTransform, const mat4x4& previousTransform, bool motionValid);
         bool MarkModelAnimated(ModelInstanceHandle handle);
 
         u32 DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs)

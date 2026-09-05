@@ -6,11 +6,13 @@ to the editor selection because the current selection overlay does not consume t
 deformed geometry stream and would draw a bind-pose duplicate over the animation.
 ]]
 
-local EditorButton = require("@src/API/UI/EditorButton")
-local EditorRegistry = require("@src/API/UI/EditorRegistry")
+local Button = require("@src/API/UI/Button")
+local EditorRegistry = require("@src/API/Editor/Registry")
+local PreviewSession = require("@src/API/Editor/AnimationPreviewSession")
+local EditorWindow = require("@src/API/Editor/UI/Window")
 local InputBox = require("@src/API/UI/InputBox")
 
-require("@src/API/UI/MenuBar")
+require("@src/API/Editor/UI/MenuBar")
 
 local PANEL_W = 560
 local PANEL_H = 320
@@ -19,14 +21,14 @@ local ROW_H = 20
 local GAP = 4
 local SIDE_PAD = 8
 local LABEL_W = 76
-local LAYER = 1100
+local LAYER = 1100i
 local BTN_TEXT_TPL = "DevToolsText"
 
-local WINDOW_BG_COLOR = vector.create(0.10, 0.10, 0.12)
+local WINDOW_BG_COLOR = vec.New(0.10, 0.10, 0.12)
 local WINDOW_BG_ALPHA = 0.96
-local BORDER_COLOR = vector.create(0.30, 0.30, 0.35)
-local LABEL_TINT = vector.create(0.82, 0.82, 0.88)
-local MUTED_TINT = vector.create(0.62, 0.62, 0.68)
+local BORDER_COLOR = vec.New(0.30, 0.30, 0.35)
+local LABEL_TINT = vec.New(0.82, 0.82, 0.88)
+local MUTED_TINT = vec.New(0.62, 0.62, 0.68)
 
 local function MakeBtnOpts(text)
     return {
@@ -37,37 +39,30 @@ local function MakeBtnOpts(text)
     }
 end
 
-local canvas = UI.GetCanvas("AnimationDebugEditor", 0, 0, 1920, 1080, false)
-local windowPanel = canvas:NewPanel(520, -110, PANEL_W, PANEL_H, LAYER, "DebugDarkGrey")
-windowPanel:SetAnchor(0.0, 1.0)
-windowPanel:SetRelativePoint(0.0, 1.0)
-windowPanel:SetVisible(false)
-windowPanel:SetColor(WINDOW_BG_COLOR)
-windowPanel:SetAlpha(WINDOW_BG_ALPHA)
-windowPanel:SetBorderColor(BORDER_COLOR)
-windowPanel:SetBorderSize(1)
+local function NewButton(parent, x, y, width, height, layer, options)
+    return Button.New(parent, vec.New(x, y), vec.New(width, height), layer, options)
+end
 
-local titleBar = windowPanel:NewPanel(0, 0, PANEL_W, TITLE_H, 1, "DebugDarkGrey")
-titleBar:SetAnchor(0.0, 1.0)
-titleBar:SetRelativePoint(0.0, 1.0)
-titleBar:SetColor(vector.create(0.06, 0.06, 0.08))
-titleBar:SetAlpha(WINDOW_BG_ALPHA)
+local function NewInputBox(parent, x, y, width, height, layer, options)
+    return InputBox.New(parent, vec.New(x, y), vec.New(width, height), layer, options)
+end
 
-local titleText = titleBar:NewText("Animation Debug", SIDE_PAD, 0, 1, BTN_TEXT_TPL)
-titleText:SetAnchor(0.0, 0.5)
-titleText:SetRelativePoint(0.0, 0.5)
-titleText:SetInteractable(false)
-
-local closeBtn = EditorButton.NewEditorButton(titleBar, -2, 0, 12, 12, 1, MakeBtnOpts("X"))
-closeBtn:SetAnchor(1.0, 0.5)
-closeBtn:SetRelativePoint(1.0, 0.5)
-closeBtn.text:SetPosX(1)
-windowPanel:MakeDraggable(titleBar)
+local canvas = UI.GetCanvas("AnimationDebugEditor", vec.New(0, 0), vec.New(1920, 1080), false)
+local editorWindow = EditorWindow.New(canvas, vec.New(520, -110), vec.New(PANEL_W, PANEL_H), LAYER, {
+    title = "Animation Debug",
+    titleHeight = TITLE_H,
+    padding = SIDE_PAD,
+    windowColor = WINDOW_BG_COLOR,
+    titleColor = vec.New(0.06, 0.06, 0.08),
+    alpha = WINDOW_BG_ALPHA,
+})
+local windowPanel = editorWindow.root
+local closeBtn = editorWindow.closeButton
 
 local function AddLabel(text, y)
-    local label = windowPanel:NewText(text, SIDE_PAD, y, 1, BTN_TEXT_TPL)
-    label:SetAnchor(0.0, 1.0)
-    label:SetRelativePoint(0.0, 1.0)
+    local label = windowPanel:NewText(text, vec.New(SIDE_PAD, y), 1i, BTN_TEXT_TPL)
+    label:SetAnchor(vec.New(0.0, 1.0))
+    label:SetRelativePoint(vec.New(0.0, 1.0))
     label:SetColor(LABEL_TINT)
     label:SetInteractable(false)
     return label
@@ -75,13 +70,13 @@ end
 
 local function AddPathInput(label, y, defaultText)
     AddLabel(label, y - 3)
-    local input = InputBox.NewInputBox(windowPanel, SIDE_PAD + LABEL_W, y, PANEL_W - SIDE_PAD * 2 - LABEL_W, ROW_H, 1, {
+    local input = NewInputBox(windowPanel, SIDE_PAD + LABEL_W, y, PANEL_W - SIDE_PAD * 2 - LABEL_W, ROW_H, 1i, {
         panelTemplate = "DebugDarkGrey",
         textTemplate = BTN_TEXT_TPL,
         defaultText = defaultText,
     })
-    input:SetAnchor(0.0, 1.0)
-    input:SetRelativePoint(0.0, 1.0)
+    input:SetAnchor(vec.New(0.0, 1.0))
+    input:SetRelativePoint(vec.New(0.0, 1.0))
     input:SetTextVerticallyCentered()
     return input
 end
@@ -106,6 +101,15 @@ local speedParameter = nil
 local lateralParameter = nil
 local forwardParameter = nil
 local magnitudeParameter = nil
+local ikGoalParameter = nil
+local ikWeightParameter = nil
+local headGoalParameter = nil
+local leftGripGoalParameter = nil
+local leftGripWeightParameter = nil
+local upperBodyWeightParameter = nil
+local additiveWeightParameter = nil
+local attachmentEntities = {}
+local FrameWhenReady
 
 local function SetStatus(text)
     statusText:SetText("Status: " .. text)
@@ -140,8 +144,8 @@ local function RefreshState()
     end
     local controllerState = Asset.GetAnimationControllerState(entity)
     if controllerState ~= nil then
-        local transition = controllerState.transitioning and string.format(" -> %d  %.0f/%.0f ms", controllerState.transitionTarget, controllerState.transitionTimeUS / 1000, controllerState.transitionDurationUS / 1000) or ""
-        stateText:SetText(string.format("Entity %d | state %d%s | %.2f s | slot %s>%s clip %s variant %d depth %d result %d | samples %d tri %s weights %.2f/%.2f/%.2f | leader %s markers %s>%s rates %.2f/%.2f/%.2f fallback %s snapshot %s", entity, controllerState.currentState, transition, controllerState.stateTimeUS / 1000000, tostring(controllerState.requestedSlotSemanticID), tostring(controllerState.resolvedSlotSemanticID), tostring(controllerState.resolvedClipAssetID), controllerState.resolvedVariationID, controllerState.resolvedFallbackDepth, controllerState.slotResolution, controllerState.activeBlendSamples, tostring(controllerState.activeBlendTriangle), controllerState.blendWeight0, controllerState.blendWeight1, controllerState.blendWeight2, tostring(controllerState.synchronizationLeader), tostring(controllerState.previousSynchronizationMarker), tostring(controllerState.nextSynchronizationMarker), controllerState.playbackRate0, controllerState.playbackRate1, controllerState.playbackRate2, controllerState.synchronizationFallback and "yes" or "no", controllerState.hasContinuitySnapshot and "yes" or "no"))
+        local transition = controllerState.transitioning and string.format(" -> %d  %.0f/%.0f ms", integer.tonumber(controllerState.transitionTarget), integer.tonumber(controllerState.transitionTimeUS) / 1000, integer.tonumber(controllerState.transitionDurationUS) / 1000) or ""
+        stateText:SetText(string.format("Entity %d | state %d%s | %.2f s | slot %s>%s clip %s variant %d depth %d result %d | samples %d tri %s weights %.2f/%.2f/%.2f | leader %s markers %s>%s rates %.2f/%.2f/%.2f fallback %s snapshot %s", integer.tonumber(entity), integer.tonumber(controllerState.currentState), transition, integer.tonumber(controllerState.stateTimeUS) / 1000000, tostring(controllerState.requestedSlotSemanticID), tostring(controllerState.resolvedSlotSemanticID), tostring(controllerState.resolvedClipAssetID), integer.tonumber(controllerState.resolvedVariationID), integer.tonumber(controllerState.resolvedFallbackDepth), integer.tonumber(controllerState.slotResolution), integer.tonumber(controllerState.activeBlendSamples), tostring(controllerState.activeBlendTriangle), controllerState.blendWeight0, controllerState.blendWeight1, controllerState.blendWeight2, tostring(controllerState.synchronizationLeader), tostring(controllerState.previousSynchronizationMarker), tostring(controllerState.nextSynchronizationMarker), controllerState.playbackRate0, controllerState.playbackRate1, controllerState.playbackRate2, controllerState.synchronizationFallback and "yes" or "no", controllerState.hasContinuitySnapshot and "yes" or "no"))
         return
     end
     local state = Asset.GetAnimationState(entity)
@@ -155,7 +159,12 @@ end
 
 local function DestroyActor()
     operationGeneration += 1
+    for _, attachmentEntity in attachmentEntities do
+        Asset.DestroyAnimatedModel(attachmentEntity)
+    end
+    table.clear(attachmentEntities)
     if entity ~= nil then
+        PreviewSession.Clear(entity)
         Asset.DestroyAnimatedModel(entity)
         entity = nil
     end
@@ -165,12 +174,19 @@ local function DestroyActor()
     lateralParameter = nil
     forwardParameter = nil
     magnitudeParameter = nil
+    ikGoalParameter = nil
+    ikWeightParameter = nil
+    headGoalParameter = nil
+    leftGripGoalParameter = nil
+    leftGripWeightParameter = nil
+    upperBodyWeightParameter = nil
+    additiveWeightParameter = nil
     RefreshState()
 end
 
 local function SpawnController(mode)
     DestroyActor()
-    entity = Asset.SpawnModelAtWorldOrigin(modelInput.text)
+    entity = Asset.SpawnModelAtWorldOrigin(modelInput:GetText())
     if entity == nil then
         SetStatus("model spawn rejected")
         return
@@ -181,13 +197,32 @@ local function SpawnController(mode)
     controllerMode = true
     controllerGraphMode = mode
     SetStatus("waiting for model, Skeleton, Set, and clips")
-    SetCVar("animationDebugSkeletonPath", skeletonInput.text)
-    SetCVar("animationDebugSkeletonPose", 1)
+    SetCVar("animationDebugSkeletonPath", skeletonInput:GetText())
+    SetCVar("animationDebugSkeletonPose", 1i)
     Camera.ActivateFreeflying()
     local function BindWhenReady(attempt)
         if generation ~= operationGeneration or entity ~= targetEntity then return end
-        if Asset.BindAnimationController(targetEntity, skeletonInput.text, setInput.text, mode) then
-            if mode == "blend2d" then
+        if Asset.BindAnimationController(targetEntity, skeletonInput:GetText(), setInput:GetText(), mode) then
+            if mode == "ik" or mode == "ik_showcase" then
+                ikGoalParameter = Asset.ResolveAnimationParameter(targetEntity, "rightHandGoal")
+                ikWeightParameter = Asset.ResolveAnimationParameter(targetEntity, "ikWeight")
+                if ikGoalParameter == nil or ikWeightParameter == nil then SetStatus("IK parameters did not resolve"); return end
+                Asset.AnimationSetFloat3Parameter(targetEntity, ikGoalParameter, -0.35, 1.45, 0.45)
+                Asset.AnimationSetFloatParameter(targetEntity, ikWeightParameter, 1.0)
+                if mode == "ik_showcase" then
+                    headGoalParameter = Asset.ResolveAnimationParameter(targetEntity, "headGoal")
+                    if headGoalParameter == nil then SetStatus("head goal parameter did not resolve"); return end
+                    Asset.AnimationSetFloat3Parameter(targetEntity, headGoalParameter, 0.0, 1.65, 1.0)
+                end
+            elseif mode == "layers" then
+                speedParameter = Asset.ResolveAnimationParameter(targetEntity, "speed")
+                upperBodyWeightParameter = Asset.ResolveAnimationParameter(targetEntity, "upperBodyWeight")
+                additiveWeightParameter = Asset.ResolveAnimationParameter(targetEntity, "additiveWeight")
+                if speedParameter == nil or upperBodyWeightParameter == nil or additiveWeightParameter == nil then SetStatus("layer parameters did not resolve"); return end
+                Asset.AnimationSetFloatParameter(targetEntity, speedParameter, 1.0)
+                Asset.AnimationSetFloatParameter(targetEntity, upperBodyWeightParameter, 0.0)
+                Asset.AnimationSetFloatParameter(targetEntity, additiveWeightParameter, 0.0)
+            elseif mode == "blend2d" then
                 lateralParameter = Asset.ResolveAnimationParameter(targetEntity, "lateral")
                 forwardParameter = Asset.ResolveAnimationParameter(targetEntity, "forward")
                 magnitudeParameter = Asset.ResolveAnimationParameter(targetEntity, "magnitude")
@@ -199,7 +234,14 @@ local function SpawnController(mode)
                 speedParameter = Asset.ResolveAnimationParameter(targetEntity, "speed")
                 if speedParameter == nil then SetStatus("speed parameter did not resolve"); return end
                 Asset.AnimationSetFloatParameter(targetEntity, speedParameter, 0.0)
+                if mode == "attachment" then
+                    leftGripGoalParameter = Asset.ResolveAnimationParameter(targetEntity, "leftGripGoal")
+                    leftGripWeightParameter = Asset.ResolveAnimationParameter(targetEntity, "leftGripWeight")
+                    if leftGripGoalParameter == nil or leftGripWeightParameter == nil then SetStatus("secondary grip parameters did not resolve"); return end
+                    Asset.AnimationSetFloatParameter(targetEntity, leftGripWeightParameter, 0.0)
+                end
             end
+            PreviewSession.SetEntity(targetEntity, mode)
             SetStatus("compiled " .. mode .. " graph bound")
             FrameWhenReady(targetEntity, generation, 1)
             RefreshState()
@@ -212,7 +254,7 @@ local function SpawnController(mode)
     Scheduler.AfterFrames(1, function() BindWhenReady(1) end)
 end
 
-local function FrameWhenReady(targetEntity, generation, attempts)
+FrameWhenReady = function(targetEntity, generation, attempts)
     if generation ~= operationGeneration or entity ~= targetEntity then return end
     if Scene.CenterCameraOnEntity(targetEntity, 0.58) then return end
     if attempts < 240 then
@@ -224,7 +266,7 @@ end
 
 local function SpawnAnimated(shouldPlay)
     DestroyActor()
-    entity = Asset.SpawnModelAtWorldOrigin(modelInput.text)
+    entity = Asset.SpawnModelAtWorldOrigin(modelInput:GetText())
     if entity == nil then
         SetStatus("model spawn rejected")
         RefreshState()
@@ -234,13 +276,13 @@ local function SpawnAnimated(shouldPlay)
     local generation = operationGeneration
     local targetEntity = entity
     SetStatus("waiting for model and animation assets")
-    SetCVar("animationDebugSkeletonPath", skeletonInput.text)
-    SetCVar("animationDebugSkeletonPose", 1)
+    SetCVar("animationDebugSkeletonPath", skeletonInput:GetText())
+    SetCVar("animationDebugSkeletonPose", 1i)
     Camera.ActivateFreeflying()
 
     local function BindWhenReady(attempt)
         if generation ~= operationGeneration or entity ~= targetEntity then return end
-        if Asset.BindAnimation(targetEntity, skeletonInput.text, clipInput.text) then
+        if Asset.BindAnimation(targetEntity, skeletonInput:GetText(), clipInput:GetText()) then
             Asset.AnimationSetLooping(targetEntity, looping)
             Asset.AnimationSetPlaybackRate(targetEntity, 1.0)
             Asset.AnimationSeek(targetEntity, 0.0)
@@ -265,7 +307,7 @@ end
 
 local function SpawnRestPose()
     DestroyActor()
-    entity = Asset.SpawnModelAtWorldOrigin(modelInput.text)
+    entity = Asset.SpawnModelAtWorldOrigin(modelInput:GetText())
     if entity == nil then
         SetStatus("model spawn rejected")
         RefreshState()
@@ -275,13 +317,13 @@ local function SpawnRestPose()
     local generation = operationGeneration
     local targetEntity = entity
     SetStatus("waiting to bind rest pose")
-    SetCVar("animationDebugSkeletonPath", skeletonInput.text)
-    SetCVar("animationDebugSkeletonPose", 0)
+    SetCVar("animationDebugSkeletonPath", skeletonInput:GetText())
+    SetCVar("animationDebugSkeletonPose", 0i)
     Camera.ActivateFreeflying()
 
     local function BindWhenReady(attempt)
         if generation ~= operationGeneration or entity ~= targetEntity then return end
-        if Asset.BindRestPose(targetEntity, skeletonInput.text) then
+        if Asset.BindRestPose(targetEntity, skeletonInput:GetText()) then
             SetStatus("rest pose bound")
             FrameWhenReady(targetEntity, generation, 1)
             RefreshState()
@@ -295,82 +337,84 @@ local function SpawnRestPose()
 end
 
 local controlsY = firstRowY - (ROW_H + GAP) * 4 - 4
-local spawnButtonW = (PANEL_W - SIDE_PAD * 2 - GAP * 6) / 7
-local spawnPlayBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Direct Play"))
-local spawnPausedBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP), controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Direct Pause"))
-local controllerBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 2, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("States"))
-local blend1DBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 3, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Blend 1D"))
-local blend2DBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 4, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Blend 2D"))
-local restPoseBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 5, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Rest Pose"))
-local destroyBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 6, controlsY, spawnButtonW, ROW_H, 1, MakeBtnOpts("Destroy"))
+local spawnButtonW = (PANEL_W - SIDE_PAD * 2 - GAP * 7) / 8
+local spawnPlayBtn = NewButton(windowPanel, SIDE_PAD, controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("Direct Play"))
+local spawnPausedBtn = NewButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP), controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("Direct Pause"))
+local controllerBtn = NewButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 2, controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("States"))
+local blend1DBtn = NewButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 3, controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("Blend 1D"))
+local blend2DBtn = NewButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 4, controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("Blend 2D"))
+local ikBtn = NewButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 5, controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("IK"))
+local restPoseBtn = NewButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 6, controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("Rest Pose"))
+local destroyBtn = NewButton(windowPanel, SIDE_PAD + (spawnButtonW + GAP) * 7, controlsY, spawnButtonW, ROW_H, 1i, MakeBtnOpts("Destroy"))
 
 local playbackY = controlsY - ROW_H - GAP
 local fiveButtonW = (PANEL_W - SIDE_PAD * 2 - GAP * 4) / 5
-local playBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD, playbackY, fiveButtonW, ROW_H, 1, MakeBtnOpts("Play"))
-local pauseBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP), playbackY, fiveButtonW, ROW_H, 1, MakeBtnOpts("Pause"))
-local stopBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 2, playbackY, fiveButtonW, ROW_H, 1, MakeBtnOpts("Stop"))
-loopBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 3, playbackY, fiveButtonW, ROW_H, 1, MakeBtnOpts("Loop"))
-local frameBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 4, playbackY, fiveButtonW, ROW_H, 1, MakeBtnOpts("Frame"))
+local playBtn = NewButton(windowPanel, SIDE_PAD, playbackY, fiveButtonW, ROW_H, 1i, MakeBtnOpts("Play"))
+local pauseBtn = NewButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP), playbackY, fiveButtonW, ROW_H, 1i, MakeBtnOpts("Pause"))
+local stopBtn = NewButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 2, playbackY, fiveButtonW, ROW_H, 1i, MakeBtnOpts("Stop"))
+loopBtn = NewButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 3, playbackY, fiveButtonW, ROW_H, 1i, MakeBtnOpts("Loop"))
+local frameBtn = NewButton(windowPanel, SIDE_PAD + (fiveButtonW + GAP) * 4, playbackY, fiveButtonW, ROW_H, 1i, MakeBtnOpts("Frame"))
 
-for _, btn in { spawnPlayBtn, spawnPausedBtn, controllerBtn, blend1DBtn, blend2DBtn, restPoseBtn, destroyBtn, playBtn, pauseBtn, stopBtn, loopBtn, frameBtn } do
-    btn:SetAnchor(0.0, 1.0)
-    btn:SetRelativePoint(0.0, 1.0)
+for _, btn in { spawnPlayBtn, spawnPausedBtn, controllerBtn, blend1DBtn, blend2DBtn, ikBtn, restPoseBtn, destroyBtn, playBtn, pauseBtn, stopBtn, loopBtn, frameBtn } do
+    btn:SetAnchor(vec.New(0.0, 1.0))
+    btn:SetRelativePoint(vec.New(0.0, 1.0))
 end
 
 local seekY = playbackY - ROW_H - GAP
 AddLabel("Seek (s)", seekY - 3)
-local seekInput = InputBox.NewInputBox(windowPanel, SIDE_PAD + LABEL_W, seekY, 104, ROW_H, 1, {
+local seekInput = NewInputBox(windowPanel, SIDE_PAD + LABEL_W, seekY, 104, ROW_H, 1i, {
     panelTemplate = "DebugDarkGrey", textTemplate = BTN_TEXT_TPL, defaultText = "0.0",
 })
-seekInput:SetAnchor(0.0, 1.0)
-seekInput:SetRelativePoint(0.0, 1.0)
+seekInput:SetAnchor(vec.New(0.0, 1.0))
+seekInput:SetRelativePoint(vec.New(0.0, 1.0))
 seekInput:SetTextVerticallyCentered()
-local seekBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 108, seekY, 70, ROW_H, 1, MakeBtnOpts("Apply"))
-local stepBackBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 182, seekY, 70, ROW_H, 1, MakeBtnOpts("-0.1s"))
-local stepForwardBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 256, seekY, 70, ROW_H, 1, MakeBtnOpts("+0.1s"))
+local seekBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 108, seekY, 70, ROW_H, 1i, MakeBtnOpts("Apply"))
+local stepBackBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 182, seekY, 70, ROW_H, 1i, MakeBtnOpts("-0.1s"))
+local stepForwardBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 256, seekY, 70, ROW_H, 1i, MakeBtnOpts("+0.1s"))
 
 local rateY = seekY - ROW_H - GAP
 AddLabel("Rate", rateY - 3)
-local rateInput = InputBox.NewInputBox(windowPanel, SIDE_PAD + LABEL_W, rateY, 104, ROW_H, 1, {
+local rateInput = NewInputBox(windowPanel, SIDE_PAD + LABEL_W, rateY, 104, ROW_H, 1i, {
     panelTemplate = "DebugDarkGrey", textTemplate = BTN_TEXT_TPL, defaultText = "1.0",
 })
-rateInput:SetAnchor(0.0, 1.0)
-rateInput:SetRelativePoint(0.0, 1.0)
+rateInput:SetAnchor(vec.New(0.0, 1.0))
+rateInput:SetRelativePoint(vec.New(0.0, 1.0))
 rateInput:SetTextVerticallyCentered()
-local rateBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 108, rateY, 70, ROW_H, 1, MakeBtnOpts("Apply"))
-skeletonBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 182, rateY, 144, ROW_H, 1, MakeBtnOpts("Skeleton Debug"))
+local rateBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 108, rateY, 70, ROW_H, 1i, MakeBtnOpts("Apply"))
+skeletonBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 182, rateY, 144, ROW_H, 1i, MakeBtnOpts("Skeleton Debug"))
+local graphBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 330, rateY, 130, ROW_H, 1i, MakeBtnOpts("Open Graph"))
 
-for _, btn in { seekBtn, stepBackBtn, stepForwardBtn, rateBtn, skeletonBtn } do
-    btn:SetAnchor(0.0, 1.0)
-    btn:SetRelativePoint(0.0, 1.0)
+for _, btn in { seekBtn, stepBackBtn, stepForwardBtn, rateBtn, skeletonBtn, graphBtn } do
+    btn:SetAnchor(vec.New(0.0, 1.0))
+    btn:SetRelativePoint(vec.New(0.0, 1.0))
 end
 
 local speedY = rateY - ROW_H - GAP
-AddLabel("Speed", speedY - 3)
-local speedInput = InputBox.NewInputBox(windowPanel, SIDE_PAD + LABEL_W, speedY, 104, ROW_H, 1, {
+AddLabel("Input", speedY - 3)
+local speedInput = NewInputBox(windowPanel, SIDE_PAD + LABEL_W, speedY, 104, ROW_H, 1i, {
     panelTemplate = "DebugDarkGrey", textTemplate = BTN_TEXT_TPL, defaultText = "0.0",
 })
-speedInput:SetAnchor(0.0, 1.0)
-speedInput:SetRelativePoint(0.0, 1.0)
+speedInput:SetAnchor(vec.New(0.0, 1.0))
+speedInput:SetRelativePoint(vec.New(0.0, 1.0))
 speedInput:SetTextVerticallyCentered()
-local speedBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 108, speedY, 70, ROW_H, 1, MakeBtnOpts("Apply"))
-local idleBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 182, speedY, 70, ROW_H, 1, MakeBtnOpts("Idle"))
-local walkBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 256, speedY, 70, ROW_H, 1, MakeBtnOpts("Walk"))
-local runBtn = EditorButton.NewEditorButton(windowPanel, SIDE_PAD + LABEL_W + 330, speedY, 70, ROW_H, 1, MakeBtnOpts("Run"))
+local speedBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 108, speedY, 70, ROW_H, 1i, MakeBtnOpts("Apply"))
+local idleBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 182, speedY, 70, ROW_H, 1i, MakeBtnOpts("Idle"))
+local walkBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 256, speedY, 70, ROW_H, 1i, MakeBtnOpts("Walk"))
+local runBtn = NewButton(windowPanel, SIDE_PAD + LABEL_W + 330, speedY, 70, ROW_H, 1i, MakeBtnOpts("Run"))
 for _, btn in { speedBtn, idleBtn, walkBtn, runBtn } do
-    btn:SetAnchor(0.0, 1.0)
-    btn:SetRelativePoint(0.0, 1.0)
+    btn:SetAnchor(vec.New(0.0, 1.0))
+    btn:SetRelativePoint(vec.New(0.0, 1.0))
 end
 
-stateText = windowPanel:NewText("No debug actor", SIDE_PAD, speedY - ROW_H - 8, 1, BTN_TEXT_TPL)
-stateText:SetAnchor(0.0, 1.0)
-stateText:SetRelativePoint(0.0, 1.0)
+stateText = windowPanel:NewText("No debug actor", vec.New(SIDE_PAD, speedY - ROW_H - 8), 1i, BTN_TEXT_TPL)
+stateText:SetAnchor(vec.New(0.0, 1.0))
+stateText:SetRelativePoint(vec.New(0.0, 1.0))
 stateText:SetColor(LABEL_TINT)
 stateText:SetInteractable(false)
 
-statusText = windowPanel:NewText("Status: ready", SIDE_PAD, speedY - ROW_H - 28, 1, BTN_TEXT_TPL)
-statusText:SetAnchor(0.0, 1.0)
-statusText:SetRelativePoint(0.0, 1.0)
+statusText = windowPanel:NewText("Status: ready", vec.New(SIDE_PAD, speedY - ROW_H - 28), 1i, BTN_TEXT_TPL)
+statusText:SetAnchor(vec.New(0.0, 1.0))
+statusText:SetRelativePoint(vec.New(0.0, 1.0))
 statusText:SetColor(MUTED_TINT)
 statusText:SetInteractable(false)
 
@@ -379,6 +423,7 @@ spawnPausedBtn:SetOnMouseUp(function() SpawnAnimated(false) end)
 controllerBtn:SetOnMouseUp(function() SpawnController("states") end)
 blend1DBtn:SetOnMouseUp(function() SpawnController("blend1d") end)
 blend2DBtn:SetOnMouseUp(function() SpawnController("blend2d") end)
+ikBtn:SetOnMouseUp(function() SpawnController("ik") end)
 restPoseBtn:SetOnMouseUp(SpawnRestPose)
 destroyBtn:SetOnMouseUp(function()
     DestroyActor()
@@ -423,7 +468,7 @@ local function SeekTo(time)
     RefreshState()
 end
 
-seekBtn:SetOnMouseUp(function() SeekTo(tonumber(seekInput.text)) end)
+seekBtn:SetOnMouseUp(function() SeekTo(tonumber(seekInput:GetText())) end)
 stepBackBtn:SetOnMouseUp(function()
     local state = entity ~= nil and Asset.GetAnimationState(entity) or nil
     if state ~= nil then SeekTo(math.max(0.0, state.time - 0.1)) else SetStatus("no animation to step") end
@@ -433,7 +478,7 @@ stepForwardBtn:SetOnMouseUp(function()
     if state ~= nil then SeekTo(math.min(state.duration, state.time + 0.1)) else SetStatus("no animation to step") end
 end)
 rateBtn:SetOnMouseUp(function()
-    local rate = tonumber(rateInput.text)
+    local rate = tonumber(rateInput:GetText())
     if entity ~= nil and rate ~= nil and Asset.AnimationSetPlaybackRate(entity, rate) then SetStatus("playback rate applied") else SetStatus("rate rejected") end
     RefreshState()
 end)
@@ -442,28 +487,56 @@ local function SetControllerSpeed(value)
         SetStatus("spawn a controller actor first")
         return
     end
-    if controllerGraphMode == "blend2d" then
+    if controllerGraphMode == "ik" or controllerGraphMode == "ik_showcase" then
+        if ikGoalParameter == nil then SetStatus("IK goal parameter unavailable"); return end
+        local input = speedInput:GetText()
+        local first = string.find(input, ",", 1, true)
+        local second = first ~= nil and string.find(input, ",", first + 1, true) or nil
+        local x = first ~= nil and tonumber(string.sub(input, 1, first - 1)) or nil
+        local y = first ~= nil and second ~= nil and tonumber(string.sub(input, first + 1, second - 1)) or nil
+        local z = second ~= nil and tonumber(string.sub(input, second + 1)) or nil
+        if x ~= nil and y ~= nil and z ~= nil and Asset.AnimationSetFloat3Parameter(entity, ikGoalParameter, x, y, z) then
+            SetStatus(string.format("IK goal %.2f, %.2f, %.2f", x, y, z))
+        else
+            SetStatus("IK input must be x,y,z")
+        end
+    elseif controllerGraphMode == "blend2d" then
         if lateralParameter == nil or forwardParameter == nil or magnitudeParameter == nil then SetStatus("2D parameters unavailable"); return end
-        local comma = string.find(speedInput.text, ",", 1, true)
-        local lateral = comma ~= nil and tonumber(string.sub(speedInput.text, 1, comma - 1)) or 0.0
-        local forward = comma ~= nil and tonumber(string.sub(speedInput.text, comma + 1)) or value
-        if lateral ~= nil and forward ~= nil and Asset.AnimationSetFloatParameter(entity, lateralParameter, lateral) and Asset.AnimationSetFloatParameter(entity, forwardParameter, forward) and Asset.AnimationSetFloatParameter(entity, magnitudeParameter, math.sqrt(lateral * lateral + forward * forward)) then SetStatus(string.format("2D input %.2f, %.2f", lateral, forward)) else SetStatus("2D write rejected") end
-    elseif speedParameter ~= nil and Asset.AnimationSetFloatParameter(entity, speedParameter, value) then SetStatus(string.format("controller speed %.2f", value)) else SetStatus("speed write rejected") end
+        local speedText = speedInput:GetText()
+        local comma = string.find(speedText, ",", 1, true)
+        local lateral = comma ~= nil and tonumber(string.sub(speedText, 1, comma - 1)) or 0.0
+        local forward = comma ~= nil and tonumber(string.sub(speedText, comma + 1)) or value
+        local magnitude = if lateral ~= nil and forward ~= nil then math.sqrt(lateral * lateral + forward * forward) else 0.0
+        if lateral ~= nil and forward ~= nil and Asset.AnimationSetFloatParameter(entity, lateralParameter, lateral) and Asset.AnimationSetFloatParameter(entity, forwardParameter, forward) and Asset.AnimationSetFloatParameter(entity, magnitudeParameter, magnitude) then
+            PreviewSession.SetInput("lateral", lateral)
+            PreviewSession.SetInput("forward", forward)
+            PreviewSession.SetInput("magnitude", magnitude)
+            SetStatus(string.format("2D input %.2f, %.2f", lateral, forward))
+        else
+            SetStatus("2D write rejected")
+        end
+    elseif speedParameter ~= nil and Asset.AnimationSetFloatParameter(entity, speedParameter, value) then
+        PreviewSession.SetInput("speed", value)
+        SetStatus(string.format("controller speed %.2f", value))
+    else
+        SetStatus("speed write rejected")
+    end
 end
 speedBtn:SetOnMouseUp(function()
-    local value = tonumber(speedInput.text)
-    if value ~= nil or controllerGraphMode == "blend2d" then SetControllerSpeed(value or 0.0) else SetStatus("speed must be numeric") end
+    local value = tonumber(speedInput:GetText())
+    if value ~= nil or controllerGraphMode == "blend2d" or controllerGraphMode == "ik" then SetControllerSpeed(value or 0.0) else SetStatus("input must be numeric") end
 end)
 idleBtn:SetOnMouseUp(function() speedInput:SetText("0.0"); SetControllerSpeed(0.0) end)
 walkBtn:SetOnMouseUp(function() speedInput:SetText("1.0"); SetControllerSpeed(1.0) end)
 runBtn:SetOnMouseUp(function() speedInput:SetText("3.0"); SetControllerSpeed(3.0) end)
 skeletonBtn:SetOnMouseUp(function()
     skeletonVisible = not skeletonVisible
-    SetCVar("animationDebugSkeletonPath", skeletonInput.text)
-    SetCVar("animationDebugSkeletonAxes", 1)
-    SetCVar("animationDebugSkeletonEnabled", skeletonVisible and 1 or 0)
+    SetCVar("animationDebugSkeletonPath", skeletonInput:GetText())
+    SetCVar("animationDebugSkeletonAxes", 1i)
+    SetCVar("animationDebugSkeletonEnabled", skeletonVisible and 1i or 0i)
     RefreshButtons()
 end)
+graphBtn:SetOnMouseUp(function() EditorRegistry.Toggle("AnimationGraph") end)
 
 local refreshGeneration = 0
 local function BeginStateRefresh()
@@ -492,6 +565,110 @@ end
 
 function methods:IsVisible()
     return windowPanel:IsVisible()
+end
+
+function methods:SpawnController(mode)
+    SpawnController(mode or "states")
+end
+
+function methods:SetSpeed(value)
+    speedInput:SetText(tostring(value))
+    SetControllerSpeed(value)
+end
+
+function methods:SetDirection(lateral, forward)
+    speedInput:SetText(string.format("%.3f,%.3f", lateral, forward))
+    SetControllerSpeed(0.0)
+end
+
+function methods:SetIKGoal(x, y, z)
+    if entity == nil or ikGoalParameter == nil then return false end
+    speedInput:SetText(string.format("%.3f,%.3f,%.3f", x, y, z))
+    return Asset.AnimationSetFloat3Parameter(entity, ikGoalParameter, x, y, z)
+end
+
+function methods:SetHeadGoal(x, y, z)
+    if entity == nil or headGoalParameter == nil then return false end
+    return Asset.AnimationSetFloat3Parameter(entity, headGoalParameter, x, y, z)
+end
+
+function methods:SetLayerWeights(upperBodyWeight, additiveWeight)
+    if entity == nil or upperBodyWeightParameter == nil or additiveWeightParameter == nil then return false end
+    return Asset.AnimationSetFloatParameter(entity, upperBodyWeightParameter, upperBodyWeight) and Asset.AnimationSetFloatParameter(entity, additiveWeightParameter, additiveWeight)
+end
+
+function methods:QueueAction(name, payload)
+    return entity ~= nil and Asset.AnimationQueueAction(entity, name, payload or 0)
+end
+
+function methods:AttachModel(modelPath, semantic, translation, rotationDegrees, uniformScale)
+    if entity == nil then return nil end
+    local child = Asset.SpawnModelAtWorldOrigin(modelPath)
+    if child == nil then return nil end
+    table.insert(attachmentEntities, child)
+    local generation = operationGeneration
+    local parent = entity
+    local offset = translation or vec.New(0.0, 0.0, 0.0)
+    local rotation = rotationDegrees or vec.New(0.0, 0.0, 0.0)
+    local scale = uniformScale or 1.0
+    local function BindWhenReady(attempt)
+        if generation ~= operationGeneration or entity ~= parent then return end
+        if Asset.BindModelAttachment(parent, child, skeletonInput:GetText(), semantic, offset.x, offset.y, offset.z, rotation.x, rotation.y, rotation.z, scale) then
+            SetStatus("attached " .. modelPath .. " to " .. semantic)
+        elseif attempt < 240 then
+            Scheduler.AfterSeconds(0.05, function() BindWhenReady(attempt + 1) end)
+        else
+            SetStatus("attachment timed out: " .. modelPath)
+        end
+    end
+    BindWhenReady(1)
+    return child
+end
+
+function methods:DestroyAttachment(child)
+    if child == nil then return end
+    for index, attachmentEntity in attachmentEntities do
+        if attachmentEntity == child then
+            table.remove(attachmentEntities, index)
+            break
+        end
+    end
+    Asset.DestroyAnimatedModel(child)
+end
+
+function methods:UpdateSecondaryGrip(child, localPoint)
+    if entity == nil or child == nil or leftGripGoalParameter == nil or leftGripWeightParameter == nil then return false end
+    local point = localPoint or vec.New(0.0, 0.0, 0.0)
+    local goal = Asset.GetModelAttachmentLocalPoint(child, point.x, point.y, point.z)
+    if goal == nil then return false end
+    return Asset.AnimationSetFloat3Parameter(entity, leftGripGoalParameter, goal.x, goal.y, goal.z) and Asset.AnimationSetFloatParameter(entity, leftGripWeightParameter, 1.0)
+end
+
+function methods:SetAttachmentTransform(child, translation, rotationDegrees, uniformScale)
+    if child == nil then return false end
+    return Asset.SetModelAttachmentTransform(child, translation.x, translation.y, translation.z, rotationDegrees.x, rotationDegrees.y, rotationDegrees.z, uniformScale)
+end
+
+function methods:GetAttachmentGripDiagnostics(child, primaryPoint, secondaryPoint, handleAxis, bladeEdgeAxis, rightGripAxis, draw, axisLength, positionTolerance, angleTolerance)
+    if child == nil then return nil end
+    return Asset.GetModelAttachmentGripDiagnostics(child, primaryPoint.x, primaryPoint.y, primaryPoint.z, secondaryPoint.x, secondaryPoint.y, secondaryPoint.z, handleAxis.x, handleAxis.y, handleAxis.z, bladeEdgeAxis.x, bladeEdgeAxis.y, bladeEdgeAxis.z, rightGripAxis.x, rightGripAxis.y, rightGripAxis.z, draw, axisLength, positionTolerance, angleTolerance)
+end
+
+function methods:SetDebugView(skeleton, weights, attachments, ik)
+    skeletonVisible = skeleton
+    SetCVar("animationDebugSkeletonEnabled", skeleton and 1i or 0i)
+    SetCVar("animationDebugSkeletonWeights", weights and 1i or 0i)
+    SetCVar("animationDebugAttachments", attachments and 1i or 0i)
+    SetCVar("animationDebugIK", ik and 1i or 0i)
+    RefreshButtons()
+end
+
+function methods:GetEntity()
+    return entity
+end
+
+function methods:DestroyActor()
+    DestroyActor()
 end
 
 closeBtn:SetOnMouseUp(function() methods:Hide() end)
