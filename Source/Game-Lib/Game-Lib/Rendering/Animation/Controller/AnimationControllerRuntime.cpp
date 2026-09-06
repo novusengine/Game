@@ -79,6 +79,10 @@ namespace Animation
             Fail("queueCapacity", std::numeric_limits<u32>::max(), "controller queue capacity exceeds 64");
 
         auto graph = std::make_shared<CompiledAnimationGraph>();
+        if (source.maximumPoseDomains == 0 || source.maximumPoseDomains > 4)
+            Fail("maximumPoseDomains", std::numeric_limits<u32>::max(), "pose domain capacity must be between one and four");
+        graph->maximumPoseDomains = source.maximumPoseDomains;
+        graph->retargetChainCorrection = source.retargetChainCorrection;
         graph->maximumSnapshotJoints = source.maximumSnapshotJoints;
         graph->commandCapacity = source.commandCapacity;
         graph->actionCapacity = source.actionCapacity;
@@ -226,6 +230,7 @@ namespace Animation
             compiled.maskAssetID = layer.maskAssetID;
             compiled.durationMicroseconds = layer.durationMicroseconds;
             compiled.type = layer.type;
+            compiled.composeInSourceDomain = layer.composeInSourceDomain;
             compiled.constantWeight = layer.constantWeight;
             compiled.executionOrder = layer.executionOrder;
             compiled.emitEvents = layer.emitEvents;
@@ -418,6 +423,7 @@ namespace Animation
             Append(graph->controllerProgram, value.constantWeight);
             Append(graph->controllerProgram, value.executionOrder);
             Append(graph->controllerProgram, static_cast<u8>(value.emitEvents ? 1 : 0));
+            Append(graph->controllerProgram, static_cast<u8>(value.composeInSourceDomain ? 1 : 0));
         }
         for (const CompiledGraphActionSlot& value : graph->actionSlots)
         {
@@ -456,7 +462,8 @@ namespace Animation
             hash ^= byte;
             hash *= 0x100000001B3ull;
         }
-        graph->contentHash = hash;
+        graph->contentHash = XXHash64::hash(&graph->maximumPoseDomains, sizeof(graph->maximumPoseDomains), hash);
+        graph->contentHash = XXHash64::hash(&graph->retargetChainCorrection, sizeof(graph->retargetChainCorrection), graph->contentHash);
         result.graph = std::move(graph);
         return result;
     }
@@ -932,12 +939,12 @@ namespace Animation
         return applied;
     }
 
-    void AnimationControllerStore::Advance(f64 deltaSeconds)
+    void AnimationControllerStore::Advance(f64 deltaSeconds, bool applyTimeScale)
     {
         _updating = true;
         constexpr f64 fixedStepSeconds = 1.0 / 60.0;
         constexpr u64 fixedStepMicroseconds = 16667;
-        _accumulatorSeconds += std::max(deltaSeconds, 0.0) * std::clamp(static_cast<f64>(CVAR_AnimationControllerTimeScale.Get()), 0.0, 4.0);
+        _accumulatorSeconds += std::max(deltaSeconds, 0.0) * (applyTimeScale ? std::clamp(static_cast<f64>(CVAR_AnimationControllerTimeScale.Get()), 0.0, 4.0) : 1.0);
         const u32 ticks = static_cast<u32>(std::floor((_accumulatorSeconds + 1.0e-12) / fixedStepSeconds));
         _accumulatorSeconds -= static_cast<f64>(ticks) * fixedStepSeconds;
         for (Slot& slot : _slots)
@@ -1417,6 +1424,7 @@ namespace Animation
             recipeLayer.maskAssetID = layer.maskAssetID;
             recipeLayer.weight = layerWeight;
             recipeLayer.type = layer.type;
+            recipeLayer.composeInSourceDomain = layer.composeInSourceDomain;
             recipeLayer.executionOrder = layer.executionOrder;
             slot->activeLayerWeights[slot->activeLayers++] = layerWeight;
         }

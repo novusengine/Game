@@ -1,4 +1,5 @@
 #include "SkeletonDebugDraw.h"
+#include "Game-Lib/Rendering/Animation/Pose/AnimationClipSampler.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/EditorSelection.h"
@@ -20,6 +21,8 @@
 
 namespace
 {
+    AutoCVar_String CVAR_AnimationDebugReferenceClip(CVarCategory::Client | CVarCategory::Rendering, "animationDebugReferenceClip", "optional target-Skeleton golden clip for exact-time position/orientation error heatmap", "", CVarFlags::DoNotSave);
+    AutoCVar_Int CVAR_AnimationDebugRigFamily(CVarCategory::Client | CVarCategory::Rendering, "animationDebugRigFamily", "family overlay bits: 1 canonical pose, 2 mapping links, 4 reference axes, 8 propagation", 0, CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonEnabled(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonEnabled", "draw the selected entity's Animation V2 skeleton", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_String CVAR_AnimationDebugSkeletonPath(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonPath", "mounted PACT path of the Animation V2 skeleton to inspect", "character.skeleton", CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDebugSkeletonPose(CVarCategory::Client | CVarCategory::Rendering, "animationDebugSkeletonPose", "Animation V2 debug pose: 0 rest, 1 current with rest fallback", 0, CVarFlags::DoNotSave);
@@ -94,6 +97,7 @@ namespace Animation
         }
         if (!skeletonEnabled || !EnsureSkeletonLoaded() || !EvaluateRequestedPose())
             return;
+        EvaluateReference();
 
         mat4x4 worldTransform(1.0f);
         if (CVAR_AnimationDebugSkeletonUseSelection.Get() != 0)
@@ -109,6 +113,8 @@ namespace Animation
             }
         }
         DrawSkeleton(worldTransform);
+        if (CVAR_AnimationDebugRigFamily.Get() != 0)
+            DrawFamily(worldTransform);
         if (!_reportedReady)
         {
             _reportedReady = true;
@@ -116,9 +122,13 @@ namespace Animation
         }
     }
 
-    void SkeletonDebugDraw::SetCurrentLocalPose(std::span<const FileFormat::Animation::LocalTransform> localPose)
+    bool SkeletonDebugDraw::SetCurrentLocalPose(FileFormat::AssetID skeletonAssetID, std::span<const FileFormat::Animation::LocalTransform> localPose, u64 sampleTimeMicroseconds)
     {
+        if (CVAR_AnimationDebugSkeletonEnabled.Get() == 0 || skeletonAssetID != Util::AssetPath::Hash(NormalizeSkeletonPath(CVAR_AnimationDebugSkeletonPath.Get())))
+            return false;
         _currentLocalPose.assign(localPose.begin(), localPose.end());
+        _sampleTimeMicroseconds = sampleTimeMicroseconds;
+        return true;
     }
 
     void SkeletonDebugDraw::SetJointWeights(std::span<const f32> weights)
@@ -202,6 +212,102 @@ namespace Animation
         return true;
     }
 
+    void SkeletonDebugDraw::EvaluateReference()
+    {
+        _referenceErrors.clear();
+        const std::string path = NormalizeSkeletonPath(CVAR_AnimationDebugReferenceClip.Get());
+        if (path != _referencePath)
+        {
+            if (_referenceHandle) _assets->Release(_referenceHandle);
+            _referenceHandle = {};
+            _referencePath = path;
+        }
+        if (path.empty() || _stats.currentPoseFallback)
+            return;
+        if (!_referenceHandle)
+            _referenceHandle = _assets->LoadAnimationClip(Util::AssetPath::Hash(path));
+        const auto* reference = _assets->Get(_referenceHandle);
+        if (!reference || reference->root.sourcePoseDomainType != FileFormat::Animation::PoseDomainType::Skeleton || reference->root.sourcePoseDomainAssetID != _skeletonPathID)
+            return;
+        std::vector<FileFormat::Animation::LocalTransform> sampled(_skeleton->joints.size());
+        if (SampleClipLocalPose(*reference, *_skeleton, static_cast<f64>(_sampleTimeMicroseconds) / 1000000.0, true, sampled) != ClipSampleError::None)
+            return;
+        const auto expected = EvaluatePose(_skeleton->joints, sampled);
+        if (!expected || _currentLocalPose.size() != sampled.size())
+            return;
+        _referenceErrors.resize(sampled.size());
+        for (u32 index = 0; index < sampled.size(); ++index)
+        {
+            const f32 positionError = glm::length(vec3(expected.modelTransforms[index][3]) - vec3(_evaluatedPose.modelTransforms[index][3]));
+            const f32 angularError = glm::degrees(2.0f * std::acos(std::clamp(std::abs(glm::dot(sampled[index].rotation, _currentLocalPose[index].rotation)), 0.0f, 1.0f)));
+            _referenceErrors[index] = std::max(positionError / 0.001f, angularError / 0.1f);
+            _stats.maximumReferencePositionError = std::max(_stats.maximumReferencePositionError, positionError);
+            _stats.maximumReferenceAngleError = std::max(_stats.maximumReferenceAngleError, angularError);
+        }
+        _stats.referenceCompared = true;
+    }
+
+    void SkeletonDebugDraw::DrawFamily(const mat4x4& worldTransform)
+    {
+        if (_skeleton->root.rigFamilyAssetID == FileFormat::INVALID_ASSET_ID)
+            return;
+        if (!_familyHandle)
+        {
+            _familyHandle = _assets->LoadRigFamily(_skeleton->root.rigFamilyAssetID);
+            const auto* family = _assets->Get(_familyHandle);
+            if (!family || !_familyBinding.Initialize(*_skeleton, *family))
+            {
+                _assets->Release(_familyHandle);
+                _familyHandle = {};
+                return;
+            }
+        }
+        const auto* family = _assets->Get(_familyHandle);
+        if (!family)
+            return;
+        std::vector<FileFormat::Animation::LocalTransform> concrete, canonical(family->joints.size());
+        if (CVAR_AnimationDebugSkeletonPose.Get() != 0 && _currentLocalPose.size() == _skeleton->joints.size())
+            concrete = _currentLocalPose;
+        else
+            for (const auto& joint : _skeleton->joints)
+                concrete.push_back(joint.restTransform);
+        if (!_familyBinding.ToFamily(concrete, canonical))
+            return;
+        std::vector<FileFormat::Animation::SkeletonJoint> joints(family->joints.size());
+        for (u32 index = 0; index < joints.size(); ++index)
+            joints[index].parentJointIndex = family->joints[index].parentJointIndex;
+        const auto pose = EvaluatePose(joints, canonical);
+        if (!pose)
+            return;
+        const i32 mode = CVAR_AnimationDebugRigFamily.Get();
+        const mat4x4 displaced = glm::translate(worldTransform, vec3(2.0f, 0, 0));
+        for (u32 index = 0; index < joints.size(); ++index)
+        {
+            const auto& transform = pose.modelTransforms[index];
+            const vec3 position = WorldTransformPoint(displaced, transform[3]);
+            const bool required = (family->joints[index].flags & FileFormat::Animation::RigFamilyJointFlags_Required) != 0;
+            if ((mode & 1) != 0 && joints[index].parentJointIndex >= 0)
+                EmitLine(WorldTransformPoint(displaced, pose.modelTransforms[joints[index].parentJointIndex][3]), position, required ? Color::Cyan : Color::PastelPurple);
+            if ((mode & 4) != 0)
+                for (u32 axis = 0; axis < 3; ++axis)
+                    EmitLine(position, position + glm::normalize(WorldTransformVector(displaced, transform[axis])) * 0.07f, axis == 0 ? Color::Red : (axis == 1 ? Color::Green : Color::Blue));
+        }
+        if ((mode & 1) != 0)
+            for (const auto& chain : family->chains)
+                for (u32 index = 1; index < chain.numJointIndices; ++index)
+                {
+                    const u32 from = family->chainJointIndices[chain.jointIndexOffset + index - 1];
+                    const u32 to = family->chainJointIndices[chain.jointIndexOffset + index];
+                    EmitLine(WorldTransformPoint(displaced, pose.modelTransforms[from][3]), WorldTransformPoint(displaced, pose.modelTransforms[to][3]), Color::Yellow);
+                }
+        if ((mode & 2) != 0)
+            for (const auto& binding : _skeleton->familyBindings)
+                EmitLine(WorldTransformPoint(worldTransform, _evaluatedPose.modelTransforms[binding.skeletonJointIndex][3]), WorldTransformPoint(displaced, pose.modelTransforms[binding.familyJointIndex][3]), Color::PastelBlue);
+        if ((mode & 8) != 0)
+            for (const auto& rule : _skeleton->propagationRules)
+                EmitLine(WorldTransformPoint(worldTransform, _evaluatedPose.modelTransforms[rule.sourceJointIndex][3]), WorldTransformPoint(worldTransform, _evaluatedPose.modelTransforms[rule.targetJointIndex][3]), Color::Magenta);
+    }
+
     void SkeletonDebugDraw::DrawSkeleton(const mat4x4& worldTransform)
     {
         const f32 radius = std::max(CVAR_AnimationDebugSkeletonJointRadius.GetFloat(), 0.0001f);
@@ -226,6 +332,8 @@ namespace Animation
             }
             if (static_cast<i32>(jointIndex) == selectedJoint)
                 color = Color::Yellow;
+            if (_referenceErrors.size() == _skeleton->joints.size())
+                color = _referenceErrors[jointIndex] <= 1.0f ? Color::Green : (_referenceErrors[jointIndex] <= 2.0f ? Color::Yellow : Color::Red);
 
             if (joint.parentJointIndex >= 0)
             {
@@ -382,6 +490,13 @@ namespace Animation
 
     void SkeletonDebugDraw::ReleaseSkeleton()
     {
+        if (_referenceHandle && _assets) _assets->Release(_referenceHandle);
+        _referenceHandle = {};
+        _referencePath.clear();
+        if (_familyHandle && _assets)
+            _assets->Release(_familyHandle);
+        _familyHandle = {};
+        _familyBinding = {};
         if (_skeletonHandle && _assets)
             _assets->Release(_skeletonHandle);
         _skeletonHandle = {};

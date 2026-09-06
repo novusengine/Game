@@ -16,6 +16,7 @@ namespace Animation
         std::span<const FileFormat::Animation::AnimationEvent> events;
         std::span<const u8> eventPayloadBytes;
         bool looping = false;
+        FileFormat::AssetID compatibleFamilyAssetID = FileFormat::INVALID_ASSET_ID;
     };
 
     enum class AnimationSlotResolution : u8

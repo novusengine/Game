@@ -18,7 +18,11 @@ namespace
     }
 
     template <typename Result>
-    Result ReadRigFamily(std::span<const u8> payload) { return AnimationLoading::AnimationAssetReader::ReadRigFamily(payload); }
+    Result ReadRigFamily(std::span<const u8> payload)
+    {
+        Result result = AnimationLoading::AnimationAssetReader::ReadRigFamily(payload);
+        return result && AssetLoading::ShouldPerformFullValidation() ? AnimationLoading::AnimationAssetValidator::Validate(std::move(result)) : result;
+    }
     AnimationLoading::SkeletonAssetReadResult ReadSkeleton(std::span<const u8> payload)
     {
         AnimationLoading::SkeletonAssetReadResult result = AnimationLoading::AnimationAssetReader::ReadSkeleton(payload);

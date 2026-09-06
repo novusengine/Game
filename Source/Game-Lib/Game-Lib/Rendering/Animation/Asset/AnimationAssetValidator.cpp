@@ -121,6 +121,109 @@ namespace
 
 namespace AnimationLoading
 {
+    RigFamilyAssetReadResult AnimationAssetValidator::Validate(RigFamilyAssetReadResult result)
+    {
+        if (!result)
+            return result;
+        const auto& family = result.view;
+        if (family.root.flags != 0 || family.root.reserved != 0 || family.joints.empty())
+            return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidValue, "RigFamilyAsset.root");
+        u32 roots = 0;
+        for (u32 index = 0; index < family.joints.size(); ++index)
+        {
+            const auto& joint = family.joints[index];
+            if (joint.semanticID == 0 || joint.semanticID == FileFormat::INVALID_ASSET_ID || joint.parentJointIndex < -1 || joint.parentJointIndex >= static_cast<i32>(index))
+                return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidValue, "RigFamily.joint", index);
+            if (!IsValidTransform(joint.canonicalTransform) || (joint.flags & ~Animation::RigFamilyJointFlags_Required) != 0)
+                return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidValue, "RigFamily.canonicalTransform", index);
+            roots += joint.parentJointIndex == -1;
+            for (u32 previous = 0; previous < index; ++previous)
+                if (family.joints[previous].semanticID == joint.semanticID)
+                    return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidValue, "RigFamily.duplicateSemantic", index);
+        }
+        if (roots != 1)
+            return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidValue, "RigFamily.roots");
+        for (u32 index = 0; index < family.chains.size(); ++index)
+        {
+            const auto& chain = family.chains[index];
+            if (chain.semanticID == 0 || chain.numJointIndices < 2 || chain.flags != 0 || chain.reserved != 0 || !IsRangeValid(chain.jointIndexOffset, chain.numJointIndices, family.chainJointIndices.size()))
+                return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidRange, "RigFamily.chain", index);
+            for (u32 previous = 0; previous < index; ++previous)
+                if (family.chains[previous].semanticID == chain.semanticID)
+                    return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidValue, "RigFamily.duplicateChain", index);
+            i32 parent = -1;
+            for (u32 jointIndex : family.chainJointIndices.subspan(chain.jointIndexOffset, chain.numJointIndices))
+            {
+                if (jointIndex >= family.joints.size() || (parent >= 0 && family.joints[jointIndex].parentJointIndex != parent))
+                    return Fail<RigFamilyAssetReadResult>(DiagnosticCode::InvalidIndex, "RigFamily.chainJoint", index);
+                parent = static_cast<i32>(jointIndex);
+            }
+        }
+        return result;
+    }
+
+    AssetLoading::Diagnostic AnimationAssetValidator::ValidateFamilyBinding(const SkeletonAssetView& skeleton, const RigFamilyAssetView& family)
+    {
+        const auto validated = Validate(RigFamilyAssetReadResult{family, {}});
+        if (!validated)
+            return validated.diagnostic;
+        std::vector<i32> mapping(family.joints.size(), -1);
+        std::vector<bool> bound(skeleton.joints.size(), false);
+        for (const auto& binding : skeleton.familyBindings)
+        {
+            if (binding.familyJointIndex >= mapping.size() || binding.skeletonJointIndex >= skeleton.joints.size() || mapping[binding.familyJointIndex] != -1 || bound[binding.skeletonJointIndex])
+                return FailDiagnostic(DiagnosticCode::InvalidIndex, "familyBindings.mapping");
+            const auto& joint = skeleton.joints[binding.skeletonJointIndex];
+            if (joint.familyJointIndex != static_cast<i32>(binding.familyJointIndex) || !IsValidTransform(binding.skeletonToFamily) || !IsValidTransform(binding.familyToSkeleton))
+                return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.calibration");
+            const auto& forward = binding.skeletonToFamily;
+            const auto& inverse = binding.familyToSkeleton;
+            if (glm::length(forward.translation) > 0.00001f || glm::length(inverse.translation) > 0.00001f || glm::length(forward.scale * inverse.scale - vec3(1.0f)) > 0.0001f || std::abs(glm::dot(forward.rotation * inverse.rotation, quat(1, 0, 0, 0))) < 0.9999f || forward.scale.x <= 0 || forward.scale.y <= 0 || forward.scale.z <= 0)
+                return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.inverseCalibration");
+            mapping[binding.familyJointIndex] = static_cast<i32>(binding.skeletonJointIndex);
+            bound[binding.skeletonJointIndex] = true;
+        }
+        for (u32 index = 0; index < skeleton.joints.size(); ++index)
+            if ((skeleton.joints[index].familyJointIndex >= 0) != bound[index] || skeleton.joints[index].parentJointIndex >= static_cast<i32>(index) || skeleton.joints[index].parentJointIndex < -1)
+                return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.skeletonHierarchy", index);
+        for (u32 index = 0; index < family.joints.size(); ++index)
+        {
+            const auto& joint = family.joints[index];
+            if (mapping[index] == -1)
+            {
+                if ((joint.flags & Animation::RigFamilyJointFlags_Required) != 0)
+                    return FailDiagnostic(DiagnosticCode::MissingRequiredReference, "familyBindings.requiredJoint", index);
+                continue;
+            }
+            const i32 expectedParent = joint.parentJointIndex < 0 ? -1 : mapping[joint.parentJointIndex];
+            if ((joint.parentJointIndex >= 0 && expectedParent < 0) || skeleton.joints[mapping[index]].parentJointIndex != expectedParent)
+                return FailDiagnostic(DiagnosticCode::IncompatibleDomain, "familyBindings.logicalParent", index);
+        }
+        std::vector<bool> written(skeleton.joints.size(), false);
+        for (const auto& rule : skeleton.propagationRules)
+        {
+            if (rule.type > Animation::SkeletonPropagationType::DistributeRotation || rule.flags != 0 || !std::isfinite(rule.weight) || rule.weight < 0 || rule.weight > 1 || !IsValidTransform(rule.offsetTransform))
+                return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.propagationRule");
+            if (rule.sourceJointIndex >= skeleton.joints.size() || rule.targetJointIndex >= skeleton.joints.size() || rule.sourceJointIndex == rule.targetJointIndex || written[rule.targetJointIndex] || skeleton.joints[rule.targetJointIndex].familyJointIndex >= 0)
+                return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.propagationTarget");
+            for (const auto& later : skeleton.propagationRules)
+                if (later.targetJointIndex == rule.sourceJointIndex && (!written[rule.sourceJointIndex] || later.executionOrder >= rule.executionOrder))
+                    return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.propagationOrder");
+            if (rule.type == Animation::SkeletonPropagationType::CopyModelTransform)
+                for (i32 start : {static_cast<i32>(rule.sourceJointIndex), skeleton.joints[rule.targetJointIndex].parentJointIndex})
+                    for (i32 ancestor = start; ancestor >= 0; ancestor = skeleton.joints[ancestor].parentJointIndex)
+                    {
+                        if (ancestor == rule.targetJointIndex)
+                            return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.propagationHierarchyCycle");
+                        for (const auto& dependency : skeleton.propagationRules)
+                            if (dependency.targetJointIndex == ancestor && !written[ancestor])
+                                return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.propagationHierarchyOrder");
+                    }
+            written[rule.targetJointIndex] = true;
+        }
+        return {};
+    }
+
     SkeletonAssetReadResult AnimationAssetValidator::Validate(SkeletonAssetReadResult result)
     {
         const Animation::SkeletonAsset& root = result.view.root;

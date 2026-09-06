@@ -1,4 +1,5 @@
 #include "AssetHandler.h"
+#include "Game-Lib/Rendering/Animation/Debug/SkeletonDebugDraw.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/Model.h"
@@ -671,7 +672,23 @@ namespace Scripting::Asset
     static PreviewAnimationGraph CompilePreviewLocomotionGraph(std::string_view mode)
     {
         Animation::EditableAnimationGraph graph;
-        if (mode == "ik" || mode == "ik_showcase")
+        if (mode == "retarget_layers")
+        {
+            graph.parameters = {{"upperBodyWeight", FileFormat::Animation::GraphValueType::Float}};
+            graph.states = {{1, Animation::HashAnimationSlot("WalkForward"), 60000000}};
+            graph.states[0].displayName = "Renamed rig / walk";
+            graph.entryStateGUID = 1;
+            Animation::EditableGraphLayer layer;
+            layer.sourceGUID = 2;
+            layer.clipSlotSemanticID = Animation::HashAnimationSlot("UpperBody");
+            layer.maskAssetID = Util::AssetPath::Hash("animation/retarget/upper.bonemask");
+            layer.durationMicroseconds = 60000000;
+            layer.weightParameter = "upperBodyWeight";
+            layer.displayName = "Reference rig / running arms";
+            graph.layers = {layer};
+            graph.displayName = "Cross-domain masked layer";
+        }
+        else if (mode == "ik" || mode == "ik_showcase")
         {
             Animation::EditableGraphParameter goal;
             goal.name = "rightHandGoal";
@@ -945,7 +962,19 @@ namespace Scripting::Asset
             zenith->Push(false);
             return 1;
         }
-        const Animation::ControllerPlaybackHandle controller = deformation->CreateControllerPlayback(skeleton, animationSet, *skeletonView, *setView, graph.compiled, entityValue);
+        FileFormat::AssetID retargetProfileAssetID = FileFormat::INVALID_ASSET_ID;
+        if (zenith->IsString(5))
+        {
+            std::string profilePath;
+            if (!ResolveModelAssetPath(zenith->Get<const char*>(5), pactStorage, profilePath, retargetProfileAssetID))
+            {
+                assets.Release(skeleton);
+                assets.Release(animationSet);
+                zenith->Push(false);
+                return 1;
+            }
+        }
+        const Animation::ControllerPlaybackHandle controller = deformation->CreateControllerPlayback(skeleton, animationSet, *skeletonView, *setView, graph.compiled, entityValue, retargetProfileAssetID);
         const Animation::PoseSourceHandle poseSource = deformation->GetControllerPoseSource(controller);
         if (!controller || !poseSource)
         {
@@ -980,6 +1009,18 @@ namespace Scripting::Asset
             return nullptr;
         binding = found->second;
         return gameRenderer->GetModelRenderSystem()->GetDeformationSystem();
+    }
+
+    i32 AssetHandler::StepAnimationControllers(Zenith* zenith)
+    {
+        const f64 delta = zenith->CheckVal<f64>(1);
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        auto* deformation = renderer ? renderer->GetModelRenderSystem()->GetDeformationSystem() : nullptr;
+        const bool valid = deformation && std::isfinite(delta) && delta >= 0.0 && delta <= 0.1;
+        if (valid)
+            deformation->StepPreviewControllers(delta);
+        zenith->Push(valid);
+        return 1;
     }
 
     i32 AssetHandler::ResolveAnimationParameter(Zenith* zenith)
@@ -1791,6 +1832,14 @@ namespace Scripting::Asset
         zenith->AddTableField("animationGraphBlendedSamples", controllerStats.blendedSamples);
         zenith->AddTableField("animationGraphSnapshotBlends", controllerStats.snapshotBlends);
         zenith->AddTableField("animationGraphFailures", controllerStats.failures);
+        zenith->AddTableField("animationFamilyConversions", controllerStats.familyConversions);
+        zenith->AddTableField("animationCachedPoseHits", controllerStats.cachedPoseHits);
+        zenith->AddTableField("animationActiveDomains", controllerStats.lastActiveDomains);
+        zenith->AddTableField("animationPeakActiveDomains", controllerStats.peakActiveDomains);
+        const auto& referenceStats = ServiceLocator::GetGameRenderer()->GetSkeletonDebugDraw()->GetStats();
+        zenith->AddTableField("animationReferenceCompared", referenceStats.referenceCompared);
+        zenith->AddTableField("animationReferencePositionError", referenceStats.maximumReferencePositionError);
+        zenith->AddTableField("animationReferenceAngleError", referenceStats.maximumReferenceAngleError);
         zenith->AddTableField("animationGraphTransitions", controllerCoreStats.transitions);
         zenith->AddTableField("animationGraphInterruptions", controllerCoreStats.interruptions);
         zenith->AddTableField("animationGraphSnapshots", controllerCoreStats.snapshots);

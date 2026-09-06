@@ -35,6 +35,7 @@ namespace Scripting::Asset
         static i32 AnimationSetPlaybackRate(Zenith* zenith);
         static i32 GetAnimationState(Zenith* zenith);
         static i32 BindAnimationController(Zenith* zenith);
+        static i32 StepAnimationControllers(Zenith* zenith);
         static i32 ResolveAnimationParameter(Zenith* zenith);
         static i32 AnimationSetFloatParameter(Zenith* zenith);
         static i32 AnimationSetFloat3Parameter(Zenith* zenith);
@@ -76,6 +77,7 @@ namespace Scripting::Asset
         { "AnimationSetPlaybackRate", AssetHandler::AnimationSetPlaybackRate, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetAnimationState", AssetHandler::GetAnimationState, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BindAnimationController", AssetHandler::BindAnimationController, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "StepAnimationControllers", AssetHandler::StepAnimationControllers, Scripting::LuaMethodFlags::DeveloperOnly },
         { "ResolveAnimationParameter", AssetHandler::ResolveAnimationParameter, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationSetFloatParameter", AssetHandler::AnimationSetFloatParameter, Scripting::LuaMethodFlags::DeveloperOnly },
         { "AnimationSetFloat3Parameter", AssetHandler::AnimationSetFloat3Parameter, Scripting::LuaMethodFlags::DeveloperOnly },

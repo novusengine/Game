@@ -47,7 +47,7 @@ namespace Animation
             return ClipSampleError::PoseSizeMismatch;
 
         for (u32 jointIndex = 0; jointIndex < skeleton.joints.size(); ++jointIndex)
-            outLocalPose[jointIndex] = skeleton.joints[jointIndex].restTransform;
+            outLocalPose[jointIndex] = (clip.root.flags & FileFormat::Animation::AnimationClipFlags_Additive) != 0 ? FileFormat::Animation::LocalTransform{} : skeleton.joints[jointIndex].restTransform;
 
         const ClipSampleLocation location = MapClipTime(clip.root, timeSeconds, looping);
         for (const FileFormat::Animation::AnimationTrack& track : clip.tracks)

@@ -8,6 +8,8 @@ namespace AnimationLoading
     class AnimationAssetValidator
     {
       public:
+        static RigFamilyAssetReadResult Validate(RigFamilyAssetReadResult result);
+        static AssetLoading::Diagnostic ValidateFamilyBinding(const SkeletonAssetView& skeleton, const RigFamilyAssetView& family);
         static SkeletonAssetReadResult Validate(SkeletonAssetReadResult result);
         static AnimationClipAssetReadResult Validate(AnimationClipAssetReadResult result);
         static AnimationSetAssetReadResult Validate(AnimationSetAssetReadResult result);

@@ -65,7 +65,7 @@ namespace Animation
                 const auto clip = std::find_if(clips.begin(), clips.end(), [selected](const AnimationClipDomainRecord& value) { return value.clipAssetID == selected->animationClipAssetID; });
                 if (clip == clips.end())
                     return {.clipAssetID = selected->animationClipAssetID, .resolvedSemanticID = slot.semanticID, .stableVariationID = selected->stableVariationID, .slotIndex = slotIndex, .fallbackDepth = fallbackDepth, .resolution = AnimationSlotResolution::MissingClip};
-                if (clip->domainType != set.root.declaredPoseDomainType || clip->domainAssetID != set.root.declaredPoseDomainAssetID)
+                if ((clip->domainType != set.root.declaredPoseDomainType || clip->domainAssetID != set.root.declaredPoseDomainAssetID) && !(set.root.declaredPoseDomainType == FileFormat::Animation::PoseDomainType::RigFamily && set.root.declaredPoseDomainAssetID != FileFormat::INVALID_ASSET_ID && clip->compatibleFamilyAssetID == set.root.declaredPoseDomainAssetID))
                     return {.clipAssetID = selected->animationClipAssetID, .resolvedSemanticID = slot.semanticID, .stableVariationID = selected->stableVariationID, .slotIndex = slotIndex, .fallbackDepth = fallbackDepth, .resolution = AnimationSlotResolution::IncompatibleDomain};
                 return {selected->animationClipAssetID, slot.semanticID, selected->stableVariationID, slotIndex, fallbackDepth, fallbackDepth == 0 ? AnimationSlotResolution::Resolved : AnimationSlotResolution::ResolvedFallback};
             }

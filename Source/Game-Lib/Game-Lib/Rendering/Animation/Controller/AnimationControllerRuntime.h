@@ -100,6 +100,7 @@ namespace Animation
         u16 executionOrder = 0;
         std::string displayName;
         bool emitEvents = false;
+        bool composeInSourceDomain = false;
     };
 
     struct EditableGraphActionSlot
@@ -151,6 +152,8 @@ namespace Animation
         std::vector<EditableGraphIKOperation> ikOperations;
         u64 entryStateGUID = 0;
         u32 maximumSnapshotJoints = 256;
+        u32 maximumPoseDomains = 4;
+        bool retargetChainCorrection = false;
         u32 commandCapacity = 8;
         u32 actionCapacity = 8;
         std::string displayName;
@@ -210,6 +213,7 @@ namespace Animation
         f32 constantWeight = 1.0f;
         u16 executionOrder = 0;
         bool emitEvents = false;
+        bool composeInSourceDomain = false;
     };
 
     struct CompiledGraphActionSlot
@@ -251,6 +255,8 @@ namespace Animation
         u64 contentHash = 0;
         u32 parameterBytes = 0;
         u32 maximumSnapshotJoints = 0;
+        u32 maximumPoseDomains = 4;
+        bool retargetChainCorrection = false;
         u32 commandCapacity = 0;
         u32 actionCapacity = 0;
         u16 entryState = 0;
@@ -378,6 +384,7 @@ namespace Animation
         f32 weight = 0.0f;
         AnimationLayerType type = AnimationLayerType::Override;
         u16 executionOrder = 0;
+        bool composeInSourceDomain = false;
     };
 
     struct PoseRecipeIKOperation
@@ -486,7 +493,7 @@ namespace Animation
         bool CancelAction(AnimationActionToken token);
         bool GetActionStatus(AnimationActionToken token, AnimationActionStatus& status) const;
         u32 ApplyBatchInputs(std::span<const AnimationControllerBatchInput> inputs);
-        void Advance(f64 deltaSeconds);
+        void Advance(f64 deltaSeconds, bool applyTimeScale = true);
         bool Seek(AnimatorHandle handle, u64 timeMicroseconds, AnimationSeekEventPolicy eventPolicy = AnimationSeekEventPolicy::ResetWithoutReplay);
         PoseRecipe RequestPose(AnimatorHandle handle, const AnimationLoading::AnimationSetAssetView& set, std::span<const AnimationClipDomainRecord> clips, std::span<const FileFormat::Animation::LocalTransform> continuityPose = {});
         bool GetState(AnimatorHandle handle, AnimationControllerState& state) const;

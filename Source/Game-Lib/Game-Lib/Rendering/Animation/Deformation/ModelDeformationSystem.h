@@ -105,8 +105,9 @@ namespace Animation
         PoseSourceHandle GetPlaybackPoseSource(DirectPlaybackHandle handle) const { return _directPlayback->GetPoseSource(handle); }
         void AdvancePlayback(f32 deltaTime) { _directPlayback->Advance(deltaTime); }
         const DirectPlaybackStats& GetPlaybackStats() const { return _directPlayback->GetStats(); }
-        ControllerPlaybackHandle CreateControllerPlayback(AnimationLoading::SkeletonHandle skeleton, AnimationLoading::AnimationSetHandle animationSet, const AnimationLoading::SkeletonAssetView& skeletonView, const AnimationLoading::AnimationSetAssetView& setView, std::shared_ptr<const CompiledAnimationGraph> graph, u64 stableSeed) { return _controllerPlayback->Create(skeleton, animationSet, skeletonView, setView, std::move(graph), stableSeed); }
+        ControllerPlaybackHandle CreateControllerPlayback(AnimationLoading::SkeletonHandle skeleton, AnimationLoading::AnimationSetHandle animationSet, const AnimationLoading::SkeletonAssetView& skeletonView, const AnimationLoading::AnimationSetAssetView& setView, std::shared_ptr<const CompiledAnimationGraph> graph, u64 stableSeed, FileFormat::AssetID retargetProfileAssetID = FileFormat::INVALID_ASSET_ID) { return _controllerPlayback->Create(skeleton, animationSet, skeletonView, setView, std::move(graph), stableSeed, retargetProfileAssetID); }
         bool DestroyControllerPlayback(ControllerPlaybackHandle handle) { return _controllerPlayback->Destroy(handle); }
+        void StepPreviewControllers(f64 deltaSeconds) { _controllerPlayback->Advance(deltaSeconds, false); }
         PoseSourceHandle GetControllerPoseSource(ControllerPlaybackHandle handle) const { return _controllerPlayback->GetPoseSource(handle); }
         AnimationParameterHandle ResolveControllerParameter(ControllerPlaybackHandle handle, u64 nameHash) const { return _controllerPlayback->ResolveParameter(handle, nameHash); }
         bool SetControllerFloat(AnimationParameterHandle handle, f32 value) { return _controllerPlayback->SetFloat(handle, value); }

@@ -250,9 +250,11 @@ namespace Animation
                 scene.SetModelDeformationHandle(instanceHandle, RenderScenes::INVALID_SCENE_INDEX);
                 continue;
             }
-            _gameRenderer->GetSkeletonDebugDraw()->SetCurrentLocalPose(pose->localPose);
-            _gameRenderer->GetSkeletonDebugDraw()->SetJointWeights(pose->debugJointWeights);
-            _gameRenderer->GetSkeletonDebugDraw()->SetIKOperations(std::span<const PoseIKDebugOperation>(pose->debugIKOperations.data(), pose->debugIKOperationCount));
+            if (_gameRenderer->GetSkeletonDebugDraw()->SetCurrentLocalPose(skeletonAssetID, pose->localPose, pose->sampleTimeMicroseconds))
+            {
+                _gameRenderer->GetSkeletonDebugDraw()->SetJointWeights(pose->debugJointWeights);
+                _gameRenderer->GetSkeletonDebugDraw()->SetIKOperations(std::span<const PoseIKDebugOperation>(pose->debugIKOperations.data(), pose->debugIKOperationCount));
+            }
             const u64 bindingKey = resources->poseSource.GetRawValue() ^ (static_cast<u64>(static_cast<RenderAssets::ModelHandle::type>(resources->model)) << 1u) ^ (pose->poseGeneration * 0x9E3779B97F4A7C15ull);
             auto tableIt = bindingTableOffsets.find(bindingKey);
             u32 tableBase = RenderScenes::INVALID_SCENE_INDEX;
