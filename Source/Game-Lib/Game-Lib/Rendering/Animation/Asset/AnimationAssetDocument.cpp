@@ -24,7 +24,7 @@ namespace FileFormat::Animation
     template <typename T, typename F> requires std::is_same_v<std::remove_const_t<T>, SkeletonJoint>
     void VisitMembers(T& value, F&& field) { field("semanticID", value.semanticID); field("parentJointIndex", value.parentJointIndex); field("familyJointIndex", value.familyJointIndex); field("hierarchyDepth", value.hierarchyDepth); field("flags", value.flags); field("restTransform", value.restTransform); field("inverseBindTransform", value.inverseBindTransform); }
     template <typename T, typename F> requires std::is_same_v<std::remove_const_t<T>, SkeletonFamilyBinding>
-    void VisitMembers(T& value, F&& field) { field("skeletonJointIndex", value.skeletonJointIndex); field("familyJointIndex", value.familyJointIndex); field("skeletonToFamily", value.skeletonToFamily); field("familyToSkeleton", value.familyToSkeleton); }
+    void VisitMembers(T& value, F&& field) { field("skeletonJointIndex", value.skeletonJointIndex); field("familyJointIndex", value.familyJointIndex); field("skeletonToFamily", value.skeletonToFamily); field("familyToSkeleton", value.familyToSkeleton); field("familyReferenceRotation", value.familyReferenceRotation); }
     template <typename T, typename F> requires std::is_same_v<std::remove_const_t<T>, SkeletonPropagationRule>
     void VisitMembers(T& value, F&& field) { field("sourceJointIndex", value.sourceJointIndex); field("targetJointIndex", value.targetJointIndex); field("type", value.type); field("flags", value.flags); field("executionOrder", value.executionOrder); field("weight", value.weight); field("offsetTransform", value.offsetTransform); }
     template <typename T, typename F> requires std::is_same_v<std::remove_const_t<T>, HierarchyDepthRange>

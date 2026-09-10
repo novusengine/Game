@@ -213,6 +213,129 @@ TEST_CASE("RigFamily validates logical ancestry and canonical frames", "[animati
     }
 }
 
+TEST_CASE("WoW corpus skeletons satisfy the neutral family contract", "[animation][rigfamily][wow][fixture]")
+{
+    const char* directory = std::getenv("NOVUS_WOW_ANIMATION_FIXTURES");
+    if (!directory) { WARN("Set NOVUS_WOW_ANIMATION_FIXTURES for converter conformance"); return; }
+    auto read = [](const std::filesystem::path& path)
+    {
+        std::ifstream stream(path, std::ios::binary);
+        REQUIRE(stream.good());
+        return std::vector<u8>(std::istreambuf_iterator<char>(stream), {});
+    };
+    const auto familyBytes = read(std::filesystem::path(directory) / "animation/bipedal_humanoid.rigfamily");
+    const auto family = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadRigFamily(familyBytes));
+    REQUIRE(family);
+    for (const std::string name : {"humanmale", "humanfemale", "orcmale", "orcfemale", "dwarfmale", "dwarffemale", "nightelfmale", "nightelffemale", "scourgemale", "scourgefemale", "taurenmale", "taurenfemale", "gnomemale", "gnomefemale", "trollmale", "trollfemale"})
+    {
+        INFO(name);
+        const auto bytes = read(std::filesystem::path(directory) / "animations/wow" / name / (name + ".skeleton"));
+        const auto skeleton = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadSkeleton(bytes));
+        INFO(AssetLoading::Describe(skeleton.diagnostic));
+        REQUIRE(skeleton);
+        REQUIRE_FALSE(AnimationLoading::AnimationAssetValidator::ValidateFamilyBinding(skeleton.view, family.view));
+        Animation::FamilyPoseBinding binding;
+        REQUIRE(binding.Initialize(skeleton.view, family.view));
+        std::vector<F::LocalTransform> rest, canonical(family.view.joints.size()), recovered(skeleton.view.joints.size());
+        for (const auto& joint : skeleton.view.joints) rest.push_back(joint.restTransform);
+        REQUIRE(binding.ToFamily(rest, canonical));
+        REQUIRE(binding.FromFamily(canonical, recovered));
+        if (name == "trollfemale")
+        {
+            const auto sourceBytes = read(std::filesystem::path(directory) / "animations/wow/humanmale/humanmale.skeleton");
+            const auto source = AnimationLoading::AnimationAssetReader::ReadSkeleton(sourceBytes);
+            const auto motionBytes = read(std::filesystem::path(directory) / "animations/wow/humanmale/dance-0.animationclip");
+            const auto motion = AnimationLoading::AnimationAssetReader::ReadAnimationClip(motionBytes);
+            REQUIRE(source);
+            REQUIRE(motion);
+            Animation::FamilyPoseBinding sourceBinding;
+            REQUIRE(sourceBinding.Initialize(source.view, family.view));
+            std::vector<F::LocalTransform> sampled(source.view.joints.size()), retargeted(skeleton.view.joints.size());
+            REQUIRE(Animation::SampleClipLocalPose(motion.view, source.view, 0.1, false, sampled) == Animation::ClipSampleError::None);
+            REQUIRE(sourceBinding.ToFamily(sampled, canonical));
+            REQUIRE(binding.FromFamily(canonical, retargeted));
+            // Coincident spine pivots must retain unit calibration, not amplify
+            // a small source translation into a metre-scale torso displacement.
+            REQUIRE(glm::length(retargeted[1].translation - rest[1].translation) < 0.1f);
+        }
+        if (name == "taurenmale" || name == "taurenfemale")
+        {
+            const auto sourceBytes = read(std::filesystem::path(directory) / "animations/wow/humanmale/humanmale.skeleton");
+            const auto source = AnimationLoading::AnimationAssetReader::ReadSkeleton(sourceBytes);
+            const auto clipBytes = read(std::filesystem::path(directory) / "animations/wow/humanmale/idle-0.animationclip");
+            const auto clip = AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipBytes);
+            REQUIRE(source);
+            REQUIRE(clip);
+            Animation::FamilyPoseBinding sourceBinding;
+            REQUIRE(sourceBinding.Initialize(source.view, family.view));
+            std::vector<F::LocalTransform> sampled(source.view.joints.size()), retargeted(skeleton.view.joints.size());
+            auto findJoint = [&](const std::string& semantic)
+            {
+                for (u32 index = 0; index < skeleton.view.joints.size(); ++index)
+                    if (skeleton.view.joints[index].semanticID == Animation::HashAnimationSemantic("humanoid", semantic)) return index;
+                FAIL("Missing lower-limb semantic");
+                return 0u;
+            };
+            for (const f32 time : {0.0f, 0.3f, 0.6f, 0.9f})
+            {
+                REQUIRE(Animation::SampleClipLocalPose(clip.view, source.view, time, false, sampled) == Animation::ClipSampleError::None);
+                REQUIRE(sourceBinding.ToFamily(sampled, canonical));
+                REQUIRE(binding.FromFamily(canonical, retargeted));
+                const auto pose = Animation::EvaluatePose(skeleton.view.joints, retargeted);
+                REQUIRE(pose);
+                const vec3 headForward = glm::normalize(vec3(pose.modelTransforms[findJoint("head")] * vec4(0, 0, -1, 0)));
+                REQUIRE(glm::abs(headForward.y) < 0.3f);
+                REQUIRE(headForward.z < -0.9f);
+                for (const std::string side : {"left", "right"})
+                {
+                    const vec3 knee = vec3(pose.modelTransforms[findJoint(side + "leg")][3]);
+                    const vec3 hock = vec3(pose.modelTransforms[findJoint(side + "foot")][3]);
+                    const vec3 hoof = vec3(pose.modelTransforms[findJoint(side + "toebase")][3]);
+                    // Human idle must not straighten the bent hock or tip the hoof upward.
+                    REQUIRE(hock.z - knee.z > 0.1f);
+                    REQUIRE(hoof.y < hock.y - 0.05f);
+                }
+            }
+        }
+        for (const char* slot : {"idle", "walk", "run", "dance"})
+        {
+            INFO(slot);
+            const auto clipBytes = read(std::filesystem::path(directory) / "animations/wow" / name / (std::string(slot) + "-0.animationclip"));
+            const auto clip = AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadAnimationClip(clipBytes));
+            INFO(AssetLoading::Describe(clip.diagnostic));
+            REQUIRE(clip);
+            REQUIRE(clip.view.root.sourcePoseDomainType == F::PoseDomainType::Skeleton);
+            REQUIRE(clip.view.tracks.size() == skeleton.view.joints.size());
+        }
+        for (u32 index = 0; index < rest.size(); ++index)
+        {
+            REQUIRE(glm::length(rest[index].translation - recovered[index].translation) < 0.00001f);
+            REQUIRE(std::abs(glm::dot(rest[index].rotation, recovered[index].rotation)) > 0.99999f);
+        }
+    }
+}
+
+TEST_CASE("RigFamily binding preserves a distinct concrete reference posture", "[rigfamily]")
+{
+    FamilyFixture fixture;
+    fixture.bindings[1].familyReferenceRotation = glm::angleAxis(0.7f, vec3(0,0,1));
+    Animation::FamilyPoseBinding binding;
+    REQUIRE(binding.Initialize(fixture.Skeleton(), fixture.Family()));
+    std::vector<F::LocalTransform> source(2), family(2), recovered(2);
+    REQUIRE(binding.ToFamily(source, family));
+    REQUIRE(std::abs(glm::dot(family[1].rotation, fixture.bindings[1].familyReferenceRotation)) > 0.99999f);
+    REQUIRE(binding.FromFamily(family, recovered));
+    REQUIRE(std::abs(recovered[1].rotation.w) > 0.99999f);
+    source[1].rotation = glm::angleAxis(-0.4f, vec3(1,0,0));
+    source[1].translation = vec3(0.1f,0.2f,0.3f);
+    REQUIRE(binding.ToFamily(source, family));
+    REQUIRE(binding.FromFamily(family, recovered));
+    REQUIRE(std::abs(glm::dot(source[1].rotation, recovered[1].rotation)) > 0.99999f);
+    REQUIRE(glm::length(source[1].translation-recovered[1].translation) < 0.00001f);
+    fixture.bindings[1].familyReferenceRotation *= 2.0f;
+    REQUIRE_FALSE(binding.Initialize(fixture.Skeleton(), fixture.Family()));
+}
+
 TEST_CASE("NBS RigFamily corpus validates in Game", "[animation][rigfamily][fixture]")
 {
     const char* directory = std::getenv("NOVUS_RIG_FAMILY_FIXTURES");

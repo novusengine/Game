@@ -37,6 +37,9 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         uint vertexIndex = _shadowRasterVertexIndices[model.meshletVertexIndexBase + meshlet.vertexOffset + threadID.x];
         float3 localPosition = LoadModelShadowPosition(instance, model, mesh, lod, record, vertexIndex);
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
+        ModelDeformationRecord facingDeformation = LoadModelShadowDeformation(instance, mesh, record);
+        if (ModelDeformationValid(instance, facingDeformation, vertexIndex) && (_shadowRasterDeformedVertexAttributes[facingDeformation.vertexAttributeOffset + vertexIndex].y & MODEL_CAMERA_FACING_VERTEX) != 0u)
+            worldPosition = ModelCameraFacingWorldPosition(_shadowRasterDeformedPositions[facingDeformation.positionOffset + vertexIndex], _shadowRasterDeformedVertexAttributes[facingDeformation.vertexAttributeOffset + vertexIndex].x, instance.currentWorld, _cameras[shadowRecord.clipmapIndex + 1u].viewToWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[shadowRecord.clipmapIndex + 1u].worldToClip);
         vertices[threadID.x].clipmapIndex = shadowRecord.clipmapIndex;
         vertices[threadID.x].opacity = instance.opacity;

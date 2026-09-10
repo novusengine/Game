@@ -21,6 +21,12 @@ struct ModelDeformationWork
     uint outputVertexAttributeOffset;
 };
 
+struct ModelSkinningPalette
+{
+    AffineFloat3x4 transform;
+    float4 cameraFacingPivot;
+};
+
 struct Constants
 {
     uint workCount;
@@ -31,7 +37,7 @@ struct Constants
 [[vk::push_constant]] Constants _constants;
 
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<ModelDeformationWork> _animationSkinningWork;
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<AffineFloat3x4> _animationSkinningPalettes;
+[[vk::binding(1, PER_PASS)]] StructuredBuffer<ModelSkinningPalette> _animationSkinningPalettes;
 [[vk::binding(2, PER_PASS)]] StructuredBuffer<uint2> _animationSourcePositions;
 [[vk::binding(3, PER_PASS)]] StructuredBuffer<uint4> _animationSourceVertexAttributes;
 [[vk::binding(4, PER_PASS)]] StructuredBuffer<uint2> _animationSourceSkinning;
@@ -102,13 +108,27 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID)
         float3 normal = 0.0f;
         float3 tangent = 0.0f;
         float weightSum = 0.0f;
+        float2 cameraFacingOffset = 0.0f;
+        float cameraFacingDepth = 0.0f;
+        bool cameraFacing = false;
         for (uint influence = 0u; influence < 4u; ++influence)
         {
             uint joint = (skinning.x >> (influence * 8u)) & 0xFFu;
             float weight = float((skinning.y >> (influence * 8u)) & 0xFFu) / 255.0f;
             if (weight == 0.0f || joint >= work.paletteCount)
                 continue;
-            AffineFloat3x4 transform = _animationSkinningPalettes[work.paletteOffset + joint];
+            ModelSkinningPalette palette = _animationSkinningPalettes[work.paletteOffset + joint];
+            AffineFloat3x4 transform = palette.transform;
+            if (palette.cameraFacingPivot.w != 0.0f)
+            {
+                cameraFacing = true;
+                float3 offset = sourcePosition - palette.cameraFacingPivot.xyz;
+                cameraFacingOffset = offset.xy * float2(length(TransformVector(transform, float3(1,0,0))), length(TransformVector(transform, float3(0,1,0))));
+                cameraFacingDepth = offset.z * length(TransformVector(transform, float3(0,0,1)));
+                position += TransformPoint(transform, palette.cameraFacingPivot.xyz) * weight;
+                weightSum += weight;
+                continue;
+            }
             position += TransformPoint(transform, sourcePosition) * weight;
             normal += TransformVector(transform, sourceNormal) * weight;
             tangent += TransformVector(transform, sourceTangent.xyz) * weight;
@@ -125,9 +145,12 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID)
             position /= weightSum;
         }
         uint4 outputAttributes = sourceAttributes;
-        outputAttributes.x = PackOctahedralSnorm16(normal);
-        outputAttributes.y = PackTangent(tangent, sourceTangent.w);
-        _animationDeformedPositions[work.outputPositionOffset + vertex] = float4(position, 1.0f);
+        outputAttributes.x = cameraFacing ? asuint(cameraFacingDepth) : PackOctahedralSnorm16(normal);
+        outputAttributes.y = cameraFacing ? (sourceAttributes.y | MODEL_CAMERA_FACING_VERTEX) : PackTangent(tangent, sourceTangent.w);
+        // Camera-facing vertices store the center and a half2 plane offset. The
+        // tangent's unused high bit tags this representation for each view.
+        uint planeOffset = f32tof16(cameraFacingOffset.x) | (f32tof16(cameraFacingOffset.y) << 16u);
+        _animationDeformedPositions[work.outputPositionOffset + vertex] = float4(position, cameraFacing ? asfloat(planeOffset) : 1.0f);
         _animationDeformedVertexAttributes[work.outputVertexAttributeOffset + vertex] = outputAttributes;
     }
 }

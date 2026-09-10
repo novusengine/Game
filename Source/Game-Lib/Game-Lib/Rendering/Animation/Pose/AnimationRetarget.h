@@ -33,6 +33,7 @@ namespace Animation
         std::vector<FileFormat::Animation::SkeletonFamilyBinding> _bindings;
         std::vector<FileFormat::Animation::LocalTransform> _rest;
         std::vector<FileFormat::Animation::LocalTransform> _canonical;
+        std::vector<FileFormat::Animation::LocalTransform> _reference;
         std::vector<FileFormat::Animation::SkeletonPropagationRule> _propagation;
         std::vector<i32> _parents;
         struct Chain

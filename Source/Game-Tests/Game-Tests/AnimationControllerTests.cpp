@@ -3,6 +3,7 @@
 #include "Game-Lib/Rendering/Animation/Controller/AnimationGraphDocument.h"
 #include "Game-Lib/Rendering/Animation/Asset/AnimationBoundsSelector.h"
 #include "Game-Lib/Rendering/Animation/Deformation/AnimationDemandPlanner.h"
+#include "Game-Lib/Rendering/Animation/Deformation/AnimationDeformationKey.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationPose.h"
 
 #include <Base/Math/Geometry.h>
@@ -14,6 +15,31 @@
 #include <glm/gtx/quaternion.hpp>
 
 #include <set>
+#include <unordered_map>
+
+TEST_CASE("Deformation binding tables retain identity through hash collisions", "[animation][deformation]")
+{
+    const Animation::DeformationKey first{1, 5, 1, 0};
+    const Animation::DeformationKey second{7, 5, 2, 0};
+    const auto oldKey = [](const Animation::DeformationKey& key) { return key.poseSource ^ (static_cast<u64>(key.model) << 1u) ^ (key.poseGeneration * 0x9E3779B97F4A7C15ull); };
+    REQUIRE(oldKey(first) == oldKey(second));
+    REQUIRE(first != second);
+    std::unordered_map<Animation::DeformationKey, u32, Animation::DeformationKeyHash> tables;
+    tables.emplace(first, 11);
+    tables.emplace(second, 22);
+    REQUIRE(tables.size() == 2);
+    REQUIRE(tables.at(first) == 11);
+    REQUIRE(tables.at(second) == 22);
+    tables.emplace(first, 33);
+    REQUIRE(tables.size() == 2);
+    REQUIRE(tables.at(first) == 11);
+    auto nextPose = first;
+    ++nextPose.poseGeneration;
+    REQUIRE(nextPose != first);
+    auto nextLOD = first;
+    ++nextLOD.lod;
+    REQUIRE(nextLOD != first);
+}
 
 namespace
 {

@@ -35,6 +35,13 @@ namespace Animation
     };
     static_assert(sizeof(ModelDeformationRecord) == 32);
 
+    struct ModelSkinningPalette
+    {
+        AffineFloat3x4 transform;
+        vec4 cameraFacingPivot = vec4(0.0f);
+    };
+    static_assert(sizeof(ModelSkinningPalette) == 64);
+
     struct ModelDeformationWork
     {
         vec4 positionDecodeOffset;
@@ -155,7 +162,7 @@ namespace Animation
         PoseSourceStore _poseSources;
         std::unique_ptr<DirectClipPlayer> _directPlayback;
         std::unique_ptr<ControllerPosePlayer> _controllerPlayback;
-        Renderer::GPUVector<AffineFloat3x4> _palettes;
+        Renderer::GPUVector<ModelSkinningPalette> _palettes;
         Renderer::GPUVector<ModelDeformationWork> _work;
         Renderer::GPUVector<ModelDeformationRecord> _records;
         Renderer::GPUVector<vec4> _positions;

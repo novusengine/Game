@@ -8,6 +8,16 @@
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/UnitCustomization.h"
+#include "Game-Lib/ECS/Components/DisplayInfo.h"
+#include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/UnitCustomizationSingleton.h"
+#include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
+#include "Game-Lib/Util/UnitUtil.h"
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include "Game-Lib/Rendering/Texture/TextureRenderer.h"
+#include <Renderer/Renderer.h>
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/EditorSelection.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
@@ -29,6 +39,7 @@
 #include "Game-Lib/Rendering/Shadow/ModelShadowWork.h"
 #include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 #include "Game-Lib/Util/AssetPath.h"
+#include "Game-Lib/Util/AssetWriter.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Util/DebugHandler.h>
@@ -54,6 +65,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -220,6 +232,15 @@ namespace Scripting::Asset
     static fs::path GetDataRoot()
     {
         return fs::absolute("Data");
+    }
+
+    static fs::path GetAnimationSourceDirectory()
+    {
+        auto* writer = ServiceLocator::GetAssetWriter();
+        fs::path directory;
+        if (!writer || !writer->ResolvePath("AnimationSources", Util::AssetWriteTarget::Disk, directory))
+            throw std::runtime_error("Animation source Data directory is unavailable");
+        return directory;
     }
 
     // Turns an absolute path under Data/ into a forward-slash path relative to Data/.
@@ -430,6 +451,53 @@ namespace Scripting::Asset
         const entt::entity entity = CreateModelAtPosition(relativeRaw, vec3(0.0f));
         zenith->Push(entt::to_integral(entity));
         return 1;
+    }
+
+    i32 AssetHandler::ApplyCharacterAppearance(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        auto* registries = ServiceLocator::GetEnttRegistries();
+        auto& registry = *registries->gameRegistry;
+        auto* model = registry.valid(entity) ? registry.try_get<ECS::Components::Model>(entity) : nullptr;
+        const u32 race = zenith->CheckVal<u32>(2);
+        const u32 gender = zenith->CheckVal<u32>(3);
+        const u32 skin = zenith->CheckVal<u32>(4);
+        const u32 face = zenith->CheckVal<u32>(5);
+        const u32 hairStyle = zenith->CheckVal<u32>(6);
+        const u32 hairColor = zenith->CheckVal<u32>(7);
+        if (!model || !model->flags.loaded || race < 1 || race > 8 || gender < 1 || gender > 2 || skin > 255 || face > 255 || hairStyle > 255 || hairColor > 255)
+        {
+            zenith->Push(false);
+            zenith->Push(!model ? "Missing model" : !model->flags.loaded ? "Model is loading" : "Invalid appearance selection");
+            return 2;
+        }
+        auto& clientDB = registries->dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+        auto& customization = registries->dbRegistry->ctx().get<ECS::Singletons::UnitCustomizationSingleton>();
+        Renderer::TextureID baseSkin;
+        const auto* raceRow = clientDB.Get(ClientDBHash::UnitRace)->TryGet<MetaGen::Shared::ClientDB::UnitRaceRecord>(race);
+        if (!raceRow || !ECSUtil::UnitCustomization::GetBaseSkinTextureID(customization, static_cast<GameDefine::UnitRace>(race), static_cast<GameDefine::UnitGender>(gender), static_cast<u8>(skin), baseSkin))
+        {
+            zenith->Push(false);
+            zenith->Push("Skin selection missing from customization database");
+            return 2;
+        }
+        auto& display = registry.get_or_emplace<ECS::Components::DisplayInfo>(entity);
+        display.race = static_cast<GameDefine::UnitRace>(race);
+        display.gender = static_cast<GameDefine::UnitGender>(gender);
+        display.displayID = gender == 1 ? raceRow->maleDisplayID : raceRow->femaleDisplayID;
+        (void)registry.get_or_emplace<ECS::Components::UnitEquipment>(entity);
+        auto& appearance = registry.get_or_emplace<ECS::Components::UnitCustomization>(entity);
+        appearance.skinID = static_cast<u8>(skin);
+        appearance.faceID = static_cast<u8>(face);
+        appearance.hairStyleID = static_cast<u8>(hairStyle);
+        appearance.hairColorID = static_cast<u8>(hairColor);
+        appearance.flags.useCustomSkin = true;
+        appearance.flags.forceRefresh = true;
+        ::Util::Unit::RefreshGeometryGroups(registry, entity, clientDB, customization, *model);
+        ::Util::Unit::RefreshSkinTexture(registry, entity, clientDB, customization, display, appearance, *model);
+        zenith->Push(true);
+        zenith->Push("Appearance applied");
+        return 2;
     }
 
     i32 AssetHandler::BindRestPose(Zenith* zenith)
@@ -687,7 +755,13 @@ namespace Scripting::Asset
     static PreviewAnimationGraph CompilePreviewLocomotionGraph(std::string_view mode)
     {
         Animation::EditableAnimationGraph graph;
-        if (mode == "retarget_layers")
+        if (mode.starts_with("slot:") && mode.size() > 5)
+        {
+            graph.states = {{1, Animation::HashAnimationSlot(mode.substr(5)), 60000000}};
+            graph.states[0].displayName = std::string(mode.substr(5));
+            graph.entryStateGUID = 1;
+        }
+        else if (mode == "retarget_layers")
         {
             graph.parameters = {{"upperBodyWeight", FileFormat::Animation::GraphValueType::Float}};
             graph.states = {{1, Animation::HashAnimationSlot("WalkForward"), 60000000}};
@@ -1924,7 +1998,7 @@ namespace Scripting::Asset
             if (name.empty() || name.size() > 64 || !std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '-' || c == '_'; })) error = "Use letters, numbers, hyphens or underscores for the source name";
             else try
             {
-                const fs::path directory = fs::absolute("../Source/Resources/AnimationSources");
+                const fs::path directory = GetAnimationSourceDirectory();
                 const fs::path path = directory / (name + ".animationassetsource");
                 if (command == "save")
                 {
@@ -2071,7 +2145,7 @@ namespace Scripting::Asset
             {
                 try
                 {
-                    const fs::path directory = fs::absolute("../Source/Resources/AnimationSources");
+                    const fs::path directory = GetAnimationSourceDirectory();
                     const fs::path path = directory / (name + ".animationgraphsource");
                     if (command == "save")
                     {

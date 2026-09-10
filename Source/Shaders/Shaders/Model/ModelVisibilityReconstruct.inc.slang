@@ -111,14 +111,25 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
         uint4 attributes = deformed ? _resolvedModelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex] :
             _resolvedModelVertexAttributes[result.model.vertexAttributeBase + result.lod.vertexAttributeOffset + vertexIndex];
         worldPositions[i] = mul(float4(localPosition, 1.0f), result.instance.currentWorld).xyz;
+        bool cameraFacing = deformed && (attributes.y & MODEL_CAMERA_FACING_VERTEX) != 0u;
+        if (cameraFacing)
+            worldPositions[i] = ModelCameraFacingWorldPosition(_resolvedModelDeformedPositions[deformation.positionOffset + vertexIndex], attributes.x, result.instance.currentWorld, _cameras[cameraIndex].viewToWorld).xyz;
 #ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
         bool skinning = (result.lod.flags & 1u) != 0u;
         bool previousValid = deformed && deformation.previousPositionOffset != 0xFFFFFFFFu;
         result.motionValid = result.motionValid && (!skinning || (previousValid && (result.instance.flags & (1u << 9u)) != 0u));
         float3 previousPosition = previousValid ? _resolvedModelDeformedPositions[deformation.previousPositionOffset + vertexIndex].xyz : localPosition;
         previousWorldPositions[i] = mul(float4(previousPosition, 1.0f), result.instance.previousWorld).xyz;
+        if (cameraFacing)
+        {
+            // View orientation history is not part of this reconstruction input.
+            // Reject temporal history instead of producing a false motion vector.
+            result.motionValid = false;
+            previousWorldPositions[i] = worldPositions[i];
+        }
 #endif
         worldNormals[i] = normalize(mul(float4(DecodeOctahedralSnorm(attributes.x), 0.0f), result.instance.currentWorld).xyz);
+        if (cameraFacing) worldNormals[i] = normalize(mul(float4(0,0,1,0), _cameras[cameraIndex].viewToWorld).xyz);
         uvs[i] = DecodeHalf2(attributes.z);
     }
 

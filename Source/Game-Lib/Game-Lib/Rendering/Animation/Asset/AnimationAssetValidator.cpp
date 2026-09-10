@@ -14,7 +14,7 @@ namespace
     using AssetLoading::DiagnosticCode;
     using AssetLoading::DiagnosticStage;
 
-    constexpr u16 SKELETON_JOINT_FLAGS = Animation::SkeletonJointFlags_Deformation | Animation::SkeletonJointFlags_Helper | Animation::SkeletonJointFlags_Extension;
+    constexpr u16 SKELETON_JOINT_FLAGS = Animation::SkeletonJointFlags_Deformation | Animation::SkeletonJointFlags_Helper | Animation::SkeletonJointFlags_Extension | Animation::SkeletonJointFlags_CameraFacing;
     constexpr u32 TRACK_FLAGS = Animation::AnimationTrackFlags_HasTranslationSamples | Animation::AnimationTrackFlags_HasRotationSamples | Animation::AnimationTrackFlags_HasScaleSamples;
     constexpr u8 CLIP_FLAGS = Animation::AnimationClipFlags_Looping | Animation::AnimationClipFlags_Additive;
     constexpr u32 EVENT_FLAGS = 1u;
@@ -177,6 +177,8 @@ namespace AnimationLoading
             if (joint.familyJointIndex != static_cast<i32>(binding.familyJointIndex) || !IsValidTransform(binding.skeletonToFamily) || !IsValidTransform(binding.familyToSkeleton))
                 return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.calibration");
             const auto& forward = binding.skeletonToFamily;
+            if (!std::isfinite(glm::length(binding.familyReferenceRotation)) || std::abs(glm::length(binding.familyReferenceRotation) - 1.0f) > 0.0001f)
+                return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.referenceRotation");
             const auto& inverse = binding.familyToSkeleton;
             if (glm::length(forward.translation) > 0.00001f || glm::length(inverse.translation) > 0.00001f || glm::length(forward.scale * inverse.scale - vec3(1.0f)) > 0.0001f || std::abs(glm::dot(forward.rotation * inverse.rotation, quat(1, 0, 0, 0))) < 0.9999f || forward.scale.x <= 0 || forward.scale.y <= 0 || forward.scale.z <= 0)
                 return FailDiagnostic(DiagnosticCode::InvalidValue, "familyBindings.inverseCalibration");
@@ -251,6 +253,11 @@ namespace AnimationLoading
                 return Fail<SkeletonAssetReadResult>(DiagnosticCode::UnsupportedFlags, "joints.flags", index, joint.flags, SKELETON_JOINT_FLAGS);
             if ((joint.flags & Animation::SkeletonJointFlags_Deformation) != 0 && (joint.flags & Animation::SkeletonJointFlags_Helper) != 0)
                 return Fail<SkeletonAssetReadResult>(DiagnosticCode::InvalidValue, "joints.flags", index, joint.flags);
+            if ((joint.flags & Animation::SkeletonJointFlags_CameraFacing) != 0)
+            {
+                for (const auto& child : result.view.joints)
+                    if (child.parentJointIndex == static_cast<i32>(index)) return Fail<SkeletonAssetReadResult>(DiagnosticCode::InvalidValue, "joints.cameraFacingLeaf", index);
+            }
             if (joint.reserved != 0)
                 return Fail<SkeletonAssetReadResult>(DiagnosticCode::ReservedValueNonZero, "joints.reserved", index, joint.reserved, 0);
             if (!IsValidTransform(joint.restTransform))
@@ -316,7 +323,7 @@ namespace AnimationLoading
             const Animation::SkeletonJoint& joint = result.view.joints[binding.skeletonJointIndex];
             if (joint.familyJointIndex < 0 || static_cast<u32>(joint.familyJointIndex) != binding.familyJointIndex)
                 return Fail<SkeletonAssetReadResult>(DiagnosticCode::InvalidValue, "familyBindings.familyJointIndex", index, binding.familyJointIndex, joint.familyJointIndex);
-            if (!IsValidTransform(binding.skeletonToFamily) || !IsValidTransform(binding.familyToSkeleton))
+            if (!IsValidTransform(binding.skeletonToFamily) || !IsValidTransform(binding.familyToSkeleton) || !std::isfinite(glm::length(binding.familyReferenceRotation)) || std::abs(glm::length(binding.familyReferenceRotation) - 1.0f) > 0.0001f)
                 return Fail<SkeletonAssetReadResult>(DiagnosticCode::NonFiniteValue, "familyBindings.transform", index);
             boundJoints[binding.skeletonJointIndex] = true;
         }

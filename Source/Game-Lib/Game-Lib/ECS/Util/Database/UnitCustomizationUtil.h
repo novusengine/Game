@@ -31,7 +31,7 @@ namespace ECSUtil::UnitCustomization
 {
     bool Refresh();
 
-    bool GetBaseSkinTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID);
+    bool GetBaseSkinTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID, u8 variant = 0);
     bool GetBaseSkinBraTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID);
     bool GetBaseSkinUnderwearTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID);
     bool GetBaseSkinFaceTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, u8 faceID, u8 variant, Renderer::TextureID& textureID);

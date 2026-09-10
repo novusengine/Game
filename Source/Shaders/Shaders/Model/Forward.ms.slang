@@ -117,9 +117,13 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         uint4 attributes = deformed ? _modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex] :
             _modelVisibilityVertexAttributes[model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex];
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
+        if (deformed && (_modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex].y & MODEL_CAMERA_FACING_VERTEX) != 0u)
+            worldPosition = ModelCameraFacingWorldPosition(_modelDeformedPositions[deformation.positionOffset + vertexIndex], _modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex].x, instance.currentWorld, _cameras[_constants.viewIndex].viewToWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[_constants.viewIndex].worldToClip);
         vertices[threadID.x].worldPosition = worldPosition.xyz;
         vertices[threadID.x].geometricNormal = normalize(mul(float4(DecodeOctahedralSnorm(attributes.x), 0.0f), instance.currentWorld).xyz);
+        if (deformed && (attributes.y & MODEL_CAMERA_FACING_VERTEX) != 0u)
+            vertices[threadID.x].geometricNormal = normalize(mul(float4(0,0,1,0), _cameras[_constants.viewIndex].viewToWorld).xyz);
         vertices[threadID.x].uv0 = DecodeHalf2(attributes.z);
         vertices[threadID.x].materialInstanceIndex = materialInstanceIndex;
         vertices[threadID.x].opacity = instance.opacity;

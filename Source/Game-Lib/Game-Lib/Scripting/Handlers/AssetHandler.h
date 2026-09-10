@@ -24,6 +24,7 @@ namespace Scripting::Asset
         static i32 ListDir(Zenith* zenith);
         static i32 SpawnModel(Zenith* zenith);
         static i32 SpawnModelAtWorldOrigin(Zenith* zenith);
+        static i32 ApplyCharacterAppearance(Zenith* zenith);
         static i32 BindRestPose(Zenith* zenith);
         static i32 BindAnimation(Zenith* zenith);
         static i32 ShareAnimationPose(Zenith* zenith);
@@ -74,6 +75,7 @@ namespace Scripting::Asset
         { "ListDir",        AssetHandler::ListDir,        Scripting::LuaMethodFlags::DeveloperOnly },
         { "SpawnModel",     AssetHandler::SpawnModel,     Scripting::LuaMethodFlags::DeveloperOnly },
         { "SpawnModelAtWorldOrigin", AssetHandler::SpawnModelAtWorldOrigin, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ApplyCharacterAppearance", AssetHandler::ApplyCharacterAppearance, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BindRestPose",    AssetHandler::BindRestPose,    Scripting::LuaMethodFlags::DeveloperOnly },
         { "BindAnimation", AssetHandler::BindAnimation, Scripting::LuaMethodFlags::DeveloperOnly },
         { "ShareAnimationPose", AssetHandler::ShareAnimationPose, Scripting::LuaMethodFlags::DeveloperOnly },

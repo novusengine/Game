@@ -270,6 +270,8 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         float3 localPosition = deformed ? _modelDeformedPositions[deformation.positionOffset + vertexIndex].xyz :
             (validVertex ? DecodePosition(_modelVisibilityPositions[positionIndex], mesh.positionDecodeOffset, mesh.positionDecodeExtent) : float3(0.0f, 0.0f, 0.0f));
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
+        if (deformed && (_modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex].y & MODEL_CAMERA_FACING_VERTEX) != 0u)
+            worldPosition = ModelCameraFacingWorldPosition(_modelDeformedPositions[deformation.positionOffset + vertexIndex], _modelDeformedVertexAttributes[deformation.vertexAttributeOffset + vertexIndex].x, instance.currentWorld, _cameras[_constants.viewIndex].viewToWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[_constants.viewIndex].worldToClip);
         vertices[threadID.x].recordEntry = queueEntry;
 #if ALPHA_TEST

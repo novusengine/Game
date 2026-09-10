@@ -1010,6 +1010,17 @@ void ModelLoader::SetSkinTextureForModel(const ECS::Components::Model& model, Re
     }
 }
 
+void ModelLoader::SetExtraSkinTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
+{
+    GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+    ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
+    RenderScenes::RenderScene* scene = bridge->GetScene(entity);
+    const RenderScenes::ModelInstanceHandle instance = bridge->Get(entity);
+    const ModelScene::ModelInstanceGPURecord* record = scene ? scene->GetModelInstance(instance) : nullptr;
+    if (record)
+        gameRenderer->GetModelParameterOverrides()->SetTexture(*scene, instance, RenderAssets::ModelHandle(record->modelIndex), ModelParameterNameHash("SkinExtra"), textureID);
+}
+
 void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
 {
     ZoneScopedN("ModelLoader::SetHairTextureForEntity");

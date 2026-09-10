@@ -159,6 +159,7 @@ public: // Load Request Helpers
     void SetSkinTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID);
 
     void SetHairTextureForEntity(entt::entity entity, Renderer::TextureID textureID);
+    void SetExtraSkinTextureForEntity(entt::entity entity, Renderer::TextureID textureID);
     void SetHairTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID);
 
 public:

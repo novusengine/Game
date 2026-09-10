@@ -67,6 +67,7 @@ namespace Animation
         _bindings.clear();
         _rest.clear();
         _canonical.clear();
+        _reference.clear();
         _parents.clear();
         _propagation.clear();
         _chains.clear();
@@ -89,7 +90,10 @@ namespace Animation
             _familyJoints.push_back(value);
         }
         _joints.assign(skeleton.joints.begin(), skeleton.joints.end());
-        const auto familyRest = EvaluatePose(_familyJoints, _canonical);
+        _reference = _canonical;
+        for (const auto& binding : _bindings)
+            _reference[binding.familyJointIndex].rotation = glm::normalize(_canonical[binding.familyJointIndex].rotation * binding.familyReferenceRotation);
+        const auto familyRest = EvaluatePose(_familyJoints, _reference);
         const auto targetRest = EvaluatePose(_joints, _rest);
         if (!familyRest || !targetRest)
             return false;
@@ -139,7 +143,7 @@ namespace Animation
         for (u32 index = 0; index < familyPose.size(); ++index)
             familyPose[index] = additive ? Transform{} : _canonical[index];
         for (const auto& binding : _bindings)
-            familyPose[binding.familyJointIndex] = Convert(source[binding.skeletonJointIndex], _rest[binding.skeletonJointIndex], _canonical[binding.familyJointIndex], binding.skeletonToFamily, additive);
+            familyPose[binding.familyJointIndex] = Convert(source[binding.skeletonJointIndex], _rest[binding.skeletonJointIndex], _reference[binding.familyJointIndex], binding.skeletonToFamily, additive);
         return true;
     }
 
@@ -170,7 +174,7 @@ namespace Animation
         for (u32 index = 0; index < target.size(); ++index)
             target[index] = additive ? Transform{} : _rest[index];
         for (const auto& binding : _bindings)
-            target[binding.skeletonJointIndex] = Convert(familyPose[binding.familyJointIndex], _canonical[binding.familyJointIndex], _rest[binding.skeletonJointIndex], binding.familyToSkeleton, additive);
+            target[binding.skeletonJointIndex] = Convert(familyPose[binding.familyJointIndex], _reference[binding.familyJointIndex], _rest[binding.skeletonJointIndex], binding.familyToSkeleton, additive);
         if (correctChains && !additive && !_chains.empty())
         {
             const auto canonicalModel = EvaluatePose(_familyJoints, familyPose);

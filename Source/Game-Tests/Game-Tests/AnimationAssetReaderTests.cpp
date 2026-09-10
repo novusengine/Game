@@ -136,6 +136,17 @@ TEST_CASE("Animation V2 has focused structural readers for every asset root", "[
     CHECK(AnimationLoading::AnimationAssetReader::ReadAnimationBounds(SaveEmptyAsset<Format::AnimationBoundsAsset, Format::AnimationBoundsData>()));
 }
 
+TEST_CASE("Camera-facing skeleton joints must be leaves", "[AnimationAsset][CameraFacing]")
+{
+    auto bytes = SaveSkeleton();
+    auto& root = Root<Format::SkeletonAsset>(bytes);
+    auto* joints = reinterpret_cast<Format::SkeletonJoint*>(bytes.data() + root.jointsOffset);
+    joints[1].flags |= Format::SkeletonJointFlags_CameraFacing;
+    REQUIRE(AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadSkeleton(bytes)));
+    joints[0].flags |= Format::SkeletonJointFlags_CameraFacing;
+    CHECK(AnimationLoading::AnimationAssetValidator::Validate(AnimationLoading::AnimationAssetReader::ReadSkeleton(bytes)).diagnostic.code == AssetLoading::DiagnosticCode::InvalidValue);
+}
+
 TEST_CASE("Animation V2 readers accept valid Skeleton and Clip assets without creating runtime poses", "[AnimationAsset]")
 {
     const std::vector<u8> skeletonPayload = SaveSkeleton();

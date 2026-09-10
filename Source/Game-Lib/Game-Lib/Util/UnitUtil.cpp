@@ -1210,6 +1210,9 @@ namespace Util::Unit
         if (justCreatedSkinTexture || unitCustomization.flags.forceRefresh)
         {
             modelLoader->SetSkinTextureForEntity(entity, unitCustomization.skinTextureID);
+            Renderer::TextureID extraSkinTextureID = Renderer::TextureID::Invalid();
+            ECSUtil::UnitCustomization::GetBaseSkinTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.skinID, extraSkinTextureID, 1);
+            modelLoader->SetExtraSkinTextureForEntity(entity, extraSkinTextureID);
         }
 
         if (displayInfo.displayID != 0 && displayInfo.race != GameDefine::UnitRace::None && displayInfo.gender != GameDefine::UnitGender::None)

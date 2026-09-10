@@ -37,6 +37,9 @@ namespace ECSUtil::UnitCustomization
     bool ParseFileName(const std::string& texturePath, ParsedTextureName& result)
     {
         size_t underscorePos = texturePath.rfind('_');
+        // Extra skin atlases keep the same choice/color suffix before "_extra".
+        if (underscorePos != std::string::npos && texturePath.compare(underscorePos, 6, "_extra") == 0)
+            underscorePos = texturePath.rfind('_', underscorePos - 1);
         if (underscorePos == std::string::npos || underscorePos < 2)
             return false;
 
@@ -562,9 +565,9 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    bool GetBaseSkinTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID)
+    bool GetBaseSkinTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID, u8 variant)
     {
-        u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::Skin, 0, skinID, 0);
+        u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::Skin, 0, skinID, variant);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
             return false;
 

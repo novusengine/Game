@@ -4,6 +4,7 @@
 #include "Game-Lib/Rendering/Animation/Debug/SkeletonDebugDraw.h"
 #include "Game-Lib/Rendering/Animation/Asset/AnimationBoundsSelector.h"
 #include "Game-Lib/Rendering/Animation/Deformation/AnimationDemandPlanner.h"
+#include "AnimationDeformationKey.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
@@ -36,27 +37,6 @@ namespace
         buffer.SetDebugName(name);
         buffer.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
-
-    struct DeformationKey
-    {
-        u64 poseSource = 0;
-        u64 poseGeneration = 0;
-        u32 model = 0;
-        u32 lod = 0;
-        bool operator==(const DeformationKey&) const = default;
-    };
-
-    struct DeformationKeyHash
-    {
-        size_t operator()(const DeformationKey& key) const
-        {
-            size_t result = static_cast<size_t>(key.poseSource ^ (key.poseSource >> 32u));
-            result ^= static_cast<size_t>(key.poseGeneration + 0x9E3779B97F4A7C15ull + (result << 6u) + (result >> 2u));
-            result ^= static_cast<size_t>(key.model) * 0x9E3779B1u;
-            result ^= static_cast<size_t>(key.lod) * 0x85EBCA77u;
-            return result;
-        }
-    };
 
     FileFormat::Animation::Bounds TransformBoundsAABB(const FileFormat::Animation::Bounds& bounds, const mat4x4& world)
     {
@@ -154,7 +134,7 @@ namespace Animation
         _previousDeformations.swap(_currentDeformations);
         _currentDeformations.clear();
         std::unordered_map<DeformationKey, ModelDeformationRecord, DeformationKeyHash> deformationCache;
-        std::unordered_map<u64, u32> bindingTableOffsets;
+        std::unordered_map<DeformationKey, u32, DeformationKeyHash> bindingTableOffsets;
 
         for (RenderScenes::RenderScene* scenePointer : scenes)
         {
@@ -265,7 +245,7 @@ namespace Animation
                 _gameRenderer->GetSkeletonDebugDraw()->SetJointWeights(pose->debugJointWeights);
                 _gameRenderer->GetSkeletonDebugDraw()->SetIKOperations(std::span<const PoseIKDebugOperation>(pose->debugIKOperations.data(), pose->debugIKOperationCount));
             }
-            const u64 bindingKey = resources->poseSource.GetRawValue() ^ (static_cast<u64>(static_cast<RenderAssets::ModelHandle::type>(resources->model)) << 1u) ^ (pose->poseGeneration * 0x9E3779B97F4A7C15ull);
+            const DeformationKey bindingKey = {resources->poseSource.GetRawValue(), pose->poseGeneration, static_cast<RenderAssets::ModelHandle::type>(resources->model), 0};
             auto tableIt = bindingTableOffsets.find(bindingKey);
             u32 tableBase = RenderScenes::INVALID_SCENE_INDEX;
             if (tableIt == bindingTableOffsets.end())
@@ -378,7 +358,15 @@ namespace Animation
                         compatible = false;
                         break;
                     }
-                    _palettes.Add(pose->palette[skeletonJoint]);
+                    ModelSkinningPalette palette;
+                    palette.transform = pose->palette[skeletonJoint];
+                    const auto* skeleton = assets.GetRetained(pose->skeleton);
+                    if (skeleton && (skeleton->joints[skeletonJoint].flags & FileFormat::Animation::SkeletonJointFlags_CameraFacing) != 0)
+                    {
+                        const mat4x4 bind = glm::inverse(mat4x4(skeleton->joints[skeletonJoint].inverseBindTransform));
+                        palette.cameraFacingPivot = vec4(vec3(bind[3]), 1.0f);
+                    }
+                    _palettes.Add(palette);
                 }
                 if (!compatible)
                     break;

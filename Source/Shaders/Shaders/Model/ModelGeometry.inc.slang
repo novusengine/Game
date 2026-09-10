@@ -1,6 +1,21 @@
 #ifndef MODEL_GEOMETRY_INCLUDED
 #define MODEL_GEOMETRY_INCLUDED
 
+static const uint MODEL_CAMERA_FACING_VERTEX = 1u << 31u;
+
+float4 ModelCameraFacingWorldPosition(float4 deformedPosition, uint packedDepth, float4x4 modelToWorld, float4x4 viewToWorld)
+{
+    uint packed = asuint(deformedPosition.w);
+    float2 offset = float2(f16tof32(packed & 0xFFFFu), f16tof32(packed >> 16u));
+    float2 scale = float2(length(mul(float4(1,0,0,0), modelToWorld).xyz), length(mul(float4(0,1,0,0), modelToWorld).xyz));
+    float3 right = normalize(mul(float4(1,0,0,0), viewToWorld).xyz);
+    float3 up = normalize(mul(float4(0,1,0,0), viewToWorld).xyz);
+    float4 center = mul(float4(deformedPosition.xyz, 1), modelToWorld);
+    float3 back = normalize(mul(float4(0,0,1,0), viewToWorld).xyz);
+    float depth = asfloat(packedDepth) * length(mul(float4(0,0,1,0), modelToWorld).xyz);
+    return float4(center.xyz + right * offset.x * scale.x + up * offset.y * scale.y + back * depth, 1);
+}
+
 struct ModelInstanceRecord
 {
     float4x4 currentWorld;
