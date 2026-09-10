@@ -36,7 +36,7 @@ namespace Animation
         ~SkeletonDebugDraw();
 
         void Update();
-        bool SetCurrentLocalPose(FileFormat::AssetID skeletonAssetID, std::span<const FileFormat::Animation::LocalTransform> localPose, u64 sampleTimeMicroseconds);
+        bool SetCurrentLocalPose(FileFormat::AssetID skeletonAssetID, std::span<const FileFormat::Animation::LocalTransform> localPose, u64 sampleTimeMicroseconds, const mat4x4& worldTransform);
         void SetJointWeights(std::span<const f32> weights);
         void SetIKOperations(std::span<const PoseIKDebugOperation> operations);
         void ClearCurrentLocalPose();
@@ -69,6 +69,7 @@ namespace Animation
         const AnimationLoading::SkeletonAssetView* _skeleton = nullptr;
         PoseEvaluationResult _evaluatedPose;
         std::vector<FileFormat::Animation::LocalTransform> _currentLocalPose;
+        mat4x4 _currentWorldTransform = mat4x4(1.0f);
         std::vector<f32> _jointWeights;
         std::array<PoseIKDebugOperation, 4> _ikOperations = {};
         u32 _ikOperationCount = 0;

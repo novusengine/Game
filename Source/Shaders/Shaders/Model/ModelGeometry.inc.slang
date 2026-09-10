@@ -29,6 +29,10 @@ struct ModelDeformationRecord
     uint vertexAttributeOffset;
     uint vertexCount;
     uint poseGeneration;
+    uint previousPositionOffset;
+    uint reserved0;
+    uint reserved1;
+    uint reserved2;
 };
 
 bool ModelDeformationValid(ModelInstanceRecord instance, ModelDeformationRecord deformation, uint vertexIndex)

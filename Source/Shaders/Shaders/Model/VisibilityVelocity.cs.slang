@@ -1,5 +1,6 @@
 #include "Include/VisibilityBuffers.inc.slang"
 #include "Include/TypedVisibility.inc.slang"
+#include "Include/Motion.inc.slang"
 #define MODEL_VISIBILITY_NO_MATERIAL
 #define MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
 #include "Model/ModelVisibilityReconstruct.inc.slang"
@@ -16,27 +17,26 @@ struct Constants
 
 [[vk::binding(3, PER_PASS)]] RWTexture2D<uint> _modelMotionVectors;
 
-uint PackMotion(float2 motion)
-{
-    return f32tof16(motion.x) | (f32tof16(motion.y) << 16u);
-}
-
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint2 pixelPos = dispatchThreadID.xy;
-    if (any(pixelPos >= uint2(_constants.renderInfo.xy)) || _constants.cameraValid == 0u)
+    if (any(pixelPos >= uint2(_constants.renderInfo.xy)))
         return;
 
     uint targetValue = LoadVisibilityBuffer(pixelPos);
     if (!IsModelVisibility(targetValue))
         return;
 
+    _modelMotionVectors[pixelPos] = INVALID_MOTION;
+    if (_constants.cameraValid == 0u)
+        return;
+
     ReconstructedModelPixel pixel;
     if (!ReconstructModelPixel(UnpackTypedVisibility(targetValue), float2(pixelPos) + 0.5f,
                                _constants.renderInfo.xy, _constants.viewIndex, _constants.resourceIndex, pixel) ||
-        (pixel.instance.flags & MODEL_INSTANCE_MOTION_VALID) == 0u)
+        (pixel.instance.flags & MODEL_INSTANCE_MOTION_VALID) == 0u || !pixel.motionValid)
         return;
 
     float4 currentClip = mul(float4(pixel.worldPosition, 1.0f), _cameras[_constants.viewIndex].worldToClip);

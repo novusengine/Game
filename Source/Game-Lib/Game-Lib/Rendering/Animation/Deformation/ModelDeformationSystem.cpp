@@ -19,9 +19,11 @@
 #include <cstring>
 #include <limits>
 #include <unordered_map>
+#include <tuple>
 
 namespace
 {
+    AutoCVar_Int CVAR_AnimationDebugUpdateInterval(CVarCategory::Client | CVarCategory::Rendering, "animationDebugUpdateInterval", "debug pose hold interval in render frames; controller time continues", 1, CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDeformationEnabled(CVarCategory::Client | CVarCategory::Rendering, "animationDeformationEnabled", "enable Animation V2 compute pre-skinning", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDeformationQueueCapacity(CVarCategory::Client | CVarCategory::Rendering, "animationDeformationQueueCapacity", "hard Animation V2 deformation request capacity", 1024, CVarFlags::DoNotSave);
     AutoCVar_Int CVAR_AnimationDeformationDispatchCapacity(CVarCategory::Client | CVarCategory::Rendering, "animationDeformationDispatchCapacity", "hard Animation V2 expanded compute-dispatch capacity", 4096, CVarFlags::DoNotSave);
@@ -87,6 +89,7 @@ namespace Animation
         if (existing == _modelAttachments.end())
             return false;
         existing->childLocalTransform = childLocalTransform;
+        existing->localTransformChanged = true;
         return true;
     }
 
@@ -114,9 +117,9 @@ namespace Animation
         _palettes.Reserve(_paletteCapacity);
         _work.Reserve(_dispatchCapacity);
         _records.Reserve(_dispatchCapacity * 8u);
-        _positions.Reserve(_vertexCapacity);
+        _positions.Reserve(_vertexCapacity * 2u);
         _vertexAttributes.Reserve(_vertexCapacity);
-        _positions.AddCount(_vertexCapacity);
+        _positions.AddCount(_vertexCapacity * 2u);
         _vertexAttributes.AddCount(_vertexCapacity);
         _directPlayback = std::make_unique<DirectClipPlayer>(&_poseSources, &gameRenderer->GetRenderAssetResources()->GetAnimationRegistry());
         _controllerPlayback = std::make_unique<ControllerPosePlayer>(&_poseSources, &gameRenderer->GetRenderAssetResources()->GetAnimationRegistry());
@@ -148,6 +151,8 @@ namespace Animation
         _palettes.Clear();
         _work.Clear();
         _records.Clear();
+        _previousDeformations.swap(_currentDeformations);
+        _currentDeformations.clear();
         std::unordered_map<DeformationKey, ModelDeformationRecord, DeformationKeyHash> deformationCache;
         std::unordered_map<u64, u32> bindingTableOffsets;
 
@@ -176,7 +181,7 @@ namespace Animation
                 scene.SetModelDeformationHandle(instanceHandle, RenderScenes::INVALID_SCENE_INDEX);
                 continue;
             }
-            const FileFormat::AssetID skeletonAssetID = assets.GetAssetID(pose->skeleton);
+            const FileFormat::AssetID skeletonAssetID = assets.GetRetainedAssetID(pose->skeleton);
             if (!geometry.HasModel(resources->model))
                 continue;
             const ModelLoading::ModelGPURecord& model = geometry.GetRecord(resources->model);
@@ -231,9 +236,14 @@ namespace Animation
                 scene.SetModelDeformationHandle(instanceHandle, RenderScenes::INVALID_SCENE_INDEX);
                 continue;
             }
-            if (_directPlayback->RequestPose(resources->poseSource) || _controllerPlayback->RequestPose(resources->poseSource))
+            const u32 updateInterval = static_cast<u32>(std::clamp(CVAR_AnimationDebugUpdateInterval.Get(), 1, 120));
+            if ((!pose->motionValid || (_demandFrame - 1u) % updateInterval == 0u) && (_directPlayback->RequestPose(resources->poseSource) || _controllerPlayback->RequestPose(resources->poseSource)))
                 scene.MarkModelAnimated(instanceHandle);
             ++_stats.requests;
+            if ((instance->flags & ModelScene::ModelInstanceFlagTeleported) != 0)
+                ++_stats.motionTeleported;
+            if (resources->lastDeformationFrame != 0 && resources->lastDeformationFrame + 1 != _demandFrame)
+                ++_stats.motionReactivated;
             if (CVAR_AnimationDeformationEnabled.Get() == 0 || _stats.requests > queueCapacity)
             {
                 if (_stats.requests > queueCapacity)
@@ -250,7 +260,7 @@ namespace Animation
                 scene.SetModelDeformationHandle(instanceHandle, RenderScenes::INVALID_SCENE_INDEX);
                 continue;
             }
-            if (_gameRenderer->GetSkeletonDebugDraw()->SetCurrentLocalPose(skeletonAssetID, pose->localPose, pose->sampleTimeMicroseconds))
+            if (_gameRenderer->GetSkeletonDebugDraw()->SetCurrentLocalPose(skeletonAssetID, pose->localPose, pose->sampleTimeMicroseconds, instance->currentWorld))
             {
                 _gameRenderer->GetSkeletonDebugDraw()->SetJointWeights(pose->debugJointWeights);
                 _gameRenderer->GetSkeletonDebugDraw()->SetIKOperations(std::span<const PoseIKDebugOperation>(pose->debugIKOperations.data(), pose->debugIKOperationCount));
@@ -373,7 +383,8 @@ namespace Animation
                 if (!compatible)
                     break;
 
-                const u32 outputOffset = _stats.deformedVertices;
+                // Alternate fixed-capacity halves; only positions survive into the next frame.
+                const u32 outputOffset = _stats.deformedVertices + static_cast<u32>(_demandFrame & 1u) * _vertexCapacity;
                 ModelDeformationWork work;
                 work.positionDecodeOffset = vec4(mesh.positionDecodeOffset, 0.0f);
                 work.positionDecodeExtent = vec4(mesh.positionDecodeExtent, 0.0f);
@@ -384,10 +395,31 @@ namespace Animation
                 work.paletteOffset = paletteOffset;
                 work.paletteCount = lod.numJointPaletteRemaps;
                 work.outputPositionOffset = outputOffset;
-                work.outputVertexAttributeOffset = outputOffset;
+                work.outputVertexAttributeOffset = _stats.deformedVertices;
                 _work.Add(work);
 
-                const ModelDeformationRecord record = {outputOffset, outputOffset, lod.numVertices, static_cast<u32>(pose->poseGeneration)};
+                ModelDeformationRecord record = {outputOffset, work.outputVertexAttributeOffset, lod.numVertices, static_cast<u32>(pose->poseGeneration)};
+                const auto historyKey = std::tuple(key.poseSource, key.model, key.lod);
+                const auto previous = std::lower_bound(_previousDeformations.begin(), _previousDeformations.end(), historyKey, [](const DeformationHistory& history, const auto& value) { return std::tuple(history.poseSource, history.model, history.lod) < value; });
+                if (previous != _previousDeformations.end() && std::tuple(previous->poseSource, previous->model, previous->lod) == historyKey && previous->motionGeneration == pose->motionGeneration && previous->vertexCount == lod.numVertices && pose->motionValid)
+                {
+                    record.previousPositionOffset = previous->positionOffset;
+                    if (previous->poseGeneration == pose->poseGeneration)
+                        ++_stats.motionHeld;
+                    else
+                    {
+                        ++_stats.motionContinuous;
+                        if (updateInterval > 1u)
+                            ++_stats.motionScheduledUpdates;
+                    }
+                }
+                else
+                {
+                    ++_stats.motionInvalid;
+                    if (previous != _previousDeformations.end() && std::tuple(previous->poseSource, previous->model, previous->lod) == historyKey && previous->motionGeneration != pose->motionGeneration)
+                        ++_stats.motionGenerationInvalid;
+                }
+                _currentDeformations.push_back({key.poseSource, pose->motionGeneration, pose->poseGeneration, key.model, key.lod, outputOffset, lod.numVertices});
                 _records[tableBase + mesh.lodOffset + localLOD] = record;
                 deformationCache.emplace(key, record);
                 _stats.deformedVertices += lod.numVertices;
@@ -416,6 +448,18 @@ namespace Animation
                 ++_stats.debugActualBounds;
                 _stats.boundsViolations += violation ? 1u : 0u;
             }
+                bool fullyDeformed = true;
+                for (u32 meshIndex = 0; meshIndex < model.numMeshes; ++meshIndex)
+                {
+                    const auto& mesh = geometry.GetMeshes()[model.meshBase + meshIndex];
+                    if (mesh.numLODs == 0)
+                        continue;
+                    const u32 localLOD = forcedLOD < 0 ? 0u : std::min(static_cast<u32>(forcedLOD), mesh.numLODs - 1u);
+                    const auto& lod = geometry.GetMeshLODs()[model.meshLODBase + mesh.lodOffset + localLOD];
+                    if ((lod.flags & FileFormat::Model::MeshLODFlags_HasSkinningData) != 0 && _records[tableBase + mesh.lodOffset + localLOD].vertexCount != lod.numVertices)
+                        fullyDeformed = false;
+                }
+                scene.GetModelInstances().MarkDeformationFrame(instanceHandle, _demandFrame, fullyDeformed);
                 scene.SetModelDeformationHandle(instanceHandle, tableBase);
             }
         }
@@ -437,11 +481,19 @@ namespace Animation
             {
                 const mat4x4 currentWorld = parent->currentWorld * mat4x4(attachment->currentTransform) * binding->childLocalTransform;
                 const mat4x4 previousWorld = parent->previousWorld * mat4x4(attachment->previousTransform) * binding->childLocalTransform;
-                binding->scene->SetModelAttachmentTransform(binding->child, currentWorld, previousWorld, attachment->motionValid && (parent->flags & ModelScene::ModelInstanceFlagMotionValid) != 0);
+                binding->scene->SetModelAttachmentTransform(binding->child, currentWorld, previousWorld, !binding->localTransformChanged && attachment->motionValid && (parent->flags & ModelScene::ModelInstanceFlagMotionValid) != 0 && (parent->flags & ModelScene::ModelInstanceFlagDeformationMotionValid) != 0);
+                binding->localTransformChanged = false;
+            }
+            else
+            {
+                const mat4x4 currentWorld = binding->scene->GetModelInstance(binding->child)->currentWorld;
+                binding->scene->SetModelAttachmentTransform(binding->child, currentWorld, currentWorld, false);
             }
             ++binding;
         }
         _poseSources.ResolvePoseQueries();
+        _poseSources.CommitDemandFrame();
+        std::sort(_currentDeformations.begin(), _currentDeformations.end(), [](const DeformationHistory& left, const DeformationHistory& right) { return std::tuple(left.poseSource, left.model, left.lod) < std::tuple(right.poseSource, right.model, right.lod); });
     }
 
     void ModelDeformationSystem::Upload()

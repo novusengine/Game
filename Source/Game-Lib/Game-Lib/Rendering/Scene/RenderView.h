@@ -87,6 +87,7 @@ namespace RenderScenes
         void RequestTemporalReset()
         {
             ++_temporalResetGeneration;
+            RequestMotionReset();
             _dirty = true;
         }
         void RequestMotionReset()
@@ -96,16 +97,16 @@ namespace RenderScenes
         void RequestCameraCut()
         {
             RequestTemporalReset();
-            RequestMotionReset();
         }
-        void PrepareTemporalCamera(const mat4x4& worldToClip)
+        void PrepareTemporalCamera(const mat4x4& worldToClip, u64 frame = 0)
         {
-            const bool reset = !_hasTemporalCamera || _preparedMotionResetGeneration != _motionResetGeneration;
+            const bool reset = !_hasTemporalCamera || _preparedMotionResetGeneration != _motionResetGeneration || (frame != 0 && _lastTemporalFrame + 1 != frame);
             _previousWorldToClip = reset ? worldToClip : _currentWorldToClip;
             _currentWorldToClip = worldToClip;
             _temporalCameraValid = !reset;
             _hasTemporalCamera = true;
             _preparedMotionResetGeneration = _motionResetGeneration;
+            _lastTemporalFrame = frame;
         }
 
         u64 GetID() const { return _viewID; }
@@ -161,6 +162,7 @@ namespace RenderScenes
         mat4x4 _currentWorldToClip = mat4x4(1.0f);
         mat4x4 _previousWorldToClip = mat4x4(1.0f);
         bool _hasTemporalCamera = false;
+        u64 _lastTemporalFrame = 0;
         bool _temporalCameraValid = false;
         bool _dirty = true;
         bool _clearTargets = false;

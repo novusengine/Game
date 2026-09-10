@@ -57,6 +57,8 @@ namespace Animation
         bool defaultBool = false;
         bool oneFrameTrigger = false;
         vec3 defaultFloat3 = {};
+        u64 sourceGUID = 0;
+        u16 stateVersion = 1;
     };
 
     struct EditableGraphState
@@ -75,6 +77,7 @@ namespace Animation
         std::vector<BlendSpaceTriangle> blendTriangles;
         std::string displayName;
         vec2 editorPosition = {};
+        u16 stateVersion = 1;
     };
 
     struct EditableGraphTransition
@@ -141,7 +144,7 @@ namespace Animation
 
     struct EditableAnimationGraph
     {
-        static constexpr u16 CURRENT_VERSION = 3;
+        static constexpr u16 CURRENT_VERSION = 4;
         u16 version = CURRENT_VERSION;
         std::vector<EditableGraphParameter> parameters;
         std::vector<EditableGraphState> states;
@@ -165,6 +168,8 @@ namespace Animation
         u32 byteOffset = 0;
         FileFormat::Animation::GraphValueType type = FileFormat::Animation::GraphValueType::Float;
         bool oneFrameTrigger = false;
+        u64 sourceGUID = 0;
+        u16 stateVersion = 1;
     };
 
     struct CompiledGraphState
@@ -183,6 +188,7 @@ namespace Animation
         bool wrapX = false;
         f32 wrapMinimum = 0.0f;
         f32 wrapMaximum = 0.0f;
+        u16 stateVersion = 1;
     };
 
     struct CompiledGraphBlendSample
@@ -471,6 +477,16 @@ namespace Animation
         bool groundedValue = false;
     };
 
+    // Describes what survived a graph publication and what was reset.
+    struct AnimationGraphMigration
+    {
+        u32 parametersPreserved = 0;
+        u32 actionsPreserved = 0;
+        u32 actionsInterrupted = 0;
+        bool statePreserved = false;
+        bool transitionPreserved = false;
+    };
+
     // Owns generation-checked animation graph instances, parameters, and transition state.
     // Fixed-step evaluation produces deterministic pose recipes without sampling clips directly.
     class AnimationControllerStore
@@ -504,7 +520,7 @@ namespace Animation
         std::span<const AnimationEventOutput> GetCosmeticEvents(AnimatorHandle handle) const;
         std::span<const AnimationGraphOutput> GetGraphOutputs(AnimatorHandle handle) const;
         void ClearOutputs(AnimatorHandle handle);
-        bool ReplaceGraph(AnimatorHandle handle, FileFormat::AssetID graphAssetID, std::shared_ptr<const CompiledAnimationGraph> graph);
+        bool ReplaceGraph(AnimatorHandle handle, FileFormat::AssetID graphAssetID, std::shared_ptr<const CompiledAnimationGraph> graph, AnimationGraphMigration* migration = nullptr, bool compatibleResources = true);
         AnimationControllerStats GetStats() const;
 
       private:

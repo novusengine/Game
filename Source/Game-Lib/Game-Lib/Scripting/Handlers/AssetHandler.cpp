@@ -1,7 +1,11 @@
 #include "AssetHandler.h"
+#include "Game-Lib/Rendering/Animation/Asset/AnimationAssetDocument.h"
+#include <json/json.hpp>
+#include "Game-Lib/Rendering/Animation/Controller/AnimationGraphDocument.h"
 #include "Game-Lib/Rendering/Animation/Debug/SkeletonDebugDraw.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/AABB.h"
+#include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
@@ -45,6 +49,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <memory>
@@ -66,9 +71,19 @@ namespace Scripting::Asset
         std::vector<Animation::AnimationParameterHandle> parameterHandles;
         std::shared_ptr<const Animation::EditableAnimationGraph> graphSource;
         std::shared_ptr<const Animation::CompiledAnimationGraph> compiledGraph;
+        std::unique_ptr<Animation::AnimationGraphDocument> document;
+        std::shared_ptr<const Animation::EditableAnimationGraph> pendingSource;
+        std::shared_ptr<const Animation::CompiledAnimationGraph> pendingCompiled;
+        std::string authoringStatus;
+        u64 publicationRevision = 0;
+        std::unique_ptr<Animation::AnimationAssetDocument> assetDocument;
+        std::string assetDocumentPath;
+        std::string assetDocumentStatus;
+        FileFormat::AssetID authoredAssetID = FileFormat::INVALID_ASSET_ID;
     };
 
     static std::unordered_map<u32, std::shared_ptr<AnimationPreviewBinding>> s_animationBindingByEntity;
+    static void RefreshGraphPublication(Animation::ModelDeformationSystem& deformation, AnimationPreviewBinding& binding);
 
     struct AnimationPreviewAttachment
     {
@@ -693,7 +708,7 @@ namespace Scripting::Asset
             Animation::EditableGraphParameter goal;
             goal.name = "rightHandGoal";
             goal.type = FileFormat::Animation::GraphValueType::Float3;
-            goal.defaultFloat3 = vec3(-0.35f, 1.45f, 0.45f);
+            goal.defaultFloat3 = vec3(-0.55f, 1.25f, 0.30f);
             Animation::EditableGraphParameter weight;
             weight.name = "ikWeight";
             weight.type = FileFormat::Animation::GraphValueType::Float;
@@ -954,6 +969,22 @@ namespace Scripting::Asset
         const AnimationLoading::SkeletonAssetView* skeletonView = assets.Get(skeleton, &skeletonDiagnostic);
         const AnimationLoading::AnimationSetAssetView* setView = assets.Get(animationSet, &setDiagnostic);
         PreviewAnimationGraph graph = CompilePreviewLocomotionGraph(mode);
+        std::shared_ptr<AnimationPreviewBinding> previousBinding;
+        const bool preserveDrafts = zenith->IsBoolean(6) && zenith->Get<bool>(6);
+        if (const auto previous = s_animationBindingByEntity.find(entityValue); previous != s_animationBindingByEntity.end())
+            previousBinding = previous->second;
+        if (preserveDrafts && previousBinding && previousBinding->compiledGraph && previousBinding->graphSource)
+        {
+            RefreshGraphPublication(*deformation, *previousBinding);
+            if (previousBinding->pendingCompiled)
+            {
+                assets.Release(animationSet);
+                assets.Release(skeleton);
+                zenith->Push(false);
+                return 1;
+            }
+            graph = {*previousBinding->graphSource, previousBinding->compiledGraph};
+        }
         if (!skeletonView || !setView || !graph.compiled)
         {
             assets.Release(animationSet);
@@ -983,6 +1014,25 @@ namespace Scripting::Asset
             zenith->Push(false);
             return 1;
         }
+        auto binding = std::make_shared<AnimationPreviewBinding>();
+        binding->controller = controller;
+        binding->poseSource = poseSource;
+        binding->graphSource = std::make_shared<const Animation::EditableAnimationGraph>(std::move(graph.source));
+        binding->compiledGraph = std::move(graph.compiled);
+        if (previousBinding)
+        {
+            binding->assetDocument = std::move(previousBinding->assetDocument);
+            binding->assetDocumentPath = std::move(previousBinding->assetDocumentPath);
+            binding->assetDocumentStatus = std::move(previousBinding->assetDocumentStatus);
+            binding->authoredAssetID = previousBinding->authoredAssetID;
+            if (preserveDrafts)
+            {
+                binding->document = std::move(previousBinding->document);
+                binding->publicationRevision = previousBinding->publicationRevision + 1;
+                binding->authoringStatus = "Comparison restarted playback; graph and asset drafts retained";
+            }
+        }
+        previousBinding.reset();
         ReleaseAnimationBinding(entityValue, true);
         if (!bridge->SetPoseSource(entity, poseSource))
         {
@@ -990,22 +1040,17 @@ namespace Scripting::Asset
             zenith->Push(false);
             return 1;
         }
-        auto binding = std::make_shared<AnimationPreviewBinding>();
-        binding->controller = controller;
-        binding->poseSource = poseSource;
-        binding->graphSource = std::make_shared<const Animation::EditableAnimationGraph>(std::move(graph.source));
-        binding->compiledGraph = std::move(graph.compiled);
         s_animationBindingByEntity[entityValue] = std::move(binding);
         NC_LOG_INFO("ANIMATION_CONTROLLER bound entity={} skeleton={} set={} states={} parameters={} pose_source={}", entityValue, skeletonPath, setPath, s_animationBindingByEntity[entityValue]->compiledGraph->states.size(), s_animationBindingByEntity[entityValue]->compiledGraph->parameters.size(), poseSource.GetRawValue());
         zenith->Push(true);
         return 1;
     }
 
-    static Animation::ModelDeformationSystem* GetControllerBinding(u32 entityValue, std::shared_ptr<AnimationPreviewBinding>& binding)
+    static Animation::ModelDeformationSystem* GetControllerBinding(u32 entityValue, std::shared_ptr<AnimationPreviewBinding>& binding, bool requireController = true)
     {
         const auto found = s_animationBindingByEntity.find(entityValue);
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        if (found == s_animationBindingByEntity.end() || !gameRenderer || !found->second->controller)
+        if (found == s_animationBindingByEntity.end() || !gameRenderer || (requireController && !found->second->controller))
             return nullptr;
         binding = found->second;
         return gameRenderer->GetModelRenderSystem()->GetDeformationSystem();
@@ -1034,21 +1079,26 @@ namespace Scripting::Asset
             zenith->Push();
             return 1;
         }
-        binding->parameterHandles.push_back(handle);
-        zenith->Push(static_cast<u32>(binding->parameterHandles.size()));
+        if (binding->parameterHandles.size() <= handle.parameterIndex)
+            binding->parameterHandles.resize(static_cast<size_t>(handle.parameterIndex) + 1);
+        binding->parameterHandles[handle.parameterIndex] = handle;
+        zenith->Push((static_cast<u64>(handle.graphGeneration) << 32) | (static_cast<u64>(handle.parameterIndex) + 1));
         return 1;
     }
 
-    static Animation::AnimationParameterHandle GetParameterToken(const std::shared_ptr<AnimationPreviewBinding>& binding, u32 token)
+    static Animation::AnimationParameterHandle GetParameterToken(const std::shared_ptr<AnimationPreviewBinding>& binding, u64 token)
     {
-        return binding && token > 0 && token <= binding->parameterHandles.size() ? binding->parameterHandles[token - 1] : Animation::AnimationParameterHandle{};
+        const u32 index = static_cast<u32>(token);
+        if (!binding || index == 0 || index > binding->parameterHandles.size()) return {};
+        const auto handle = binding->parameterHandles[index - 1];
+        return handle.graphGeneration == static_cast<u32>(token >> 32) ? handle : Animation::AnimationParameterHandle{};
     }
 
     i32 AssetHandler::AnimationSetFloatParameter(Zenith* zenith)
     {
         std::shared_ptr<AnimationPreviewBinding> binding;
         Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
-        zenith->Push(deformation && deformation->SetControllerFloat(GetParameterToken(binding, zenith->CheckVal<u32>(2)), zenith->CheckVal<f32>(3)));
+        zenith->Push(deformation && deformation->SetControllerFloat(GetParameterToken(binding, zenith->CheckVal<u64>(2)), zenith->CheckVal<f32>(3)));
         return 1;
     }
 
@@ -1057,7 +1107,7 @@ namespace Scripting::Asset
         std::shared_ptr<AnimationPreviewBinding> binding;
         Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
         const vec3 value(zenith->CheckVal<f32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5));
-        zenith->Push(deformation && deformation->SetControllerFloat3(GetParameterToken(binding, zenith->CheckVal<u32>(2)), value));
+        zenith->Push(deformation && deformation->SetControllerFloat3(GetParameterToken(binding, zenith->CheckVal<u64>(2)), value));
         return 1;
     }
 
@@ -1065,7 +1115,7 @@ namespace Scripting::Asset
     {
         std::shared_ptr<AnimationPreviewBinding> binding;
         Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
-        zenith->Push(deformation && deformation->SetControllerBool(GetParameterToken(binding, zenith->CheckVal<u32>(2)), zenith->CheckVal<bool>(3)));
+        zenith->Push(deformation && deformation->SetControllerBool(GetParameterToken(binding, zenith->CheckVal<u64>(2)), zenith->CheckVal<bool>(3)));
         return 1;
     }
 
@@ -1073,7 +1123,7 @@ namespace Scripting::Asset
     {
         std::shared_ptr<AnimationPreviewBinding> binding;
         Animation::ModelDeformationSystem* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
-        zenith->Push(deformation && deformation->TriggerController(GetParameterToken(binding, zenith->CheckVal<u32>(2))));
+        zenith->Push(deformation && deformation->TriggerController(GetParameterToken(binding, zenith->CheckVal<u64>(2))));
         return 1;
     }
 
@@ -1458,6 +1508,8 @@ namespace Scripting::Asset
             return 1;
         }
         zenith->CreateTable();
+        RefreshGraphPublication(*deformation, *binding);
+        zenith->AddTableField("graphRevision", binding->publicationRevision);
         zenith->AddTableField("currentState", state.currentState);
         zenith->AddTableField("transitionTarget", state.transitionTarget);
         zenith->AddTableField("stateTimeUS", state.stateTimeMicroseconds);
@@ -1485,6 +1537,21 @@ namespace Scripting::Asset
         zenith->AddTableField("synchronizationFallback", state.synchronizationFallback);
         zenith->AddTableField("activeLayers", state.activeLayers);
         zenith->AddTableField("activeIKOperations", state.activeIKOperations);
+        zenith->CreateTable();
+        if (const auto* pose = deformation->GetPoseSource(binding->poseSource))
+            for (u32 index = 0; index < pose->debugIKOperationCount; ++index)
+            {
+                const auto& operation = pose->debugIKOperations[index];
+                zenith->CreateTable();
+                zenith->AddTableField("finalError", operation.finalError);
+                zenith->AddTableField("clamped", operation.clamped);
+                zenith->AddTableField("jointLimitClamped", operation.jointLimitClamped);
+                zenith->AddTableField("goalX", operation.goalModel.x);
+                zenith->AddTableField("goalY", operation.goalModel.y);
+                zenith->AddTableField("goalZ", operation.goalModel.z);
+                zenith->SetTableKey(index + 1);
+            }
+        zenith->SetTableKey("ikDiagnostics");
         zenith->AddTableField("activeActionSemanticID", state.activeActionSemanticID);
         zenith->AddTableField("activeActionTimeUS", state.activeActionTimeMicroseconds);
         zenith->AddTableField("activeActionStatus", static_cast<u32>(state.activeActionStatus));
@@ -1513,6 +1580,541 @@ namespace Scripting::Asset
         return 1;
     }
 
+    static void RefreshGraphPublication(Animation::ModelDeformationSystem& deformation, AnimationPreviewBinding& binding)
+    {
+        if (!binding.pendingCompiled)
+            return;
+        u64 hash = 0;
+        bool pending = false;
+        Animation::AnimationGraphMigration migration;
+        if (!deformation.GetControllerGraphPublication(binding.controller, hash, pending, migration) || pending || hash != binding.pendingCompiled->contentHash)
+            return;
+        binding.graphSource = std::move(binding.pendingSource);
+        binding.compiledGraph = std::move(binding.pendingCompiled);
+        ++binding.publicationRevision;
+        binding.authoringStatus = std::string("Published; state ") + (migration.statePreserved ? "preserved" : "reset") + ", parameters " + std::to_string(migration.parametersPreserved) + ", actions interrupted " + std::to_string(migration.actionsInterrupted);
+    }
+
+    static Animation::AnimationGraphDocument* GetGraphDocument(Animation::ModelDeformationSystem* deformation, const std::shared_ptr<AnimationPreviewBinding>& binding)
+    {
+        if (!deformation || !binding || !binding->graphSource)
+            return nullptr;
+        RefreshGraphPublication(*deformation, *binding);
+        if (!binding->document)
+            binding->document = std::make_unique<Animation::AnimationGraphDocument>(*binding->graphSource);
+        return binding->document.get();
+    }
+
+    static const std::unordered_map<u64, std::string>& AuthoringJointNames()
+    {
+        static const auto names = []
+        {
+            std::unordered_map<u64, std::string> result;
+            std::ifstream stream("../spec/Animation/BipedalHumanoid.v1.json");
+            const auto dictionary = nlohmann::json::parse(stream, nullptr, false);
+            if (dictionary.is_object() && dictionary.contains("joints"))
+                for (const auto& joint : dictionary["joints"])
+                {
+                    const auto name = joint.value("semantic", std::string());
+                    result[Animation::HashAnimationSemantic("humanoid", name)] = name;
+                    result[Animation::HashAnimationSemantic("source-joint", name)] = name;
+                    result[Animation::HashAnimationSemantic("source-joint", "mixamorig:" + name)] = name;
+                    result[Animation::HashAnimationSemantic("source-joint", "mixamorig1:" + name)] = name;
+                }
+            return result;
+        }();
+        return names;
+    }
+
+    static std::vector<FileFormat::Animation::SkeletonJoint> AuthoringHierarchy(const Animation::AnimationAssetDocument& document, const Animation::PoseSource* pose, AnimationLoading::AnimationAssetRegistry& assets)
+    {
+        using Type = Animation::AnimationDocumentType;
+        std::vector<FileFormat::Animation::SkeletonJoint> joints;
+        if (document.GetType() == Type::Skeleton)
+        {
+            const auto view = AnimationLoading::AnimationAssetReader::ReadSkeleton(document.GetPayload());
+            if (view) joints.assign(view.view.joints.begin(), view.view.joints.end());
+            return joints;
+        }
+        if (document.GetType() == Type::RigFamily)
+        {
+            const auto view = AnimationLoading::AnimationAssetReader::ReadRigFamily(document.GetPayload());
+            if (view) for (const auto& joint : view.view.joints)
+            {
+                FileFormat::Animation::SkeletonJoint value;
+                value.semanticID = joint.semanticID; value.parentJointIndex = joint.parentJointIndex; value.restTransform = joint.canonicalTransform;
+                joints.push_back(value);
+            }
+            return joints;
+        }
+        auto skeleton = pose ? assets.Lease(pose->skeleton) : nullptr;
+        if (document.GetType() == Type::Mask)
+        {
+            const auto mask = AnimationLoading::AnimationAssetReader::ReadBoneMask(document.GetPayload());
+            if (!mask) return joints;
+            if (mask.view.root.poseDomainType == FileFormat::Animation::PoseDomainType::RigFamily)
+            {
+                const auto handle = assets.LoadRigFamily(mask.view.root.poseDomainAssetID);
+                const auto family = assets.Lease(handle);
+                if (family) for (const auto& joint : family->joints)
+                {
+                    FileFormat::Animation::SkeletonJoint value;
+                    value.semanticID = joint.semanticID; value.parentJointIndex = joint.parentJointIndex;
+                    value.restTransform = joint.canonicalTransform;
+                    joints.push_back(value);
+                }
+                assets.Release(handle);
+                return joints;
+            }
+            const auto handle = assets.LoadSkeleton(mask.view.root.poseDomainAssetID);
+            skeleton = assets.Lease(handle);
+            assets.Release(handle);
+        }
+        if (skeleton) joints.assign(skeleton->joints.begin(), skeleton->joints.end());
+        return joints;
+    }
+
+    i32 AssetHandler::GetAnimationJointScreenPositions(Zenith* zenith)
+    {
+        const auto entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(static_cast<u32>(entity), binding, false);
+        auto* renderer = ServiceLocator::GetGameRenderer();
+        auto* bridge = renderer ? renderer->GetModelSceneBridge() : nullptr;
+        auto* scene = bridge ? bridge->GetScene(entity) : nullptr;
+        const auto* instance = scene ? scene->GetModelInstance(bridge->Get(entity)) : nullptr;
+        const auto* pose = deformation ? deformation->GetPoseSource(binding->poseSource) : nullptr;
+        auto* registries = ServiceLocator::GetEnttRegistries();
+        auto* registry = registries ? registries->gameRegistry : nullptr;
+        const auto* active = registry ? registry->ctx().find<ECS::Singletons::ActiveCamera>() : nullptr;
+        const auto* camera = active ? registry->try_get<ECS::Components::Camera>(active->entity) : nullptr;
+        zenith->CreateTable();
+        if (!pose || !instance || !camera || !binding->assetDocument) return 1;
+        auto& assets = renderer->GetRenderAssetResources()->GetAnimationRegistry();
+        const auto skeleton = assets.Lease(pose->skeleton);
+        if (!skeleton) return 1;
+        const auto hierarchy = AuthoringHierarchy(*binding->assetDocument, pose, assets);
+        bool familyDomain = binding->assetDocument->GetType() == Animation::AnimationDocumentType::RigFamily;
+        if (binding->assetDocument->GetType() == Animation::AnimationDocumentType::Mask)
+        {
+            const auto mask = AnimationLoading::AnimationAssetReader::ReadBoneMask(binding->assetDocument->GetPayload());
+            familyDomain = mask && mask.view.root.poseDomainType == FileFormat::Animation::PoseDomainType::RigFamily;
+        }
+        const mat4x4 modelToClip = camera->worldToClip * instance->currentWorld;
+        u32 output = 1;
+        for (u32 index = 0; index < hierarchy.size(); ++index)
+        {
+            for (u32 concrete = 0; concrete < skeleton->joints.size() && concrete < pose->modelTransforms.size(); ++concrete)
+            {
+                const auto& joint = skeleton->joints[concrete];
+                if (familyDomain ? joint.familyJointIndex != static_cast<i32>(index) : joint.semanticID != hierarchy[index].semanticID) continue;
+                const vec4 clip = modelToClip * vec4(vec3(pose->modelTransforms[concrete][3]), 1.0f);
+                if (!std::isfinite(clip.w) || clip.w <= 0.0f) break;
+                const vec3 ndc = vec3(clip) / clip.w;
+                if (!std::isfinite(ndc.x) || !std::isfinite(ndc.y) || ndc.z < 0.0f || ndc.z > 1.0f) break;
+                zenith->CreateTable();
+                zenith->AddTableField("index", index);
+                zenith->AddTableField("concreteIndex", concrete);
+                zenith->AddTableField("x", ndc.x * 0.5f + 0.5f);
+                zenith->AddTableField("y", ndc.y * 0.5f + 0.5f);
+                zenith->SetTableKey(output++);
+                break;
+            }
+        }
+        return 1;
+    }
+
+    i32 AssetHandler::AnimationDump(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding, false);
+        const std::string name = zenith->CheckVal<const char*>(2);
+        std::string error;
+        bool success = false;
+        if (!deformation || name.empty() || name.size() > 64 || !std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '-' || c == '_'; })) error = "Choose a bound preview and a simple capture name";
+        else try
+        {
+            Animation::PoseRecipe recipe;
+            const bool hasRecipe = binding->controller && deformation->CaptureControllerRecipe(binding->controller, recipe);
+            const auto* pose = deformation->GetPoseSource(binding->poseSource);
+            if (!pose) throw std::runtime_error("Preview pose is unavailable");
+            nlohmann::json dump;
+            dump["poseGeneration"] = pose->poseGeneration;
+            dump["motionGeneration"] = pose->motionGeneration;
+            dump["sampleTimeMicroseconds"] = pose->sampleTimeMicroseconds;
+            dump["localPose"] = nlohmann::json::array();
+            dump["ik"] = nlohmann::json::array();
+            for (u32 index = 0; index < pose->debugIKOperationCount; ++index)
+            {
+                const auto& operation = pose->debugIKOperations[index];
+                dump["ik"].push_back({{"goal", {operation.goalModel.x, operation.goalModel.y, operation.goalModel.z}}, {"pole", {operation.poleModel.x, operation.poleModel.y, operation.poleModel.z}}, {"finalError", operation.finalError}, {"clamped", operation.clamped}, {"jointLimitClamped", operation.jointLimitClamped}});
+            }
+            if (hasRecipe)
+            {
+                auto sampleJSON = [](const Animation::PoseRecipeSample& sample) { return nlohmann::json{{"clipAssetID", sample.clipAssetID}, {"timeMicroseconds", sample.timeMicroseconds}, {"weight", sample.weight}, {"variation", sample.stableVariationID}}; };
+                auto& output = dump["recipe"];
+                output = {{"sourceState", recipe.sourceState}, {"targetState", recipe.targetState}, {"transitionWeight", recipe.transitionWeight}, {"usesSnapshot", recipe.usesSnapshot}, {"samples", nlohmann::json::array()}, {"layers", nlohmann::json::array()}, {"ik", nlohmann::json::array()}};
+                for (u32 index = 0; index < recipe.sampleCount; ++index) output["samples"].push_back(sampleJSON(recipe.samples[index]));
+                for (u32 index = 0; index < recipe.layerCount; ++index)
+                {
+                    const auto& layer = recipe.layers[index];
+                    output["layers"].push_back({{"sample", sampleJSON(layer.sample)}, {"maskAssetID", layer.maskAssetID}, {"weight", layer.weight}, {"type", static_cast<u32>(layer.type)}, {"order", layer.executionOrder}, {"composeInSourceDomain", layer.composeInSourceDomain}});
+                }
+                for (u32 index = 0; index < recipe.ikOperationCount; ++index)
+                {
+                    const auto& operation = recipe.ikOperations[index];
+                    output["ik"].push_back({{"rigAssetID", operation.rigAssetID}, {"solver", operation.solverSemanticID}, {"goal", {operation.goalModel.x, operation.goalModel.y, operation.goalModel.z}}, {"weight", operation.weight}, {"order", operation.executionOrder}, {"goalAttachment", operation.goalAttachmentSemanticID}, {"effectorAttachment", operation.effectorAttachmentSemanticID}, {"alignmentAxis", {operation.effectorAlignmentAxis.x, operation.effectorAlignmentAxis.y, operation.effectorAlignmentAxis.z}}});
+                }
+            }
+            for (const auto& joint : pose->localPose)
+                dump["localPose"].push_back({{"translation", {joint.translation.x, joint.translation.y, joint.translation.z}}, {"rotationWXYZ", {joint.rotation.w, joint.rotation.x, joint.rotation.y, joint.rotation.z}}, {"scale", {joint.scale.x, joint.scale.y, joint.scale.z}}});
+            Animation::AnimationControllerState state;
+            if (binding->controller && deformation->GetControllerState(binding->controller, state))
+            {
+                dump["controller"] = {{"state", state.currentState}, {"stateTimeMicroseconds", state.stateTimeMicroseconds}, {"transitionTarget", state.transitionTarget}, {"transitionTimeMicroseconds", state.transitionTimeMicroseconds}, {"transitioning", state.transitioning}, {"resolvedClipAssetID", state.resolvedClipAssetID}, {"variation", state.resolvedVariationID}, {"fallbackDepth", state.resolvedFallbackDepth}, {"blendWeights", state.activeBlendWeights}, {"playbackRates", state.synchronizationPlaybackRates}};
+                if (binding->graphSource)
+                {
+                    Animation::AnimationGraphDocument graph(*binding->graphSource);
+                    for (const auto& field : graph.GetFields()) dump["graphFields"].push_back({{"section", field.section}, {"index", field.index}, {"name", field.name}, {"value", field.value}});
+                }
+                std::vector<vec3> values;
+                if (deformation->GetControllerParameterValues(binding->controller, values))
+                    for (const auto& value : values) dump["parameters"].push_back({value.x, value.y, value.z});
+            }
+            const fs::path directory = fs::absolute("../Source/Resources/Automation/Artifacts/animation-diagnostics");
+            fs::create_directories(directory);
+            const auto path = directory / (name + ".json");
+            std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+            stream << dump.dump(2); stream.close();
+            success = static_cast<bool>(stream);
+            error = success ? path.generic_string() : "Diagnostic dump could not be written";
+        }
+        catch (const std::exception& exception) { error = exception.what(); }
+        zenith->Push(success); zenith->Push(error.c_str()); return 2;
+    }
+
+    i32 AssetHandler::AnimationAssetDocument(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding, false);
+        if (!deformation) { zenith->Push(); return 1; }
+        if (zenith->IsString(2))
+        {
+            std::string path;
+            FileFormat::AssetID id = FileFormat::INVALID_ASSET_ID;
+            auto* storage = ServiceLocator::GetPactStorage();
+            const u32 type = zenith->CheckVal<u32>(3);
+            std::string error;
+            PACT::PactFileHandle file;
+            auto document = std::make_unique<Animation::AnimationAssetDocument>();
+            const bool opened = type <= static_cast<u32>(Animation::AnimationDocumentType::IK) && storage && ResolveModelAssetPath(zenith->CheckVal<const char*>(2), storage, path, id) && storage->ReadFile(id, file) == PACT::PactReadResult::Success && document->Open(static_cast<Animation::AnimationDocumentType>(type), {reinterpret_cast<const u8*>(file.GetData()), file.GetSize()}, error);
+            if (!opened) { zenith->Push(); zenith->Push(error.empty() ? "Asset could not be opened" : error.c_str()); return 2; }
+            binding->assetDocument = std::move(document);
+            binding->assetDocumentPath = path;
+            binding->authoredAssetID = id;
+            binding->assetDocumentStatus = "Opened; edits remain in the draft until Apply";
+        }
+        if (!binding->assetDocument) { zenith->Push(); return 1; }
+        const auto& document = *binding->assetDocument;
+        zenith->CreateTable();
+        zenith->AddTableField("path", binding->assetDocumentPath.c_str());
+        zenith->AddTableField("type", static_cast<u32>(document.GetType()));
+        zenith->AddTableField("revision", document.GetRevision());
+        zenith->AddTableField("dirty", document.IsDirty());
+        zenith->AddTableField("status", binding->assetDocumentStatus.c_str());
+        zenith->AddTableField("publication", deformation->GetAnimationAssetPublicationStatus().c_str());
+        zenith->CreateTable();
+        u32 index = 1;
+        for (const auto& field : document.GetFields())
+        {
+            zenith->CreateTable();
+            zenith->AddTableField("path", field.path.c_str());
+            zenith->AddTableField("value", field.value.c_str());
+            zenith->SetTableKey(index++);
+        }
+        zenith->SetTableKey("fields");
+        auto& assets = ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetAnimationRegistry();
+        const auto hierarchy = AuthoringHierarchy(document, deformation->GetPoseSource(binding->poseSource), assets);
+        const auto& names = AuthoringJointNames();
+        AnimationLoading::RigFamilyHandle namingFamily;
+        if (const auto* pose = deformation->GetPoseSource(binding->poseSource))
+            if (const auto* skeleton = assets.GetRetained(pose->skeleton); skeleton && skeleton->root.rigFamilyAssetID != FileFormat::INVALID_ASSET_ID)
+                namingFamily = assets.LoadRigFamily(skeleton->root.rigFamilyAssetID);
+        const auto* familyNames = namingFamily ? assets.Get(namingFamily) : nullptr;
+        zenith->CreateTable();
+        for (u32 i = 0; i < hierarchy.size(); ++i)
+        {
+            const auto& joint = hierarchy[i];
+            const auto found = names.find(joint.semanticID);
+            auto label = found != names.end() ? found->second : "Joint " + std::to_string(i);
+            if (found == names.end() && familyNames && joint.familyJointIndex >= 0 && static_cast<u32>(joint.familyJointIndex) < familyNames->joints.size())
+                if (const auto semantic = names.find(familyNames->joints[joint.familyJointIndex].semanticID); semantic != names.end()) label += " / " + semantic->second;
+            zenith->CreateTable();
+            zenith->AddTableField("index", i);
+            zenith->AddTableField("parent", joint.parentJointIndex);
+            zenith->AddTableField("name", label.c_str());
+            zenith->AddTableField("semanticID", joint.semanticID);
+            zenith->AddTableField("familyIndex", joint.familyJointIndex);
+            zenith->SetTableKey(i + 1);
+        }
+        zenith->SetTableKey("hierarchy");
+        if (namingFamily) assets.Release(namingFamily);
+        return 1;
+    }
+
+    i32 AssetHandler::AnimationAssetEditField(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding, false);
+        std::string error = "No asset document is open";
+        const bool success = deformation && binding->assetDocument && binding->assetDocument->Edit(zenith->CheckVal<const char*>(2), zenith->CheckVal<const char*>(3), error);
+        if (binding) binding->assetDocumentStatus = success ? "Draft changed" : error;
+        zenith->Push(success); zenith->Push(error.c_str()); return 2;
+    }
+
+    i32 AssetHandler::AnimationAssetCommand(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding, false);
+        auto* document = binding ? binding->assetDocument.get() : nullptr;
+        const std::string command = zenith->CheckVal<const char*>(2);
+        bool success = false;
+        std::string error;
+        if (!deformation || !document) error = "No asset document is open";
+        else if (command == "undo") success = document->Undo();
+        else if (command == "redo") success = document->Redo();
+        else if (command == "revert") { document->Revert(); success = true; }
+        else if (command == "insert") success = document->Insert(zenith->CheckVal<const char*>(3), error);
+        else if (command == "remove") success = document->Remove(zenith->CheckVal<const char*>(3), zenith->CheckVal<u32>(4), error);
+        else if (command == "compile" || command == "apply")
+        {
+            success = document->Compile(error);
+            if (success && command == "apply") success = deformation->QueueAnimationAsset(document->GetType(), binding->authoredAssetID, document->GetPayload(), error);
+        }
+        else if (command == "paint" || command == "mirror")
+        {
+            const auto* pose = deformation->GetPoseSources().Get(binding->poseSource);
+            auto& assets = ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetAnimationRegistry();
+            const auto joints = AuthoringHierarchy(*document, pose, assets);
+            if (command == "paint") success = document->PaintMask(joints, zenith->CheckVal<u32>(3), zenith->CheckVal<f32>(4), zenith->CheckVal<f32>(5), zenith->CheckVal<bool>(6), error);
+            else
+            {
+                const auto& names = AuthoringJointNames();
+                std::vector<std::pair<u32, u32>> pairs;
+                const std::string sourceSide = zenith->CheckVal<const char*>(3);
+                const std::string targetSide = sourceSide == "left" ? "right" : "left";
+                for (u32 i = 0; i < joints.size(); ++i)
+                {
+                    const auto source = names.find(joints[i].semanticID);
+                    if (source == names.end() || !source->second.starts_with(sourceSide)) continue;
+                    const auto targetName = targetSide + source->second.substr(sourceSide.size());
+                    for (u32 j = 0; j < joints.size(); ++j)
+                    {
+                        const auto target = names.find(joints[j].semanticID);
+                        if (target != names.end() && target->second == targetName) pairs.emplace_back(i, j);
+                    }
+                }
+                if (pairs.empty()) error = "No reviewed semantic mirror pairs exist for this hierarchy";
+                else success = document->MirrorMask(pairs, error);
+            }
+        }
+        else if (command == "save" || command == "load")
+        {
+            const std::string name = zenith->CheckVal<const char*>(3);
+            if (name.empty() || name.size() > 64 || !std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '-' || c == '_'; })) error = "Use letters, numbers, hyphens or underscores for the source name";
+            else try
+            {
+                const fs::path directory = fs::absolute("../Source/Resources/AnimationSources");
+                const fs::path path = directory / (name + ".animationassetsource");
+                if (command == "save")
+                {
+                    fs::create_directories(directory);
+                    const fs::path temporary = directory / (name + ".animationassetsource.tmp");
+                    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+                    const auto bytes = document->Serialize();
+                    stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+                    stream.close();
+                    if (stream) { fs::rename(temporary, path); document->MarkSaved(); success = true; }
+                    else error = "Write failed; previous source retained";
+                }
+                else if (fs::file_size(path) <= 4 * 1024 * 1024)
+                {
+                    std::ifstream stream(path, std::ios::binary);
+                    const std::vector<u8> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+                    success = stream.good() && document->LoadSource(bytes, error);
+                    if (success) document->MarkSaved();
+                }
+                else error = "Source exceeds the editor size limit";
+            }
+            catch (const std::exception& exception) { error = exception.what(); }
+        }
+        else error = "Unknown asset document command";
+        if (binding) binding->assetDocumentStatus = success ? command + " succeeded" : error;
+        zenith->Push(success); zenith->Push(error.c_str()); return 2;
+    }
+
+    i32 AssetHandler::AnimationGraphDocument(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        auto* document = GetGraphDocument(deformation, binding);
+        if (!document)
+        {
+            zenith->Push();
+            return 1;
+        }
+        RefreshGraphPublication(*deformation, *binding);
+        zenith->CreateTable();
+        zenith->AddTableField("revision", document->GetRevision());
+        zenith->AddTableField("dirty", document->IsDirty());
+        zenith->AddTableField("canUndo", document->CanUndo());
+        zenith->AddTableField("canRedo", document->CanRedo());
+        zenith->AddTableField("pending", binding->pendingCompiled != nullptr);
+        zenith->AddTableField("status", binding->authoringStatus.c_str());
+        zenith->AddTableField("liveHash", binding->compiledGraph->contentHash);
+        zenith->CreateTable();
+        u32 fieldIndex = 1;
+        for (const auto& field : document->GetFields())
+        {
+            zenith->CreateTable();
+            zenith->AddTableField("section", field.section.c_str());
+            zenith->AddTableField("index", field.index);
+            zenith->AddTableField("name", field.name.c_str());
+            zenith->AddTableField("value", field.value.c_str());
+            zenith->SetTableKey(fieldIndex++);
+        }
+        zenith->SetTableKey("fields");
+        zenith->CreateTable();
+        u32 index = 1;
+        for (const auto& diagnostic : document->GetCompilation().diagnostics)
+        {
+            zenith->CreateTable();
+            zenith->AddTableField("field", diagnostic.field.c_str());
+            zenith->AddTableField("index", diagnostic.index);
+            zenith->AddTableField("message", diagnostic.message.c_str());
+            zenith->SetTableKey(index++);
+        }
+        zenith->SetTableKey("diagnostics");
+        return 1;
+    }
+
+    i32 AssetHandler::AnimationGraphEditField(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        auto* document = GetGraphDocument(deformation, binding);
+        std::string error;
+        const bool success = document && document->EditField(zenith->CheckVal<const char*>(2), zenith->CheckVal<u32>(3), zenith->CheckVal<const char*>(4), zenith->CheckVal<const char*>(5), error);
+        if (binding)
+            binding->authoringStatus = success ? "Draft changed; Apply to publish" : error;
+        zenith->Push(success);
+        zenith->Push(error.c_str());
+        return 2;
+    }
+
+    i32 AssetHandler::AnimationGraphCommand(Zenith* zenith)
+    {
+        std::shared_ptr<AnimationPreviewBinding> binding;
+        auto* deformation = GetControllerBinding(zenith->CheckVal<u32>(1), binding);
+        auto* document = GetGraphDocument(deformation, binding);
+        const std::string command = zenith->CheckVal<const char*>(2);
+        std::string error;
+        bool success = false;
+        if (!document)
+            error = "No graph is bound";
+        else if (command == "undo") success = document->Undo();
+        else if (command == "redo") success = document->Redo();
+        else if (command == "revert") { document->Revert(); success = true; }
+        else if (command == "duplicate") success = document->DuplicateItem(zenith->CheckVal<const char*>(3), zenith->CheckVal<u32>(4), error);
+        else if (command == "add") success = document->DuplicateItem(zenith->CheckVal<const char*>(3), std::numeric_limits<u32>::max(), error);
+        else if (command == "connect")
+        {
+            auto source = document->GetSource();
+            const u32 from = zenith->CheckVal<u32>(3);
+            const u32 to = zenith->CheckVal<u32>(4);
+            const auto parameter = std::find_if(source.parameters.begin(), source.parameters.end(), [](const auto& value) { return value.type == FileFormat::Animation::GraphValueType::Float; });
+            if (from >= source.states.size() || to >= source.states.size() || from == to || parameter == source.parameters.end()) error = "Choose two different states and author a float condition parameter";
+            else
+            {
+                Animation::EditableGraphTransition transition;
+                transition.sourceGUID = source.states[from].sourceGUID;
+                transition.targetGUID = source.states[to].sourceGUID;
+                transition.parameter = parameter->name;
+                transition.durationMicroseconds = 200000;
+                source.transitions.push_back(transition);
+                document->Edit(std::move(source)); success = true;
+            }
+        }
+        else if (command == "remove") success = document->RemoveItem(zenith->CheckVal<const char*>(3), zenith->CheckVal<u32>(4), error);
+        else if (command == "apply" || command == "compile")
+        {
+            success = document->Compile();
+            if (!success)
+                error = "Compilation failed; running graph unchanged";
+            else if (command == "apply")
+            {
+                success = deformation->QueueControllerGraph(binding->controller, document->GetLastGoodGraph(), error);
+                if (success)
+                {
+                    binding->pendingSource = std::make_shared<const Animation::EditableAnimationGraph>(document->GetSource());
+                    binding->pendingCompiled = document->GetLastGoodGraph();
+                }
+            }
+        }
+        else if (command == "save" || command == "load")
+        {
+            const std::string name = zenith->CheckVal<const char*>(3);
+            const bool validName = !name.empty() && name.size() <= 64 && std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '-' || c == '_'; });
+            if (!validName)
+                error = "Use a document name containing only letters, numbers, hyphens or underscores";
+            else
+            {
+                try
+                {
+                    const fs::path directory = fs::absolute("../Source/Resources/AnimationSources");
+                    const fs::path path = directory / (name + ".animationgraphsource");
+                    if (command == "save")
+                    {
+                        fs::create_directories(directory);
+                        const fs::path temporary = directory / (name + ".animationgraphsource.tmp");
+                        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+                        const auto bytes = Animation::AnimationGraphDocument::Serialize(document->GetSource());
+                        stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+                        stream.close();
+                        if (!stream)
+                            error = "Could not write graph source; previous save retained";
+                        else
+                        {
+                            fs::rename(temporary, path);
+                            document->MarkSaved();
+                            success = true;
+                        }
+                    }
+                    else if (fs::file_size(path) <= 4 * 1024 * 1024)
+                    {
+                        std::ifstream stream(path, std::ios::binary);
+                        const std::vector<u8> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+                        Animation::EditableAnimationGraph source;
+                        success = stream.good() && Animation::AnimationGraphDocument::Parse(bytes, source, error);
+                        if (success)
+                        {
+                            document->Edit(std::move(source));
+                            document->MarkSaved();
+                        }
+                    }
+                    else error = "Graph source exceeds the 4 MiB editor limit";
+                }
+                catch (const std::exception& exception) { error = exception.what(); }
+            }
+        }
+        else error = "Unknown graph document command";
+        if (binding)
+            binding->authoringStatus = success ? (command == "apply" ? "Publication queued" : command + " succeeded") : error;
+        zenith->Push(success);
+        zenith->Push(error.c_str());
+        return 2;
+    }
+
     i32 AssetHandler::GetAnimationControllerGraph(Zenith* zenith)
     {
         std::shared_ptr<AnimationPreviewBinding> binding;
@@ -1523,13 +2125,21 @@ namespace Scripting::Asset
             return 1;
         }
 
-        const Animation::EditableAnimationGraph& source = *binding->graphSource;
-        const Animation::CompiledAnimationGraph& compiled = *binding->compiledGraph;
+        RefreshGraphPublication(*deformation, *binding);
+        const bool draft = zenith->IsBoolean(2) && zenith->ToBoolean(2);
+        auto* document = draft ? GetGraphDocument(deformation, binding) : nullptr;
+        if (draft && !document) { zenith->Push(); return 1; }
+        const bool validDraft = !draft || document->Compile();
+        const Animation::EditableAnimationGraph& source = draft ? document->GetSource() : *binding->graphSource;
+        const Animation::CompiledAnimationGraph& compiled = draft && validDraft ? *document->GetLastGoodGraph() : *binding->compiledGraph;
+        auto stateIndexForGUID = [&source](u64 guid) { const auto found = std::find_if(source.states.begin(), source.states.end(), [guid](const auto& state) { return state.sourceGUID == guid; }); return found == source.states.end() ? std::numeric_limits<u32>::max() : static_cast<u32>(found - source.states.begin()); };
         zenith->CreateTable();
         zenith->AddTableField("name", source.displayName.c_str());
         zenith->AddTableField("version", source.version);
         zenith->AddTableField("contentHash", compiled.contentHash);
-        zenith->AddTableField("entryState", compiled.entryState);
+        zenith->AddTableField("revision", binding->publicationRevision);
+        zenith->AddTableField("entryState", stateIndexForGUID(source.entryStateGUID));
+        zenith->AddTableField("validDraft", validDraft);
 
         zenith->CreateTable();
         for (u32 parameterIndex = 0; parameterIndex < source.parameters.size(); ++parameterIndex)
@@ -1603,11 +2213,10 @@ namespace Scripting::Asset
         for (u32 transitionIndex = 0; transitionIndex < source.transitions.size(); ++transitionIndex)
         {
             const Animation::EditableGraphTransition& transition = source.transitions[transitionIndex];
-            const Animation::CompiledGraphTransition& compiledTransition = compiled.transitions[transitionIndex];
             zenith->CreateTable();
             zenith->AddTableField("index", transitionIndex);
-            zenith->AddTableField("sourceState", compiledTransition.sourceState);
-            zenith->AddTableField("targetState", compiledTransition.targetState);
+            zenith->AddTableField("sourceState", stateIndexForGUID(transition.sourceGUID));
+            zenith->AddTableField("targetState", stateIndexForGUID(transition.targetGUID));
             zenith->AddTableField("sourceGUID", transition.sourceGUID);
             zenith->AddTableField("targetGUID", transition.targetGUID);
             zenith->AddTableField("parameter", transition.parameter.c_str());
@@ -1822,6 +2431,13 @@ namespace Scripting::Asset
         zenith->AddTableField("animationDebugActualBounds", deformationStats.debugActualBounds);
         zenith->AddTableField("animationBoundsViolations", deformationStats.boundsViolations);
         zenith->AddTableField("animationDemandedLODs", deformationStats.demandedLODs);
+        zenith->AddTableField("animationMotionContinuous", deformationStats.motionContinuous);
+        zenith->AddTableField("animationMotionHeld", deformationStats.motionHeld);
+        zenith->AddTableField("animationMotionInvalid", deformationStats.motionInvalid);
+        zenith->AddTableField("animationMotionScheduledUpdates", deformationStats.motionScheduledUpdates);
+        zenith->AddTableField("animationMotionReactivated", deformationStats.motionReactivated);
+        zenith->AddTableField("animationMotionTeleported", deformationStats.motionTeleported);
+        zenith->AddTableField("animationMotionGenerationInvalid", deformationStats.motionGenerationInvalid);
         zenith->AddTableField("animationControllerAdvances", playbackStats.controllerAdvances);
         zenith->AddTableField("animationControllerPoseRequests", playbackStats.poseRequests);
         zenith->AddTableField("animationControllerPoseEvaluations", playbackStats.poseEvaluations);
@@ -1831,6 +2447,9 @@ namespace Scripting::Asset
         zenith->AddTableField("animationGraphPoseEvaluations", controllerStats.poseEvaluations);
         zenith->AddTableField("animationGraphBlendedSamples", controllerStats.blendedSamples);
         zenith->AddTableField("animationGraphSnapshotBlends", controllerStats.snapshotBlends);
+        zenith->AddTableField("animationLayerOperations", controllerStats.layerOperations);
+        zenith->AddTableField("animationIKOperations", controllerStats.ikOperations);
+        zenith->AddTableField("animationIKClampedGoals", controllerStats.ikClampedGoals);
         zenith->AddTableField("animationGraphFailures", controllerStats.failures);
         zenith->AddTableField("animationFamilyConversions", controllerStats.familyConversions);
         zenith->AddTableField("animationCachedPoseHits", controllerStats.cachedPoseHits);
@@ -1843,6 +2462,25 @@ namespace Scripting::Asset
         zenith->AddTableField("animationGraphTransitions", controllerCoreStats.transitions);
         zenith->AddTableField("animationGraphInterruptions", controllerCoreStats.interruptions);
         zenith->AddTableField("animationGraphSnapshots", controllerCoreStats.snapshots);
+        zenith->AddTableField("animationCommandOverflows", controllerCoreStats.queueOverflows);
+        zenith->AddTableField("animationAuthoritativeEventOverflows", controllerCoreStats.authoritativeEventOverflows);
+        zenith->AddTableField("animationCosmeticEventDrops", controllerCoreStats.cosmeticEventDrops);
+        zenith->AddTableField("animationRejectedWrites", controllerCoreStats.rejectedWrites);
+        zenith->AddTableField("animationStaleHandles", controllerCoreStats.staleHandleRejects);
+        const auto assetStats = ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetAnimationRegistry().GetStats();
+        zenith->AddTableField("animationAssetResidentBytes", assetStats.residentBytes);
+        zenith->AddTableField("animationAssetReferences", assetStats.references);
+        zenith->AddTableField("animationAssetReloads", assetStats.reloads);
+        zenith->AddTableField("animationAssetFailures", assetStats.failures);
+        zenith->AddTableField("animationAssetCacheHits", assetStats.cacheHits);
+        zenith->CreateTable();
+        u32 failureIndex = 1;
+        for (const auto& failure : ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetAnimationRegistry().GetFailureDescriptions())
+        {
+            zenith->Push(failure.c_str());
+            zenith->SetTableKey(failureIndex++);
+        }
+        zenith->SetTableKey("animationAssetFailureDetails");
         for (u32 lod = 0; lod < 8; ++lod)
         {
             const std::string field = "modelLOD" + std::to_string(lod);

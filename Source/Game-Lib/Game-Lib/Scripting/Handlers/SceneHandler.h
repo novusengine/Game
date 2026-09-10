@@ -25,6 +25,7 @@ namespace Scripting::Scene
 
         static i32 GetTransform(Zenith* zenith);
         static i32 SetTransform(Zenith* zenith);
+        static i32 ResetCameraHistory(Zenith* zenith);
 
         static i32 GetSceneNode(Zenith* zenith);
 
@@ -54,6 +55,7 @@ namespace Scripting::Scene
         { "SetName",              SceneHandler::SetName,              Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetTransform",         SceneHandler::GetTransform,         Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetTransform",         SceneHandler::SetTransform,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResetCameraHistory",   SceneHandler::ResetCameraHistory,   Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetSceneNode",         SceneHandler::GetSceneNode,         Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetAABB",              SceneHandler::GetAABB,              Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetAABB",              SceneHandler::SetAABB,              Scripting::LuaMethodFlags::DeveloperOnly },

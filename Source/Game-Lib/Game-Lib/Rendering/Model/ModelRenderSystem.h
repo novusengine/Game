@@ -93,6 +93,7 @@ namespace ModelRendering
         const Animation::ModelDeformationSystem* GetDeformationSystem() const { return _deformationSystem.get(); }
 
       private:
+        u64 _temporalFrame = 0;
         void RebuildSceneList();
         struct PixelQueryBindings
         {

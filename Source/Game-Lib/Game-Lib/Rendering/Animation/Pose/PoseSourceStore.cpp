@@ -64,14 +64,12 @@ namespace Animation
         if (!evaluated)
             return false;
         slot->source.localPose.assign(localPose.begin(), localPose.end());
-        slot->source.previousModelTransforms = slot->source.modelTransforms;
         slot->source.modelTransforms = std::move(evaluated.modelTransforms);
         slot->source.palette = std::move(evaluated.palette);
         slot->source.sampleTimeMicroseconds = sampleTimeMicroseconds;
         ++slot->source.poseGeneration;
         if (slot->source.poseGeneration == 0)
             slot->source.poseGeneration = 1;
-        slot->source.motionValid = slot->source.previousModelTransforms.size() == slot->source.modelTransforms.size();
         ++_poseEvaluations;
         return true;
     }
@@ -87,6 +85,15 @@ namespace Animation
         return true;
     }
 
+    bool PoseSourceStore::RebindSkeleton(PoseSourceHandle handle, AnimationLoading::SkeletonHandle skeleton)
+    {
+        if (!handle || !skeleton || handle.GetSlot() >= _slots.size()) return false;
+        Slot& slot = _slots[handle.GetSlot()];
+        if (!slot.live || slot.generation != handle.GetGeneration()) return false;
+        slot.source.skeleton = skeleton;
+        return Invalidate(handle);
+    }
+
     bool PoseSourceStore::Invalidate(PoseSourceHandle handle)
     {
         Slot* slot = GetSlot(handle);
@@ -98,6 +105,7 @@ namespace Animation
         slot->source.participatedPreviousFrame = false;
         slot->source.participatedCurrentFrame = false;
         slot->source.motionValid = false;
+        ++slot->source.motionGeneration;
         ++_invalidations;
         return true;
     }
@@ -111,8 +119,9 @@ namespace Animation
         {
             if (!slot.live)
                 continue;
-            slot.source.participatedPreviousFrame = slot.source.participatedCurrentFrame;
+            slot.source.participatedPreviousFrame = slot.source.participatedCurrentFrame && slot.source.lastDemandFrame + 1 == frame;
             slot.source.participatedCurrentFrame = false;
+            slot.source.motionValid = false;
         }
     }
 
@@ -124,7 +133,16 @@ namespace Animation
             return false;
         slot->source.lastDemandFrame = frame;
         slot->source.participatedCurrentFrame = true;
+        slot->source.motionValid = slot->source.participatedPreviousFrame && slot->source.previousModelTransforms.size() == slot->source.modelTransforms.size();
         return true;
+    }
+
+    void PoseSourceStore::CommitDemandFrame()
+    {
+        // Preserve the final rendered pose, not an intermediate simulation sample.
+        for (Slot& slot : _slots)
+            if (slot.live && slot.source.participatedCurrentFrame)
+                slot.source.previousModelTransforms = slot.source.modelTransforms;
     }
 
     bool PoseSourceStore::SetConservativeBoundsExpansion(PoseSourceHandle handle, const vec3& expansion)
@@ -226,7 +244,8 @@ namespace Animation
             }
             const mat4a local = ComposeLocalTransform(attachmentSlot.localTransform);
             attachment.currentTransform = Math::AffineMatrix::MatrixMul(parentSlot->source.modelTransforms[attachment.jointIndex], local);
-            attachment.motionValid = parentSlot->source.motionValid && attachment.jointIndex < parentSlot->source.previousModelTransforms.size();
+            const bool consecutive = attachment.valid && (attachment.lastResolvedFrame + 1 == frame || (attachment.lastResolvedFrame == frame && attachment.motionValid));
+            attachment.motionValid = consecutive && parentSlot->source.motionValid && attachment.jointIndex < parentSlot->source.previousModelTransforms.size();
             attachment.previousTransform = attachment.motionValid ? Math::AffineMatrix::MatrixMul(parentSlot->source.previousModelTransforms[attachment.jointIndex], local) : attachment.currentTransform;
             attachment.parentPoseGeneration = parentSlot->source.poseGeneration;
             attachment.lastResolvedFrame = frame;

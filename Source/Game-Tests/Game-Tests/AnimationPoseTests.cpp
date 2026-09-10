@@ -219,6 +219,14 @@ TEST_CASE("Target-skeleton IK solves reachable and bounded unreachable goals det
     const Animation::PoseEvaluationResult reachablePose = Animation::EvaluatePose(joints, reachable);
     REQUIRE(reachablePose);
     CheckVec3(reachablePose.modelTransforms[2][3], vec3(1.0f, 1.0f, 0.0f));
+    CHECK(reachablePose.modelTransforms[1][3].z > 0.5f);
+
+    auto oppositePole = reachable;
+    REQUIRE(Animation::SolveTwoBoneIK(joints, 0, 1, 2, vec3(1.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, -1.0f), 2.0f, 1.0f, oppositePole));
+    const auto oppositePose = Animation::EvaluatePose(joints, oppositePole);
+    REQUIRE(oppositePose);
+    CHECK(oppositePose.modelTransforms[1][3].z < -0.5f);
+    CheckVec3(oppositePose.modelTransforms[2][3], vec3(1.0f, 1.0f, 0.0f));
 
     std::array<AnimationFormat::LocalTransform, 3> repeated = rest;
     const Animation::IKSolveResult repeatedResult = Animation::SolveTwoBoneIK(joints, 0, 1, 2, vec3(1.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 1.0f), 2.0f, 1.0f, repeated);

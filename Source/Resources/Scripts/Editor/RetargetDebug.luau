@@ -1,9 +1,10 @@
 local Button = require("@src/API/UI/Button")
 local Registry = require("@src/API/Editor/Registry")
 local Window = require("@src/API/Editor/UI/Window")
+local Session = require("@src/API/Editor/AnimationPreviewSession")
 
 local canvas = UI.GetCanvas("RetargetDebugEditor", vec.New(0,0), vec.New(1920,1080), false)
-local window = Window.New(canvas, vec.New(22,-85), vec.New(350,290), 1100i, {title="Rig Family Preview", titleHeight=20, padding=10, windowColor=vec.New(0.065,0.08,0.10), titleColor=vec.New(0.035,0.045,0.06), alpha=0.96})
+local window = Window.New(canvas, vec.New(22,-85), vec.New(350,328), 1100i, {title="Rig Family Preview", titleHeight=20, padding=10, windowColor=vec.New(0.065,0.08,0.10), titleColor=vec.New(0.035,0.045,0.06), alpha=0.96})
 local panel = window.root
 local methods = {}
 local entity = nil
@@ -11,6 +12,9 @@ local speed = nil
 local layerWeight = nil
 local generation = 0
 local variant = "proportions"
+local referenceEntity=nil
+local currentSet="showcase"
+local currentMode="states"
 
 local function Label(text, y, tint)
     local item = panel:NewText(text, vec.New(12,y), 1i, "DevToolsText")
@@ -36,12 +40,16 @@ local function ButtonAt(text,x,y,width,callback)
 end
 function methods:DestroyActor()
     generation += 1
+    Session.Clear(entity)
+    if referenceEntity then Asset.DestroyAnimatedModel(referenceEntity); referenceEntity=nil end
     if entity ~= nil then Asset.DestroyAnimatedModel(entity) end
     entity = nil; speed = nil; layerWeight = nil
 end
 function methods:Spawn(target, setName, mode)
     self:DestroyActor()
+    local preview=Registry.Get("AnimationDebug"); if preview then preview:DestroyActor() end
     variant = target or variant
+    currentSet=setName or "showcase"; currentMode=mode or "states"
     targetLabel:SetText("Target: " .. variant)
     entity = Asset.SpawnModelAtWorldOrigin("animation/retarget/" .. variant .. ".model")
     local current = generation
@@ -50,6 +58,7 @@ function methods:Spawn(target, setName, mode)
         if Asset.BindAnimationController(entity,"animation/retarget/" .. variant .. ".skeleton","animation/retarget/" .. (setName or "showcase") .. ".animationset",mode or "states") then
             speed = Asset.ResolveAnimationParameter(entity,"speed")
             layerWeight = Asset.ResolveAnimationParameter(entity,"upperBodyWeight")
+            Session.SetEntity(entity,mode or "states")
             Camera.ActivateFreeflying()
             Scene.CenterCameraOnEntity(entity,0.55)
             CVar("animationDebugSkeletonPath","animation/retarget/" .. variant .. ".skeleton")
@@ -64,11 +73,17 @@ function methods:Spawn(target, setName, mode)
 end
 function methods:SetSpeed(value)
     if entity == nil or speed == nil then return false end
+    speed=Asset.ResolveAnimationParameter(entity,"speed")
+    if referenceEntity then
+        local referenceSpeed=Asset.ResolveAnimationParameter(referenceEntity,"speed")
+        if referenceSpeed then Asset.AnimationSetFloatParameter(referenceEntity,referenceSpeed,value) end
+    end
     stateLabel:SetText(string.format("Speed %.2f / %s",value,if value < 0.1 then "source Skeleton" elseif value < 2 then "renamed Skeleton" else "canonical family"))
     return Asset.AnimationSetFloatParameter(entity,speed,value)
 end
 function methods:SetLayerWeight(value)
     if entity == nil or layerWeight == nil then return false end
+    layerWeight=Asset.ResolveAnimationParameter(entity,"upperBodyWeight")
     stateLabel:SetText(string.format("Target arm mask: %.0f%% running pose",value*100))
     return Asset.AnimationSetFloatParameter(entity,layerWeight,value)
 end
@@ -77,6 +92,25 @@ function methods:SetOverlay(mode)
     CVar("animationDebugRigFamily",mode)
 end
 function methods:GetEntity() return entity end
+function methods:Compare()
+    if not entity then return end
+    if referenceEntity then Asset.DestroyAnimatedModel(referenceEntity); referenceEntity=nil; Scene.SetTransform(entity,vec.New(0,0,0),vec.New(0,0,0),vec.New(1,1,1)); return end
+    referenceEntity=Asset.SpawnModelAtWorldOrigin("animation/retarget/reference.model")
+    local current=generation
+    local function Bind(attempt)
+        if current~=generation or not referenceEntity then return end
+        if Asset.BindAnimationController(referenceEntity,"animation/retarget/reference.skeleton","animation/retarget/"..currentSet..".animationset",currentMode) then
+            if not Asset.BindAnimationController(entity,"animation/retarget/"..variant..".skeleton","animation/retarget/"..currentSet..".animationset",currentMode,nil,true) then stateLabel:SetText("Target comparison reset failed"); return end
+            Session.SetEntity(entity,currentMode)
+            Scene.CenterCameraOnEntity(entity,1.05)
+            Scene.SetTransform(referenceEntity,vec.New(-0.55,0,0),vec.New(0,0,0),vec.New(1,1,1))
+            Scene.SetTransform(entity,vec.New(0.55,0,0),vec.New(0,0,0),vec.New(1,1,1))
+            self:SetSpeed(1)
+        elseif attempt<240 then Scheduler.AfterFrames(1,function() Bind(attempt+1) end)
+        else stateLabel:SetText("Reference binding failed") end
+    end
+    Scheduler.AfterFrames(2,function() Bind(1) end)
+end
 function methods:Show() panel:SetVisible(true) end
 function methods:Hide() panel:SetVisible(false) end
 function methods:IsVisible() return panel:IsVisible() end
@@ -91,6 +125,9 @@ ButtonAt("Clean",12,-175,72,function() methods:SetOverlay(0i) end)
 ButtonAt("Family",94,-175,72,function() methods:SetOverlay(1i) end)
 ButtonAt("Mapping",176,-175,72,function() methods:SetOverlay(3i) end)
 ButtonAt("Frames",258,-175,80,function() methods:SetOverlay(5i) end)
+ButtonAt("Compare",12,-290,102,function() methods:Compare() end)
+ButtonAt("Edit assets",124,-290,102,function() Registry.Toggle("AnimationAssets") end)
+ButtonAt("Graph",236,-290,102,function() Registry.Toggle("AnimationGraph") end)
 window.closeButton:SetOnMouseUp(function() methods:Hide() end)
 panel:SetVisible(false)
 Registry.Register("RetargetDebug",methods)

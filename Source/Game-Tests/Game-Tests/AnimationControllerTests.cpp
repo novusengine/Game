@@ -1,5 +1,6 @@
 #include "Game-Lib/Rendering/Animation/Controller/AnimationBlendSpace.h"
 #include "Game-Lib/Rendering/Animation/Controller/AnimationControllerRuntime.h"
+#include "Game-Lib/Rendering/Animation/Controller/AnimationGraphDocument.h"
 #include "Game-Lib/Rendering/Animation/Asset/AnimationBoundsSelector.h"
 #include "Game-Lib/Rendering/Animation/Deformation/AnimationDemandPlanner.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationPose.h"
@@ -268,6 +269,232 @@ TEST_CASE("Typed handles transitions and interruption snapshots remain generatio
     CHECK(reused.GetRawValue() != animator.GetRawValue());
     Animation::AnimationControllerState staleState;
     CHECK_FALSE(store.GetState(animator, staleState));
+}
+
+TEST_CASE("Graph documents retain valid compilation through invalid drafts and undo", "[AnimationController][Authoring]")
+{
+    Animation::AnimationGraphDocument document(MakeGraph());
+    REQUIRE(document.GetLastGoodGraph());
+    const auto accepted = document.GetLastGoodGraph();
+    auto draft = document.GetSource();
+    draft.states[0].displayName = "Rest";
+    document.Edit(draft);
+    REQUIRE(document.IsDirty());
+    REQUIRE(document.Compile());
+    CHECK(document.GetLastGoodGraph()->controllerProgram == accepted->controllerProgram);
+    document.MarkSaved();
+    CHECK_FALSE(document.IsDirty());
+    draft.entryStateGUID = 999;
+    document.Edit(draft);
+    CHECK_FALSE(document.Compile());
+    CHECK_FALSE(document.GetCompilation().diagnostics.empty());
+    CHECK(document.GetLastGoodGraph()->contentHash == accepted->contentHash);
+    REQUIRE(document.Undo());
+    CHECK_FALSE(document.IsDirty());
+    REQUIRE(document.Compile());
+    REQUIRE(document.Redo());
+    CHECK_FALSE(document.Compile());
+    document.Revert();
+    CHECK_FALSE(document.IsDirty());
+    CHECK(document.Compile());
+    Animation::EditableAnimationGraph restored;
+    std::string error;
+    const auto text = Animation::AnimationGraphDocument::Serialize(document.GetSource());
+    REQUIRE(Animation::AnimationGraphDocument::Parse(text, restored, error));
+    CHECK(Animation::AnimationGraphDocument::Serialize(restored) == text);
+    CHECK(Animation::CompileAnimationGraph(restored).graph->controllerProgram == document.GetLastGoodGraph()->controllerProgram);
+    CHECK_FALSE(Animation::AnimationGraphDocument::Parse(std::array<u8, 1>{'{'}, restored, error));
+    CHECK_FALSE(error.empty());
+    CHECK(Animation::AnimationGraphDocument::Serialize(restored) == text);
+    CHECK_FALSE(document.EditField("states", 0, "durationMicroseconds", "-1", error));
+    CHECK_FALSE(document.EditField("states", 0, "stateVersion", "65537", error));
+    CHECK_FALSE(document.EditField("states", 0, "stateVersion", "1.5", error));
+    const auto count = document.GetSource().states.size();
+    REQUIRE(document.DuplicateItem("states", 0, error));
+    CHECK(document.GetSource().states.size() == count + 1);
+    CHECK(document.GetSource().states.back().sourceGUID != document.GetSource().states.front().sourceGUID);
+    CHECK_FALSE(document.Compile());
+    REQUIRE(document.RemoveItem("states", static_cast<u32>(count), error));
+    CHECK(document.Compile());
+}
+
+TEST_CASE("Graph binary sources reject corruption without changing the destination", "[AnimationController][Authoring][BinarySource]")
+{
+    auto graph = MakeGraph();
+    graph.displayName = "Locomotion";
+    graph.states[0].editorPosition = vec2(125.5f, -42.0f);
+    graph.states[0].blendSamples = {{vec2(0.25f, 0.75f), 123, "Walk"}};
+    graph.states[0].blendTriangles = {{{0, 0, 0}}};
+    const auto bytes = Animation::AnimationGraphDocument::Serialize(graph);
+    Animation::EditableAnimationGraph restored;
+    std::string error;
+    REQUIRE(Animation::AnimationGraphDocument::Parse(bytes, restored, error));
+    CHECK(restored.displayName == graph.displayName);
+    CHECK(restored.states[0].editorPosition == graph.states[0].editorPosition);
+    CHECK(restored.states[0].blendSamples[0].displayName == "Walk");
+    CHECK(Animation::AnimationGraphDocument::Serialize(restored) == bytes);
+    for (size_t size = 0; size < bytes.size(); ++size)
+    {
+        CHECK_FALSE(Animation::AnimationGraphDocument::Parse(std::span(bytes).first(size), restored, error));
+        CHECK(Animation::AnimationGraphDocument::Serialize(restored) == bytes);
+    }
+    for (size_t offset : {size_t{0}, size_t{4}, size_t{8}, size_t{12}, size_t{14}})
+    {
+        auto corrupt = bytes;
+        corrupt[offset] = 255;
+        CHECK_FALSE(Animation::AnimationGraphDocument::Parse(corrupt, restored, error));
+    }
+    auto trailing = bytes; trailing.push_back(0);
+    CHECK_FALSE(Animation::AnimationGraphDocument::Parse(trailing, restored, error));
+    Animation::AnimationGraphDocument document(graph);
+    REQUIRE(document.EditField("states", 0, "editorPosition", "[10.5,-20]", error));
+    CHECK(document.GetSource().states[0].editorPosition == vec2(10.5f, -20));
+    CHECK_FALSE(document.EditField("states", 0, "editorPosition", "[1,2,3]", error));
+    CHECK_FALSE(document.EditField("states", 0, "editorPosition", "[1,nan]", error));
+    CHECK_FALSE(document.EditField("states", 0, "durationMicroseconds", "18446744073709551616", error));
+    REQUIRE(document.EditField("states", 0, "sourceGUID", "18446744073709551615", error));
+    CHECK(document.GetSource().states[0].sourceGUID == std::numeric_limits<u64>::max());
+    const auto fields = document.GetFields();
+    CHECK(std::any_of(fields.begin(), fields.end(), [](const auto& field) { return field.section == "parameters" && field.name == "defaultFloat3"; }));
+}
+
+TEST_CASE("Graph publication maps state GUIDs and invalidates old parameter handles", "[AnimationController][Authoring]")
+{
+    auto source = MakeGraph();
+    const auto compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const auto animator = store.Create({SKELETON, 1, compiled.graph, 77});
+    const auto speed = store.ResolveParameter(animator, Animation::HashAnimationName("speed"));
+    REQUIRE(store.SetFloat(speed, 1.5f));
+    store.Advance(1.0 / 60.0, false);
+    Animation::AnimationControllerState before;
+    REQUIRE(store.GetState(animator, before));
+    std::swap(source.states[0], source.states[2]);
+    std::swap(source.parameters[0], source.parameters[1]);
+    Animation::AnimationGraphMigration outcome;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    CHECK(outcome.statePreserved);
+    CHECK(outcome.parametersPreserved == 1);
+    Animation::AnimationControllerState after;
+    REQUIRE(store.GetState(animator, after));
+    CHECK(after.currentState == 2);
+    CHECK(after.stateTimeMicroseconds == before.stateTimeMicroseconds);
+    CHECK_FALSE(store.SetFloat(speed, 4.0f));
+    std::vector<vec3> values;
+    REQUIRE(store.GetParameterValues(animator, values));
+    CHECK(values[1].x == Catch::Approx(1.5f));
+    source.states[2].durationMicroseconds += 1;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    CHECK_FALSE(outcome.statePreserved);
+    REQUIRE(store.GetState(animator, after));
+    CHECK(after.stateTimeMicroseconds == 0);
+    store.Advance(0.1, false);
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome, false));
+    CHECK_FALSE(outcome.statePreserved);
+    CHECK_FALSE(outcome.transitionPreserved);
+    REQUIRE(store.GetState(animator, after));
+    CHECK(after.stateTimeMicroseconds == 0);
+}
+
+TEST_CASE("Graph drafts add empty collections and keep blend topology indices consistent", "[AnimationController][Authoring]")
+{
+    auto source = MakeGraph();
+    source.states[0].blendSamples.resize(4);
+    source.states[0].blendTriangles = {{{0, 1, 2}}, {{1, 2, 3}}};
+    Animation::AnimationGraphDocument document(source);
+    std::string error;
+    REQUIRE(document.RemoveItem("states/0/blendSamples", 0, error));
+    REQUIRE(document.GetSource().states[0].blendTriangles.size() == 1);
+    CHECK(document.GetSource().states[0].blendTriangles[0].samples == std::array<u16, 3>{0, 1, 2});
+    REQUIRE(document.DuplicateItem("layers", std::numeric_limits<u32>::max(), error));
+    CHECK(document.GetSource().layers.size() == 1);
+    REQUIRE(document.DuplicateItem("states/0/blendSamples", std::numeric_limits<u32>::max(), error));
+    CHECK(document.GetSource().states[0].blendSamples.size() == 4);
+    REQUIRE(document.Undo());
+    CHECK(document.GetSource().states[0].blendSamples.size() == 3);
+}
+
+TEST_CASE("Graph publication keeps compatible transition progress", "[AnimationController][Authoring]")
+{
+    auto source = MakeGraph();
+    Animation::AnimationControllerStore store;
+    const auto animator = store.Create({SKELETON, 1, Animation::CompileAnimationGraph(source).graph, 77});
+    REQUIRE(store.SetFloat(store.ResolveParameter(animator, Animation::HashAnimationName("speed")), 1.0f));
+    store.Advance(1.0 / 30.0, false);
+    Animation::AnimationControllerState before;
+    REQUIRE(store.GetState(animator, before));
+    REQUIRE(before.transitioning);
+    std::reverse(source.states.begin(), source.states.end());
+    Animation::AnimationGraphMigration outcome;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    CHECK(outcome.transitionPreserved);
+    Animation::AnimationControllerState after;
+    REQUIRE(store.GetState(animator, after));
+    CHECK(after.transitionTimeMicroseconds == before.transitionTimeMicroseconds);
+    source.transitions[0].threshold = 0.25f;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    CHECK_FALSE(outcome.transitionPreserved);
+    REQUIRE(store.GetState(animator, after));
+    CHECK_FALSE(after.transitioning);
+}
+
+TEST_CASE("Graph parameter identity survives renames but rejects incompatible versions", "[AnimationController][Authoring]")
+{
+    auto source = MakeGraph();
+    source.parameters[0].sourceGUID = 700;
+    Animation::AnimationControllerStore store;
+    const auto animator = store.Create({SKELETON, 1, Animation::CompileAnimationGraph(source).graph, 77});
+    REQUIRE(store.SetFloat(store.ResolveParameter(animator, Animation::HashAnimationName("speed")), 2.5f));
+    source.parameters[0].name = "velocity";
+    for (auto& transition : source.transitions)
+        transition.parameter = "velocity";
+    Animation::AnimationGraphMigration outcome;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    std::vector<vec3> values;
+    REQUIRE(store.GetParameterValues(animator, values));
+    CHECK(values[0].x == Catch::Approx(2.5f));
+    source.parameters[0].stateVersion += 1;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    REQUIRE(store.GetParameterValues(animator, values));
+    CHECK(values[0].x == 0.0f);
+}
+
+TEST_CASE("Graph publication preserves compatible actions and retains immutable owners", "[AnimationController][Authoring]")
+{
+    auto source = MakeGraph();
+    Animation::EditableGraphActionSlot action;
+    action.semanticID = 701;
+    action.clipSlotSemanticID = WALK;
+    action.durationMicroseconds = 1000000;
+    source.actionSlots.push_back(action);
+    SetFixture fixture;
+    auto compiled = Animation::CompileAnimationGraph(source);
+    REQUIRE(compiled);
+    std::weak_ptr<const Animation::CompiledAnimationGraph> retired = compiled.graph;
+    Animation::AnimationControllerStore store;
+    const auto animator = store.Create({SKELETON, 1, compiled.graph, 77});
+    REQUIRE(store.BindAnimationData(animator, fixture.view, CLIPS));
+    const auto token = store.StartAction(animator, 701);
+    REQUIRE(token);
+    store.Advance(1.0 / 60.0, false);
+    Animation::AnimationGraphMigration outcome;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    CHECK(outcome.actionsPreserved == 1);
+    CHECK(outcome.actionsInterrupted == 0);
+    CHECK_FALSE(retired.expired());
+    compiled.graph.reset();
+    CHECK(retired.expired());
+    Animation::AnimationActionStatus status;
+    REQUIRE(store.GetActionStatus(token, status));
+    CHECK(status == Animation::AnimationActionStatus::Playing);
+    source.actionSlots[0].durationMicroseconds += 1;
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    CHECK(outcome.actionsInterrupted == 1);
+    REQUIRE(store.GetActionStatus(token, status));
+    CHECK(status == Animation::AnimationActionStatus::Interrupted);
+    REQUIRE(store.ReplaceGraph(animator, 1, Animation::CompileAnimationGraph(source).graph, &outcome));
+    CHECK(outcome.actionsInterrupted == 0);
 }
 
 TEST_CASE("Local TRS crossfade matches endpoint and interior golden values", "[AnimationController][Crossfade]")

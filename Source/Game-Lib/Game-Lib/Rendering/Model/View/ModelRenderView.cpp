@@ -321,6 +321,7 @@ namespace ModelRendering
                                             _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
                                             frameIndex);
         _visibilityResolvePass->AddOpaqueHighlightPass(renderGraph, _view, _work, scene, frameIndex);
+        _visibilityResolvePass->AddMotionDebugPass(renderGraph, _view);
     }
 
     void ModelRenderView::AddCommonMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,

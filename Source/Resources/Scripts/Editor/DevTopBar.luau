@@ -34,6 +34,9 @@ local bar = MenuBar.New(canvas, vec.New(0, -IMGUI_MENU_BAR_HEIGHT), vec.New(CANV
             { label = "Rig Family Preview", enabled = true, onClick = function() EditorRegistry.Toggle("RetargetDebug") end },
             { label = "Attachment Grip Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("AttachmentGripDebug") end },
             { label = "Animation Graph", enabled = true, onClick = function() EditorRegistry.Toggle("AnimationGraph") end },
+            { label = "Animation Authoring", enabled = true, onClick = function() EditorRegistry.Toggle("AnimationAuthoring") end },
+            { label = "Animation Assets", enabled = true, onClick = function() EditorRegistry.Toggle("AnimationAssets") end },
+            { label = "Animation Diagnostics", enabled = true, onClick = function() EditorRegistry.Toggle("AnimationDiagnostics") end },
             { label = "Console Variables", enabled = true, onClick = function() EditorRegistry.Toggle("CVarEditor") end },
         }},
         { label = "Editor", items = {

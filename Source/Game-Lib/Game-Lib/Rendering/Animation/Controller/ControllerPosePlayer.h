@@ -14,6 +14,7 @@
 
 namespace Animation
 {
+    enum class AnimationDocumentType : u8;
     class ControllerPlaybackHandle
     {
       public:
@@ -55,6 +56,8 @@ namespace Animation
       public:
         ControllerPosePlayer(PoseSourceStore* poseSources, AnimationLoading::AnimationAssetRegistry* assets) : _poseSources(poseSources), _assets(assets) {}
         ControllerPlaybackHandle Create(AnimationLoading::SkeletonHandle skeleton, AnimationLoading::AnimationSetHandle animationSet, const AnimationLoading::SkeletonAssetView& skeletonView, const AnimationLoading::AnimationSetAssetView& setView, std::shared_ptr<const CompiledAnimationGraph> graph, u64 stableSeed, FileFormat::AssetID retargetProfileAssetID = FileFormat::INVALID_ASSET_ID);
+        bool QueueAsset(AnimationDocumentType type, FileFormat::AssetID assetID, std::span<const u8> payload, std::string& error);
+        const std::string& GetAssetPublicationStatus() const { return _assetPublicationStatus; }
         bool Destroy(ControllerPlaybackHandle handle);
         void Advance(f64 deltaSeconds, bool applyTimeScale = true);
         bool RequestPose(PoseSourceHandle poseSource);
@@ -67,7 +70,10 @@ namespace Animation
         bool Trigger(AnimationParameterHandle handle) { return _controllers.Trigger(handle); }
         bool QueueAction(ControllerPlaybackHandle handle, u64 semanticID, u32 payload = 0);
         bool GetState(ControllerPlaybackHandle handle, AnimationControllerState& state) const;
+        bool CaptureRecipe(ControllerPlaybackHandle handle, PoseRecipe& recipe) { auto* slot = GetSlot(handle); return slot && EvaluateRequestedPose(*slot, &recipe); }
         bool GetParameterValues(ControllerPlaybackHandle handle, std::vector<vec3>& values) const;
+        bool QueueGraph(ControllerPlaybackHandle handle, std::shared_ptr<const CompiledAnimationGraph> graph, std::string& error);
+        bool GetGraphPublication(ControllerPlaybackHandle handle, u64& contentHash, bool& pending, AnimationGraphMigration& migration) const;
         const ControllerPosePlayerStats& GetStats() const { return _stats; }
         AnimationControllerStats GetControllerStats() const { return _controllers.GetStats(); }
 
@@ -107,6 +113,12 @@ namespace Animation
             AnimationLoading::RigFamilyHandle targetFamily;
             AnimationLoading::RetargetProfileHandle retargetProfile;
             AnimatorHandle animator;
+            std::shared_ptr<const CompiledAnimationGraph> graph;
+            std::shared_ptr<const CompiledAnimationGraph> pendingGraph;
+            ControllerPlaybackHandle pendingResources;
+            bool pendingResourcesCompatible = true;
+            u64 stableSeed = 0;
+            AnimationGraphMigration migration;
             PoseSourceHandle poseSource;
             std::vector<ClipRecord> clips;
             std::vector<MaskRecord> masks;
@@ -128,6 +140,7 @@ namespace Animation
         };
 
         Slot* GetSlot(ControllerPlaybackHandle handle);
+        bool EvaluateRequestedPose(Slot& slot, PoseRecipe* diagnosticRecipe = nullptr);
         const Slot* GetSlot(ControllerPlaybackHandle handle) const;
         const AnimationLoading::AnimationClipAssetView* FindClip(const Slot& slot, FileFormat::AssetID assetID) const;
         bool SampleTargetPose(Slot& slot, std::span<const PoseRecipeSample> samples, const AnimationLoading::SkeletonAssetView& target, std::vector<FileFormat::Animation::LocalTransform>& output, std::span<const PoseRecipeLayer> sourceLayers = {});
@@ -140,5 +153,14 @@ namespace Animation
         std::vector<u32> _freeSlots;
         robin_hood::unordered_flat_map<u64, u32> _poseToController;
         ControllerPosePlayerStats _stats;
+        struct AssetPublication
+        {
+            AnimationDocumentType type;
+            FileFormat::AssetID assetID;
+            std::vector<u8> payload;
+        };
+        std::unique_ptr<AssetPublication> _pendingAsset;
+        std::string _assetPublicationStatus;
+        void PublishPendingAsset();
     };
 }

@@ -50,6 +50,14 @@ namespace Scripting::Asset
         static i32 GetAnimationAttachmentPoint(Zenith* zenith);
         static i32 GetAnimationControllerState(Zenith* zenith);
         static i32 GetAnimationControllerGraph(Zenith* zenith);
+        static i32 AnimationGraphDocument(Zenith* zenith);
+        static i32 AnimationGraphEditField(Zenith* zenith);
+        static i32 AnimationGraphCommand(Zenith* zenith);
+        static i32 AnimationAssetDocument(Zenith* zenith);
+        static i32 GetAnimationJointScreenPositions(Zenith* zenith);
+        static i32 AnimationAssetEditField(Zenith* zenith);
+        static i32 AnimationAssetCommand(Zenith* zenith);
+        static i32 AnimationDump(Zenith* zenith);
         static i32 DestroyAnimatedModel(Zenith* zenith);
         static i32 BeginDragSpawn(Zenith* zenith);
         static i32 LoadRenderModel(Zenith* zenith);
@@ -92,6 +100,14 @@ namespace Scripting::Asset
         { "GetAnimationAttachmentPoint", AssetHandler::GetAnimationAttachmentPoint, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetAnimationControllerState", AssetHandler::GetAnimationControllerState, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetAnimationControllerGraph", AssetHandler::GetAnimationControllerGraph, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationGraphDocument", AssetHandler::AnimationGraphDocument, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationGraphEditField", AssetHandler::AnimationGraphEditField, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationGraphCommand", AssetHandler::AnimationGraphCommand, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationAssetDocument", AssetHandler::AnimationAssetDocument, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetAnimationJointScreenPositions", AssetHandler::GetAnimationJointScreenPositions, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationAssetEditField", AssetHandler::AnimationAssetEditField, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationAssetCommand", AssetHandler::AnimationAssetCommand, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AnimationDump", AssetHandler::AnimationDump, Scripting::LuaMethodFlags::DeveloperOnly },
         { "DestroyAnimatedModel", AssetHandler::DestroyAnimatedModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "BeginDragSpawn", AssetHandler::BeginDragSpawn, Scripting::LuaMethodFlags::DeveloperOnly },
         { "LoadRenderModel", AssetHandler::LoadRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },

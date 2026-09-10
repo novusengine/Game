@@ -10,6 +10,8 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
+#include "Game-Lib/Rendering/Scene/RenderView.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelSceneBridge.h"
 #include "Game-Lib/Rendering/Scene/SceneRenderDescription.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -204,7 +206,23 @@ namespace Scripting::Scene
         vec3 scale = zenith->CheckVal<vec3>(4);
 
         ECS::TransformSystem::Get(*registry).SetLocalTransform(entity, position, glm::quat(glm::radians(eulerDegrees)), scale);
+        if (zenith->GetTop() >= 5 && zenith->CheckVal<bool>(5))
+        {
+            GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+            if (renderer && renderer->GetModelSceneBridge())
+                renderer->GetModelSceneBridge()->SetTransform(entity, transform->GetMatrix(), true);
+        }
         return 0;
+    }
+
+    i32 SceneHandler::ResetCameraHistory(Zenith* zenith)
+    {
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        auto* view = renderer ? renderer->GetModelRenderSystem()->GetMainView() : nullptr;
+        if (view)
+            view->RequestCameraCut();
+        zenith->Push(view != nullptr);
+        return 1;
     }
 
     i32 SceneHandler::GetSceneNode(Zenith* zenith)

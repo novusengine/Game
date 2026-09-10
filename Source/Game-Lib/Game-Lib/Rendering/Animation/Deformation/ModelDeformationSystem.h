@@ -28,8 +28,12 @@ namespace Animation
         u32 vertexAttributeOffset = RenderScenes::INVALID_SCENE_INDEX;
         u32 vertexCount = 0;
         u32 poseGeneration = 0;
+        u32 previousPositionOffset = RenderScenes::INVALID_SCENE_INDEX;
+        u32 reserved0 = 0;
+        u32 reserved1 = 0;
+        u32 reserved2 = 0;
     };
-    static_assert(sizeof(ModelDeformationRecord) == 16);
+    static_assert(sizeof(ModelDeformationRecord) == 32);
 
     struct ModelDeformationWork
     {
@@ -70,6 +74,13 @@ namespace Animation
         u32 debugActualBounds = 0;
         u32 boundsViolations = 0;
         u32 demandedLODs = 0;
+        u32 motionContinuous = 0;
+        u32 motionHeld = 0;
+        u32 motionInvalid = 0;
+        u32 motionScheduledUpdates = 0;
+        u32 motionReactivated = 0;
+        u32 motionTeleported = 0;
+        u32 motionGenerationInvalid = 0;
     };
 
     // Coordinates animation playback, pose demand, and GPU skinning for model instances.
@@ -108,6 +119,8 @@ namespace Animation
         ControllerPlaybackHandle CreateControllerPlayback(AnimationLoading::SkeletonHandle skeleton, AnimationLoading::AnimationSetHandle animationSet, const AnimationLoading::SkeletonAssetView& skeletonView, const AnimationLoading::AnimationSetAssetView& setView, std::shared_ptr<const CompiledAnimationGraph> graph, u64 stableSeed, FileFormat::AssetID retargetProfileAssetID = FileFormat::INVALID_ASSET_ID) { return _controllerPlayback->Create(skeleton, animationSet, skeletonView, setView, std::move(graph), stableSeed, retargetProfileAssetID); }
         bool DestroyControllerPlayback(ControllerPlaybackHandle handle) { return _controllerPlayback->Destroy(handle); }
         void StepPreviewControllers(f64 deltaSeconds) { _controllerPlayback->Advance(deltaSeconds, false); }
+        bool QueueControllerGraph(ControllerPlaybackHandle handle, std::shared_ptr<const CompiledAnimationGraph> graph, std::string& error) { return _controllerPlayback->QueueGraph(handle, std::move(graph), error); }
+        bool GetControllerGraphPublication(ControllerPlaybackHandle handle, u64& hash, bool& pending, AnimationGraphMigration& migration) const { return _controllerPlayback->GetGraphPublication(handle, hash, pending, migration); }
         PoseSourceHandle GetControllerPoseSource(ControllerPlaybackHandle handle) const { return _controllerPlayback->GetPoseSource(handle); }
         AnimationParameterHandle ResolveControllerParameter(ControllerPlaybackHandle handle, u64 nameHash) const { return _controllerPlayback->ResolveParameter(handle, nameHash); }
         bool SetControllerFloat(AnimationParameterHandle handle, f32 value) { return _controllerPlayback->SetFloat(handle, value); }
@@ -116,10 +129,13 @@ namespace Animation
         bool TriggerController(AnimationParameterHandle handle) { return _controllerPlayback->Trigger(handle); }
         bool QueueControllerAction(ControllerPlaybackHandle handle, u64 semanticID, u32 payload = 0) { return _controllerPlayback->QueueAction(handle, semanticID, payload); }
         bool GetControllerState(ControllerPlaybackHandle handle, AnimationControllerState& state) const { return _controllerPlayback->GetState(handle, state); }
+        bool CaptureControllerRecipe(ControllerPlaybackHandle handle, PoseRecipe& recipe) { return _controllerPlayback->CaptureRecipe(handle, recipe); }
         bool GetControllerParameterValues(ControllerPlaybackHandle handle, std::vector<vec3>& values) const { return _controllerPlayback->GetParameterValues(handle, values); }
         const ControllerPosePlayerStats& GetControllerPlaybackStats() const { return _controllerPlayback->GetStats(); }
         AnimationControllerStats GetControllerCoreStats() const { return _controllerPlayback->GetControllerStats(); }
         void AdvanceControllerPlayback(f32 deltaTime) { _controllerPlayback->Advance(deltaTime); }
+        bool QueueAnimationAsset(AnimationDocumentType type, FileFormat::AssetID assetID, std::span<const u8> payload, std::string& error) { return _directPlayback->ValidatePublication(type, assetID, payload, error) && _controllerPlayback->QueueAsset(type, assetID, payload, error); }
+        const std::string& GetAnimationAssetPublicationStatus() const { return _controllerPlayback->GetAssetPublicationStatus(); }
 
         void Prepare(std::span<RenderScenes::RenderScene* const> scenes, std::span<RenderScenes::RenderView* const> views, const RenderResources& resources, i32 forcedLOD, const ModelLoading::ModelGeometryStorage& geometry, AnimationLoading::AnimationAssetRegistry& assets);
         void Upload();
@@ -152,6 +168,18 @@ namespace Animation
         u32 _paletteCapacity = 0;
         u32 _vertexCapacity = 0;
         u64 _demandFrame = 0;
+        struct DeformationHistory
+        {
+            u64 poseSource = 0;
+            u64 motionGeneration = 0;
+            u64 poseGeneration = 0;
+            u32 model = 0;
+            u32 lod = 0;
+            u32 positionOffset = 0;
+            u32 vertexCount = 0;
+        };
+        std::vector<DeformationHistory> _previousDeformations;
+        std::vector<DeformationHistory> _currentDeformations;
         struct ModelAttachmentBinding
         {
             PoseAttachmentHandle attachment;
@@ -159,6 +187,7 @@ namespace Animation
             RenderScenes::ModelInstanceHandle parent = RenderScenes::InvalidModelInstanceHandle();
             RenderScenes::ModelInstanceHandle child = RenderScenes::InvalidModelInstanceHandle();
             mat4x4 childLocalTransform = mat4x4(1.0f);
+            bool localTransformChanged = true;
         };
         std::vector<ModelAttachmentBinding> _modelAttachments;
     };

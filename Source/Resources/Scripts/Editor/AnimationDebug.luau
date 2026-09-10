@@ -15,7 +15,7 @@ local InputBox = require("@src/API/UI/InputBox")
 require("@src/API/Editor/UI/MenuBar")
 
 local PANEL_W = 560
-local PANEL_H = 320
+local PANEL_H = 432
 local TITLE_H = 16
 local ROW_H = 20
 local GAP = 4
@@ -186,6 +186,7 @@ end
 
 local function SpawnController(mode)
     DestroyActor()
+    local retarget=EditorRegistry.Get("RetargetDebug"); if retarget then retarget:DestroyActor() end
     entity = Asset.SpawnModelAtWorldOrigin(modelInput:GetText())
     if entity == nil then
         SetStatus("model spawn rejected")
@@ -207,7 +208,7 @@ local function SpawnController(mode)
                 ikGoalParameter = Asset.ResolveAnimationParameter(targetEntity, "rightHandGoal")
                 ikWeightParameter = Asset.ResolveAnimationParameter(targetEntity, "ikWeight")
                 if ikGoalParameter == nil or ikWeightParameter == nil then SetStatus("IK parameters did not resolve"); return end
-                Asset.AnimationSetFloat3Parameter(targetEntity, ikGoalParameter, -0.35, 1.45, 0.45)
+                Asset.AnimationSetFloat3Parameter(targetEntity, ikGoalParameter, -0.55, 1.25, 0.30)
                 Asset.AnimationSetFloatParameter(targetEntity, ikWeightParameter, 1.0)
                 if mode == "ik_showcase" then
                     headGoalParameter = Asset.ResolveAnimationParameter(targetEntity, "headGoal")
@@ -266,6 +267,7 @@ end
 
 local function SpawnAnimated(shouldPlay)
     DestroyActor()
+    local retarget=EditorRegistry.Get("RetargetDebug"); if retarget then retarget:DestroyActor() end
     entity = Asset.SpawnModelAtWorldOrigin(modelInput:GetText())
     if entity == nil then
         SetStatus("model spawn rejected")
@@ -283,6 +285,7 @@ local function SpawnAnimated(shouldPlay)
     local function BindWhenReady(attempt)
         if generation ~= operationGeneration or entity ~= targetEntity then return end
         if Asset.BindAnimation(targetEntity, skeletonInput:GetText(), clipInput:GetText()) then
+            PreviewSession.SetEntity(targetEntity,"clip")
             Asset.AnimationSetLooping(targetEntity, looping)
             Asset.AnimationSetPlaybackRate(targetEntity, 1.0)
             Asset.AnimationSeek(targetEntity, 0.0)
@@ -307,6 +310,7 @@ end
 
 local function SpawnRestPose()
     DestroyActor()
+    local retarget=EditorRegistry.Get("RetargetDebug"); if retarget then retarget:DestroyActor() end
     entity = Asset.SpawnModelAtWorldOrigin(modelInput:GetText())
     if entity == nil then
         SetStatus("model spawn rejected")
@@ -324,6 +328,7 @@ local function SpawnRestPose()
     local function BindWhenReady(attempt)
         if generation ~= operationGeneration or entity ~= targetEntity then return end
         if Asset.BindRestPose(targetEntity, skeletonInput:GetText()) then
+            PreviewSession.SetEntity(targetEntity,"rest")
             SetStatus("rest pose bound")
             FrameWhenReady(targetEntity, generation, 1)
             RefreshState()
@@ -552,6 +557,42 @@ end
 
 local methods = {}
 
+local graphSourceInput=AddPathInput("Graph source",-329,"locomotion")
+local function ToolButton(text,x,width,callback)
+    local button=NewButton(windowPanel,x,-359,width,ROW_H,1i,MakeBtnOpts(text))
+    button:SetAnchor(vec.New(0,1)); button:SetRelativePoint(vec.New(0,1)); button:SetOnMouseUp(callback); return button
+end
+ToolButton("Load graph",8,88,function()
+    if entity==nil then return end
+    local ok,error=Asset.AnimationGraphCommand(entity,"load",graphSourceInput:GetText())
+    if ok then ok,error=Asset.AnimationGraphCommand(entity,"apply") end
+    SetStatus(ok and "Graph publication queued" or error)
+    if ok then Scheduler.AfterFrames(2,function() methods:RefreshParameterBindings(); PreviewSession.NotifyGraphChanged() end) end
+end)
+ToolButton("Assets",102,72,function() EditorRegistry.Toggle("AnimationAssets") end)
+ToolButton("Retarget",180,80,function() EditorRegistry.Toggle("RetargetDebug") end)
+ToolButton("Diagnostics",266,96,function() EditorRegistry.Toggle("AnimationDiagnostics") end)
+local previewLOD=-1
+local lodButton
+lodButton=ToolButton("LOD: Auto",368,86,function()
+    previewLOD+=1; if previewLOD>3 then previewLOD=-1 end
+    SetCVar("modelForceLOD",integer.create(previewLOD))
+    lodButton:SetText(previewLOD<0 and "LOD: Auto" or "LOD: "..tostring(previewLOD))
+    SetStatus("Global model LOD override changed")
+end)
+local backend=windowPanel:NewText("Pose evaluation: CPU   |   Mesh deformation: GPU",vec.New(8,-392),1i,BTN_TEXT_TPL)
+backend:SetAnchor(vec.New(0,1)); backend:SetRelativePoint(vec.New(0,1)); backend:SetColor(MUTED_TINT); backend:SetInteractable(false)
+local backendNote=windowPanel:NewText("GPU pose evaluation is not available in this milestone.",vec.New(8,-412),1i,BTN_TEXT_TPL)
+backendNote:SetAnchor(vec.New(0,1)); backendNote:SetRelativePoint(vec.New(0,1)); backendNote:SetColor(MUTED_TINT); backendNote:SetInteractable(false)
+
+function methods:SetAssets(model,skeleton,clip,animationSet)
+    if model then modelInput:SetText(model) end
+    if skeleton then skeletonInput:SetText(skeleton) end
+    if clip then clipInput:SetText(clip) end
+    if animationSet then setInput:SetText(animationSet) end
+end
+function methods:SpawnClip(playing) SpawnAnimated(playing~=false) end
+
 function methods:Show()
     windowPanel:SetVisible(true)
     RefreshButtons()
@@ -661,6 +702,21 @@ function methods:SetDebugView(skeleton, weights, attachments, ik)
     SetCVar("animationDebugAttachments", attachments and 1i or 0i)
     SetCVar("animationDebugIK", ik and 1i or 0i)
     RefreshButtons()
+end
+
+function methods:RefreshParameterBindings()
+    if entity == nil or not controllerMode then return end
+    speedParameter = Asset.ResolveAnimationParameter(entity, "speed")
+    lateralParameter = Asset.ResolveAnimationParameter(entity, "lateral")
+    forwardParameter = Asset.ResolveAnimationParameter(entity, "forward")
+    magnitudeParameter = Asset.ResolveAnimationParameter(entity, "magnitude")
+    ikGoalParameter = Asset.ResolveAnimationParameter(entity, "rightHandGoal")
+    ikWeightParameter = Asset.ResolveAnimationParameter(entity, "ikWeight")
+    headGoalParameter = Asset.ResolveAnimationParameter(entity, "headGoal")
+    leftGripGoalParameter = Asset.ResolveAnimationParameter(entity, "leftGripGoal")
+    leftGripWeightParameter = Asset.ResolveAnimationParameter(entity, "leftGripWeight")
+    upperBodyWeightParameter = Asset.ResolveAnimationParameter(entity, "upperBodyWeight")
+    additiveWeightParameter = Asset.ResolveAnimationParameter(entity, "additiveWeight")
 end
 
 function methods:GetEntity()

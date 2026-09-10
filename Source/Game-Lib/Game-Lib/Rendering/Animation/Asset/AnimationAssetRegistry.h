@@ -124,6 +124,24 @@ namespace AnimationLoading
         FileFormat::AssetID GetAssetID(AnimationBoundsHandle handle) const;
 
         AnimationAssetRegistryStats GetStats() const;
+        std::vector<std::string> GetFailureDescriptions() const;
+        u32 GetPublicationRevision() const { return _reloads; }
+
+        // A lease pins the exact immutable generation through publication and outstanding pose work.
+#define DECLARE_ANIMATION_ASSET_LEASE(TypeName) \
+        std::shared_ptr<const TypeName##AssetView> Lease(TypeName##Handle handle) const; \
+        const TypeName##AssetView* GetRetained(TypeName##Handle handle, AssetLoading::Diagnostic* diagnostic = nullptr) const; \
+        FileFormat::AssetID GetRetainedAssetID(TypeName##Handle handle) const;
+        DECLARE_ANIMATION_ASSET_LEASE(RigFamily)
+        DECLARE_ANIMATION_ASSET_LEASE(Skeleton)
+        DECLARE_ANIMATION_ASSET_LEASE(AnimationClip)
+        DECLARE_ANIMATION_ASSET_LEASE(AnimationSet)
+        DECLARE_ANIMATION_ASSET_LEASE(AnimationGraph)
+        DECLARE_ANIMATION_ASSET_LEASE(BoneMask)
+        DECLARE_ANIMATION_ASSET_LEASE(IKRig)
+        DECLARE_ANIMATION_ASSET_LEASE(RetargetProfile)
+        DECLARE_ANIMATION_ASSET_LEASE(AnimationBounds)
+#undef DECLARE_ANIMATION_ASSET_LEASE
 
       private:
         template <typename View>
@@ -142,6 +160,7 @@ namespace AnimationLoading
                 u32 generation = 1;
                 u32 referenceCount = 0;
                 robin_hood::unordered_map<u32, u32> retiredGenerationReferences;
+                robin_hood::unordered_map<u32, std::shared_ptr<const ImmutableRecord<View>>> retiredRecords;
                 std::shared_ptr<const ImmutableRecord<View>> record;
                 AssetLoading::Diagnostic diagnostic;
             };
@@ -169,6 +188,10 @@ namespace AnimationLoading
         const View* Get(const Table<Handle, View>& table, Handle handle, AssetLoading::Diagnostic* diagnostic) const;
         template <typename Handle, typename View>
         FileFormat::AssetID GetAssetID(const Table<Handle, View>& table, Handle handle) const;
+        template <typename Handle, typename View>
+        std::shared_ptr<const View> Lease(const Table<Handle, View>& table, Handle handle) const;
+        template <typename Handle, typename View>
+        const View* GetRetained(const Table<Handle, View>& table, Handle handle, AssetLoading::Diagnostic* diagnostic) const;
         template <typename Handle, typename View>
         void AccumulateStats(const Table<Handle, View>& table, u32 typeIndex, AnimationAssetRegistryStats& stats) const;
 

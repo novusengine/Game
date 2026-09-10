@@ -39,7 +39,7 @@ namespace ModelRendering
         desc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
         desc.visibilityTarget = resources.visibilityBuffer;
         desc.normalTarget = Renderer::ImageID::Invalid();
-        desc.motionTarget = Renderer::ImageID::Invalid();
+        desc.motionTarget = resources.motionVectors;
         desc.colorTarget = resources.sceneColor;
         desc.transparencyAccumulationTarget = resources.transparency;
         desc.transparencyRevealageTarget = resources.transparencyWeights;
@@ -135,8 +135,8 @@ namespace ModelRendering
         _lastForcedLOD = forcedLOD;
         for (auto& [viewID, view] : _views)
             view->Update(forcedLOD);
-        _deformationSystem->AdvancePlayback(deltaTime);
         _deformationSystem->AdvanceControllerPlayback(deltaTime);
+        _deformationSystem->AdvancePlayback(deltaTime);
         _deformationViews.clear();
         for (auto& [viewID, view] : _views)
             if (view->GetView().ShouldRender())
@@ -220,10 +220,12 @@ namespace ModelRendering
 
     void ModelRenderSystem::PreparePreEffectsViews(RenderResources& resources)
     {
+        ++_temporalFrame;
         for (auto& [viewID, view] : _views)
         {
             RenderScenes::RenderView& renderView = view->GetView();
-            renderView.PrepareTemporalCamera(resources.cameras[renderView.GetCameraIndex()].worldToClip);
+            if (renderView.ShouldRender() && renderView.GetCameraIndex() < resources.cameras.Count())
+                renderView.PrepareTemporalCamera(resources.cameras[renderView.GetCameraIndex()].worldToClip, _temporalFrame);
         }
     }
 

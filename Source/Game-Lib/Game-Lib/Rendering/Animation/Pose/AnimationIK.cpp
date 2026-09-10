@@ -87,9 +87,9 @@ namespace Animation
             goalVector = glm::normalize(effectorPosition - rootPosition) * 1.0e-6f;
         const f32 distance = std::clamp(glm::length(goalVector), std::abs(firstLength - secondLength) + 1.0e-6f, authoredReach);
         const vec3 direction = glm::normalize(goalVector);
-        vec3 bend = middlePosition - rootPosition - direction * glm::dot(middlePosition - rootPosition, direction);
+        vec3 bend = poleModel - rootPosition - direction * glm::dot(poleModel - rootPosition, direction);
         if (glm::length2(bend) <= 1.0e-8f)
-            bend = poleModel - rootPosition - direction * glm::dot(poleModel - rootPosition, direction);
+            bend = middlePosition - rootPosition - direction * glm::dot(middlePosition - rootPosition, direction);
         if (glm::length2(bend) <= 1.0e-8f)
             bend = glm::cross(direction, std::abs(direction.y) < 0.9f ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f));
         bend = glm::normalize(bend);

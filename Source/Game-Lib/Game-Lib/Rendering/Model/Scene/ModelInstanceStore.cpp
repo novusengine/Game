@@ -358,8 +358,30 @@ namespace ModelScene
             RecordStaleHandle();
             return false;
         }
+        if (slot->resources.poseSource == poseSource)
+            return true;
         slot->resources.poseSource = poseSource;
+        slot->resources.lastDeformationFrame = 0;
+        const u32 index = RenderScenes::GetModelInstanceSlot(handle);
+        _records[index].flags &= ~ModelInstanceFlagMotionValid;
+        _records.SetDirtyElement(index);
+        QueueFrameAdvance(index);
         return SetDeformationHandle(handle, RenderScenes::INVALID_SCENE_INDEX);
+    }
+
+    bool ModelInstanceStore::MarkDeformationFrame(RenderScenes::ModelInstanceHandle handle, u64 frame, bool succeeded)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+            return false;
+        const u32 index = RenderScenes::GetModelInstanceSlot(handle);
+        ModelInstanceGPURecord& record = _records[index];
+        const bool valid = succeeded && slot->resources.lastDeformationFrame != 0 && slot->resources.lastDeformationFrame + 1 == frame;
+        record.flags = valid ? record.flags | ModelInstanceFlagDeformationMotionValid : record.flags & ~ModelInstanceFlagDeformationMotionValid;
+        if (succeeded)
+            slot->resources.lastDeformationFrame = frame;
+        _records.SetDirtyElement(index);
+        return true;
     }
 
     bool ModelInstanceStore::SetDeformationHandle(RenderScenes::ModelInstanceHandle handle, u32 deformationHandle)
@@ -375,6 +397,10 @@ namespace ModelScene
         if (record.deformationHandle == deformationHandle)
             return true;
         record.deformationHandle = deformationHandle;
+        if (deformationHandle == RenderScenes::INVALID_SCENE_INDEX)
+        {
+            record.flags &= ~ModelInstanceFlagDeformationMotionValid;
+        }
         _records.SetDirtyElement(slotIndex);
         return true;
     }

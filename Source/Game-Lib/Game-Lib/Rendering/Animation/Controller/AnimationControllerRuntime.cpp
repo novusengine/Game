@@ -103,7 +103,10 @@ namespace Animation
                 continue;
             }
             parameterOffset = (parameterOffset + 3u) & ~3u;
-            graph->parameters.push_back({nameHash, parameterOffset, parameter.type, parameter.oneFrameTrigger});
+            const u64 sourceGUID = parameter.sourceGUID ? parameter.sourceGUID : nameHash;
+            if (parameter.stateVersion == 0 || std::any_of(graph->parameters.begin(), graph->parameters.end(), [sourceGUID](const auto& value) { return value.sourceGUID == sourceGUID; }))
+                Fail("parameters", index, "parameter state version or GUID is invalid");
+            graph->parameters.push_back({nameHash, parameterOffset, parameter.type, parameter.oneFrameTrigger, sourceGUID, parameter.stateVersion});
             graph->defaultParameters.resize(parameterOffset + size);
             if (parameter.type == FileFormat::Animation::GraphValueType::Bool)
                 graph->defaultParameters[parameterOffset] = parameter.defaultBool ? 1 : 0;
@@ -127,6 +130,9 @@ namespace Animation
             if (std::any_of(graph->states.begin(), graph->states.end(), [&state](const CompiledGraphState& value) { return value.sourceGUID == state.sourceGUID; }))
                 Fail("states", index, "duplicate state GUID");
             CompiledGraphState compiledState;
+            if (state.stateVersion == 0)
+                Fail("states", index, "state version must be nonzero");
+            compiledState.stateVersion = state.stateVersion;
             compiledState.sourceGUID = state.sourceGUID;
             compiledState.clipSlotSemanticID = state.clipSlotSemanticID;
             compiledState.durationMicroseconds = state.durationMicroseconds;
@@ -372,6 +378,8 @@ namespace Animation
         for (const CompiledGraphParameter& value : graph->parameters)
         {
             Append(graph->controllerProgram, value.nameHash);
+            Append(graph->controllerProgram, value.sourceGUID);
+            Append(graph->controllerProgram, value.stateVersion);
             Append(graph->controllerProgram, value.byteOffset);
             Append(graph->controllerProgram, static_cast<u8>(value.type));
             Append(graph->controllerProgram, static_cast<u8>(value.oneFrameTrigger ? 1 : 0));
@@ -381,6 +389,7 @@ namespace Animation
         for (const CompiledGraphState& value : graph->states)
         {
             Append(graph->controllerProgram, value.sourceGUID);
+            Append(graph->controllerProgram, value.stateVersion);
             Append(graph->controllerProgram, value.clipSlotSemanticID);
             Append(graph->controllerProgram, value.durationMicroseconds);
             Append(graph->controllerProgram, static_cast<u8>(value.kind));
@@ -1632,7 +1641,7 @@ namespace Animation
             slot->outputs.clear();
     }
 
-    bool AnimationControllerStore::ReplaceGraph(AnimatorHandle handle, FileFormat::AssetID graphAssetID, std::shared_ptr<const CompiledAnimationGraph> graph)
+    bool AnimationControllerStore::ReplaceGraph(AnimatorHandle handle, FileFormat::AssetID graphAssetID, std::shared_ptr<const CompiledAnimationGraph> graph, AnimationGraphMigration* migration, bool compatibleResources)
     {
         if (_updating)
         {
@@ -1642,39 +1651,166 @@ namespace Animation
         Slot* slot = GetSlot(handle);
         if (!slot || !graph)
             return false;
+        AnimationGraphMigration outcome;
+        const auto previous = slot->config.graph;
+        const auto SameParameter = [&](u16 oldIndex, u16 newIndex)
+        {
+            if (oldIndex == std::numeric_limits<u16>::max() || newIndex == std::numeric_limits<u16>::max())
+                return oldIndex == newIndex;
+            const auto& old = previous->parameters[oldIndex];
+            const auto& next = graph->parameters[newIndex];
+            return old.sourceGUID == next.sourceGUID && old.stateVersion == next.stateVersion && old.type == next.type && old.oneFrameTrigger == next.oneFrameTrigger;
+        };
+        std::vector<u16> stateMap(previous->states.size(), std::numeric_limits<u16>::max());
+        for (u32 oldIndex = 0; compatibleResources && oldIndex < previous->states.size(); ++oldIndex)
+        {
+            const auto& old = previous->states[oldIndex];
+            for (u16 newIndex = 0; newIndex < graph->states.size(); ++newIndex)
+            {
+                const auto& next = graph->states[newIndex];
+                if (old.stateVersion != next.stateVersion)
+                    continue;
+                if (old.sourceGUID != next.sourceGUID || old.kind != next.kind || old.clipSlotSemanticID != next.clipSlotSemanticID || old.durationMicroseconds != next.durationMicroseconds || !SameParameter(old.inputXParameter, next.inputXParameter) || !SameParameter(old.inputYParameter, next.inputYParameter) || old.blendSampleCount != next.blendSampleCount || old.blendTriangleCount != next.blendTriangleCount || old.wrapX != next.wrapX || old.wrapMinimum != next.wrapMinimum || old.wrapMaximum != next.wrapMaximum || old.smoothingHalfLifeSeconds != next.smoothingHalfLifeSeconds)
+                    continue;
+                bool compatible = true;
+                for (u32 sample = 0; sample < old.blendSampleCount; ++sample)
+                {
+                    const auto& a = previous->blendSamples[old.blendSampleOffset + sample];
+                    const auto& b = graph->blendSamples[next.blendSampleOffset + sample];
+                    compatible &= a.clipSlotSemanticID == b.clipSlotSemanticID && a.position == b.position;
+                }
+                for (u32 triangle = 0; triangle < old.blendTriangleCount; ++triangle)
+                {
+                    const auto& a = previous->blendTriangles[old.blendTriangleOffset + triangle];
+                    const auto& b = graph->blendTriangles[next.blendTriangleOffset + triangle];
+                    compatible &= a.samples == b.samples;
+                }
+                if (compatible)
+                    stateMap[oldIndex] = newIndex;
+                break;
+            }
+        }
+        const u16 nextState = stateMap[slot->currentState];
+        outcome.statePreserved = nextState != std::numeric_limits<u16>::max();
+        u16 nextTransition = 0;
+        if (slot->transitioning && outcome.statePreserved && stateMap[slot->transitionSource] != std::numeric_limits<u16>::max() && stateMap[slot->transitionTarget] != std::numeric_limits<u16>::max())
+        {
+            const auto& old = previous->transitions[slot->transitionIndex];
+            for (u16 index = 0; index < graph->transitions.size(); ++index)
+            {
+                const auto& next = graph->transitions[index];
+                if (next.sourceState == stateMap[old.sourceState] && next.targetState == stateMap[old.targetState] && SameParameter(old.parameterIndex, next.parameterIndex) && old.comparison == next.comparison && old.threshold == next.threshold && old.durationMicroseconds == next.durationMicroseconds && old.curve == next.curve && graph->maximumSnapshotJoints >= slot->continuitySnapshot.size())
+                {
+                    outcome.transitionPreserved = true;
+                    nextTransition = index;
+                    break;
+                }
+            }
+        }
         std::vector<u8> parameters = graph->defaultParameters;
         for (const CompiledGraphParameter& replacement : graph->parameters)
         {
-            const auto old = std::find_if(slot->config.graph->parameters.begin(), slot->config.graph->parameters.end(), [&replacement](const CompiledGraphParameter& value) { return value.nameHash == replacement.nameHash && value.type == replacement.type; });
+            const auto old = std::find_if(slot->config.graph->parameters.begin(), slot->config.graph->parameters.end(), [&replacement](const CompiledGraphParameter& value) { return value.sourceGUID == replacement.sourceGUID && value.stateVersion == replacement.stateVersion && value.type == replacement.type && value.oneFrameTrigger == replacement.oneFrameTrigger && !replacement.oneFrameTrigger; });
             if (old == slot->config.graph->parameters.end())
                 continue;
             const u32 size = ValueSize(replacement.type);
             std::memcpy(parameters.data() + replacement.byteOffset, slot->parameters.data() + old->byteOffset, size);
+            ++outcome.parametersPreserved;
         }
+        auto oldVariations = std::move(slot->variations);
+        auto oldInputs = std::move(slot->smoothedBlendInputs);
+        auto oldLeaders = std::move(slot->synchronizationLeaders);
+        auto oldClocks = std::move(slot->blendSampleClocks);
         slot->config.graph = std::move(graph);
         slot->config.graphAssetID = graphAssetID;
         slot->parameters = std::move(parameters);
-        slot->variations.assign(slot->config.graph->states.size() + slot->config.graph->blendSamples.size(), 0);
+        slot->variations.assign(slot->config.graph->states.size() + slot->config.graph->blendSamples.size() + slot->config.graph->layers.size() + slot->config.graph->actionSlots.size(), 0);
         slot->smoothedBlendInputs.assign(slot->config.graph->states.size(), vec2(0.0f));
         slot->synchronizationLeaders.assign(slot->config.graph->states.size(), FileFormat::INVALID_ASSET_ID);
         slot->blendSampleClocks.assign(slot->config.graph->blendSamples.size(), {});
-        slot->currentState = slot->config.graph->entryState;
-        slot->stateTimeMicroseconds = 0;
-        slot->transitionSourceTimeMicroseconds = 0;
-        slot->transitionTimeMicroseconds = 0;
-        slot->transitioning = false;
-        slot->continuitySnapshot.clear();
-        slot->interruptionNeedsSnapshot = false;
+        for (u32 stateIndex = 0; stateIndex < slot->config.graph->states.size(); ++stateIndex)
+        {
+            const auto& state = slot->config.graph->states[stateIndex];
+            if (state.kind == GraphStateKind::Clip) continue;
+            const auto& x = slot->config.graph->parameters[state.inputXParameter];
+            std::memcpy(&slot->smoothedBlendInputs[stateIndex].x, slot->parameters.data() + x.byteOffset, sizeof(f32));
+            if (state.kind == GraphStateKind::BlendSpace2D)
+            {
+                const auto& y = slot->config.graph->parameters[state.inputYParameter];
+                std::memcpy(&slot->smoothedBlendInputs[stateIndex].y, slot->parameters.data() + y.byteOffset, sizeof(f32));
+            }
+        }
+        for (u32 oldIndex = 0; oldIndex < stateMap.size(); ++oldIndex)
+        {
+            const u16 newIndex = stateMap[oldIndex];
+            if (newIndex == std::numeric_limits<u16>::max())
+                continue;
+            slot->variations[newIndex] = oldVariations[oldIndex];
+            slot->smoothedBlendInputs[newIndex] = oldInputs[oldIndex];
+            slot->synchronizationLeaders[newIndex] = oldLeaders[oldIndex];
+            const auto& old = previous->states[oldIndex];
+            const auto& next = slot->config.graph->states[newIndex];
+            for (u32 sample = 0; sample < old.blendSampleCount; ++sample)
+            {
+                slot->blendSampleClocks[next.blendSampleOffset + sample] = oldClocks[old.blendSampleOffset + sample];
+                slot->variations[slot->config.graph->states.size() + next.blendSampleOffset + sample] = oldVariations[previous->states.size() + old.blendSampleOffset + sample];
+            }
+        }
+        slot->currentState = outcome.statePreserved ? nextState : slot->config.graph->entryState;
+        if (!outcome.statePreserved)
+            slot->stateTimeMicroseconds = 0;
+        if (outcome.transitionPreserved)
+        {
+            slot->transitionSource = stateMap[slot->transitionSource];
+            slot->transitionTarget = stateMap[slot->transitionTarget];
+            slot->transitionIndex = nextTransition;
+        }
+        else
+        {
+            slot->transitionSource = slot->currentState;
+            slot->transitionTarget = slot->currentState;
+            slot->transitionSourceTimeMicroseconds = 0;
+            slot->transitionTimeMicroseconds = 0;
+            slot->transitioning = false;
+            slot->continuitySnapshot.clear();
+            slot->interruptionNeedsSnapshot = false;
+        }
+        slot->commands.clear();
+        slot->actions.clear();
+        slot->outputs.clear();
+        slot->graphOutputs.clear();
         slot->authoritativeEvents.clear();
         slot->cosmeticEvents.clear();
         for (Slot::ActionRecord& action : slot->actionRecords)
         {
-            if (action.status == AnimationActionStatus::Pending || action.status == AnimationActionStatus::Playing)
+            if (action.status != AnimationActionStatus::Pending && action.status != AnimationActionStatus::Playing)
+                continue;
+            const auto& old = previous->actionSlots[action.slotIndex];
+            const auto& nextSlots = slot->config.graph->actionSlots;
+            const auto next = std::find_if(nextSlots.begin(), nextSlots.end(), [&](const CompiledGraphActionSlot& value) { return compatibleResources && value.semanticID == old.semanticID && value.clipSlotSemanticID == old.clipSlotSemanticID && value.maskAssetID == old.maskAssetID && value.durationMicroseconds == old.durationMicroseconds && value.blendInMicroseconds == old.blendInMicroseconds && value.blendOutMicroseconds == old.blendOutMicroseconds && value.type == old.type && value.priority == old.priority && value.queueWhenBlocked == old.queueWhenBlocked && value.continueUnderlyingState == old.continueUnderlyingState; });
+            if (next != nextSlots.end() && outcome.actionsPreserved < slot->config.graph->actionCapacity)
+            {
+                action.slotIndex = static_cast<u16>(next - nextSlots.begin());
+                ++outcome.actionsPreserved;
+            }
+            else
+            {
                 action.status = AnimationActionStatus::Interrupted;
+                ++outcome.actionsInterrupted;
+            }
         }
-        slot->activeActionRecord = std::numeric_limits<u32>::max();
+        if (slot->activeActionRecord != std::numeric_limits<u32>::max() && slot->actionRecords[slot->activeActionRecord].status != AnimationActionStatus::Playing)
+            slot->activeActionRecord = std::numeric_limits<u32>::max();
+        slot->commands.reserve(slot->config.graph->commandCapacity);
+        slot->actions.reserve(slot->config.graph->actionCapacity);
+        slot->actionRecords.reserve(slot->config.graph->actionCapacity);
+        slot->outputs.reserve(slot->config.graph->commandCapacity + slot->config.graph->actionCapacity);
+        slot->graphOutputs.reserve(slot->config.graph->outputs.size());
+        slot->continuitySnapshot.reserve(slot->config.graph->maximumSnapshotJoints);
         if (++slot->graphGeneration == 0)
             slot->graphGeneration = 1;
+        if (migration)
+            *migration = outcome;
         return true;
     }
 

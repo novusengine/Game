@@ -35,6 +35,7 @@ namespace RenderScenes
         Renderer::TextureID _target = Renderer::TextureID::Invalid();
         Renderer::ImageID _visibility = Renderer::ImageID::Invalid();
         Renderer::ImageID _normals = Renderer::ImageID::Invalid();
+        Renderer::ImageID _motion = Renderer::ImageID::Invalid();
         Renderer::ImageID _color = Renderer::ImageID::Invalid();
         Renderer::ImageID _transparencyAccumulation = Renderer::ImageID::Invalid();
         Renderer::ImageID _transparencyRevealage = Renderer::ImageID::Invalid();

@@ -1,4 +1,5 @@
 #include "Game-Lib/Rendering/Animation/Asset/AnimationAssetValidator.h"
+#include "Game-Lib/Rendering/Animation/Asset/AnimationAssetDocument.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationRetarget.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationClipSampler.h"
 #include "Game-Lib/Rendering/Animation/Controller/ControllerPosePlayer.h"
@@ -158,7 +159,26 @@ TEST_CASE("RigFamily controller converts demanded domains and preserves native b
     player.Advance(0.05, false);
     REQUIRE(player.RequestPose(player.GetPoseSource(bridged)));
     REQUIRE(assets.PublishRigFamily(profileAsset.sourceRigFamilyAssetID, bytes("bipedal_humanoid.rigfamily")));
-    REQUIRE_FALSE(player.RequestPose(player.GetPoseSource(bridged)));
+    // Bound playback keeps its immutable generation until an accepted replacement is published.
+    REQUIRE(player.RequestPose(player.GetPoseSource(bridged)));
+    std::string error;
+    REQUIRE(player.QueueAsset(Animation::AnimationDocumentType::Skeleton, id("animation/unrelated.skeleton"), alienSkeletonBytes, error));
+    player.Advance(0.05, false);
+    CHECK(player.GetAssetPublicationStatus().starts_with("Published"));
+    REQUIRE(player.RequestPose(player.GetPoseSource(bridged)));
+    const auto poseBefore = poses.Get(player.GetPoseSource(bridged));
+    REQUIRE(poseBefore);
+    const auto retainedSkeleton = poseBefore->skeleton;
+    auto incompatible = alienSkeletonBytes;
+    const auto decoded = AnimationLoading::AnimationAssetReader::ReadSkeleton(incompatible);
+    REQUIRE(decoded);
+    const u64 renamed = 987654321;
+    std::memcpy(incompatible.data() + decoded.view.root.jointsOffset, &renamed, sizeof(renamed));
+    REQUIRE(player.QueueAsset(Animation::AnimationDocumentType::Skeleton, id("animation/unrelated.skeleton"), incompatible, error));
+    player.Advance(0.05, false);
+    CHECK(player.GetAssetPublicationStatus().starts_with("Rejected"));
+    CHECK(poses.Get(player.GetPoseSource(bridged))->skeleton == retainedSkeleton);
+    REQUIRE(player.RequestPose(player.GetPoseSource(bridged)));
     REQUIRE(player.Destroy(bridged));
 }
 

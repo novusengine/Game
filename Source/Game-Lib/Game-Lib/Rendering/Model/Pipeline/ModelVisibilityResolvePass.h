@@ -20,6 +20,7 @@ namespace ModelPipeline
     class ModelVisibilityResolvePass
     {
       public:
+        void AddMotionDebugPass(Renderer::RenderGraph* renderGraph, const RenderScenes::RenderView& view);
         ModelVisibilityResolvePass(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
 
         void Upload(const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
@@ -76,6 +77,8 @@ namespace ModelPipeline
         Renderer::DescriptorSet _preEffectsSet;
         Renderer::DescriptorSet _velocitySet;
         Renderer::DescriptorSet _highlightSet;
+        Renderer::DescriptorSet _motionDebugSet;
+        Renderer::ComputePipelineID _motionDebugPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _preEffectsPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _velocityPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _highlightPipeline = Renderer::ComputePipelineID::Invalid();

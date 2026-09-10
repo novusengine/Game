@@ -3,6 +3,7 @@
 #include "Include/Common.inc.slang"
 #include "Include/TypedVisibility.inc.slang"
 #include "Include/VisibilityBuffers.inc.slang"
+#include "Include/Motion.inc.slang"
 
 struct Constants
 {
@@ -17,11 +18,6 @@ struct Constants
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] RWTexture2D<uint> _motionVectors;
 
-uint PackMotion(float2 motion)
-{
-    return f32tof16(motion.x) | (f32tof16(motion.y) << 16u);
-}
-
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
@@ -31,6 +27,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
 
     uint visibility = LoadVisibilityBuffer(pixelPos);
+    _motionVectors[pixelPos] = INVALID_MOTION;
     if (IsModelVisibility(visibility) || _constants.cameraValid == 0u)
         return;
 

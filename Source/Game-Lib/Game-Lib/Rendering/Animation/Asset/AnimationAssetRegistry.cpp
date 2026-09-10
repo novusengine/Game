@@ -136,7 +136,11 @@ namespace AnimationLoading
         {
             typename Table<Handle, View>::Entry& entry = table.entries[existing->second];
             if (entry.referenceCount != 0)
+            {
                 entry.retiredGenerationReferences[entry.generation] += entry.referenceCount;
+                if (entry.record)
+                    entry.retiredRecords.emplace(entry.generation, entry.record);
+            }
             ++entry.generation;
             if (entry.generation == 0)
                 entry.generation = 1;
@@ -169,6 +173,11 @@ namespace AnimationLoading
             if (retired == entry.retiredGenerationReferences.end() || retired->second == 0)
                 return false;
             --retired->second;
+            if (retired->second == 0)
+            {
+                entry.retiredRecords.erase(handle.GetGeneration());
+                entry.retiredGenerationReferences.erase(retired);
+            }
             return true;
         }
         if (entry.referenceCount == 0)
@@ -207,6 +216,39 @@ namespace AnimationLoading
     }
 
     template <typename Handle, typename View>
+    const View* AnimationAssetRegistry::GetRetained(const Table<Handle, View>& table, Handle handle, AssetLoading::Diagnostic* diagnostic) const
+    {
+        if (handle && handle.GetSlot() < table.entries.size())
+        {
+            const auto& entry = table.entries[handle.GetSlot()];
+            if (entry.generation != handle.GetGeneration())
+            {
+                const auto retired = entry.retiredRecords.find(handle.GetGeneration());
+                if (retired != entry.retiredRecords.end())
+                {
+                    if (diagnostic) *diagnostic = {};
+                    return &retired->second->view;
+                }
+            }
+        }
+        return Get(table, handle, diagnostic);
+    }
+
+    template <typename Handle, typename View>
+    std::shared_ptr<const View> AnimationAssetRegistry::Lease(const Table<Handle, View>& table, Handle handle) const
+    {
+        if (!handle || handle.GetSlot() >= table.entries.size())
+            return {};
+        const auto& entry = table.entries[handle.GetSlot()];
+        std::shared_ptr<const ImmutableRecord<View>> record;
+        if (entry.generation == handle.GetGeneration())
+            record = entry.record;
+        else if (const auto retired = entry.retiredRecords.find(handle.GetGeneration()); retired != entry.retiredRecords.end())
+            record = retired->second;
+        return record ? std::shared_ptr<const View>(record, &record->view) : nullptr;
+    }
+
+    template <typename Handle, typename View>
     FileFormat::AssetID AnimationAssetRegistry::GetAssetID(const Table<Handle, View>& table, Handle handle) const
     {
         if (!handle || handle.GetSlot() >= table.entries.size())
@@ -225,6 +267,8 @@ namespace AnimationLoading
             stats.references += entry.referenceCount;
             for (const auto& retired : entry.retiredGenerationReferences)
                 stats.references += retired.second;
+            for (const auto& retired : entry.retiredRecords)
+                stats.residentBytes += retired.second->payload->size();
             if (entry.record)
                 stats.residentBytes += entry.record->payload->size();
             else
@@ -236,6 +280,9 @@ namespace AnimationLoading
     TypeName##Handle AnimationAssetRegistry::Load##FunctionName(FileFormat::AssetID assetID) { return LoadFromStorage(MemberName, assetID, ReadName); } \
     TypeName##Handle AnimationAssetRegistry::Publish##FunctionName(FileFormat::AssetID assetID, std::span<const u8> payload) { return Publish(MemberName, assetID, payload, ReadName); } \
     bool AnimationAssetRegistry::Release(TypeName##Handle handle) { return Release(MemberName, handle); } \
+    std::shared_ptr<const TypeName##AssetView> AnimationAssetRegistry::Lease(TypeName##Handle handle) const { return Lease(MemberName, handle); } \
+    const TypeName##AssetView* AnimationAssetRegistry::GetRetained(TypeName##Handle handle, AssetLoading::Diagnostic* diagnostic) const { return GetRetained(MemberName, handle, diagnostic); } \
+    FileFormat::AssetID AnimationAssetRegistry::GetRetainedAssetID(TypeName##Handle handle) const { return handle && GetRetained(MemberName, handle, nullptr) ? MemberName.entries[handle.GetSlot()].assetID : FileFormat::INVALID_ASSET_ID; } \
     const TypeName##AssetView* AnimationAssetRegistry::Get(TypeName##Handle handle, AssetLoading::Diagnostic* diagnostic) const { return Get(MemberName, handle, diagnostic); } \
     FileFormat::AssetID AnimationAssetRegistry::GetAssetID(TypeName##Handle handle) const { return GetAssetID(MemberName, handle); }
 
@@ -250,6 +297,19 @@ namespace AnimationLoading
     DEFINE_ANIMATION_ASSET_REGISTRY(AnimationBounds, AnimationBounds, _animationBounds, ReadAnimationBounds)
 
 #undef DEFINE_ANIMATION_ASSET_REGISTRY
+
+    std::vector<std::string> AnimationAssetRegistry::GetFailureDescriptions() const
+    {
+        std::vector<std::string> failures;
+        auto append = [&failures](const auto& table, const char* type)
+        {
+            for (const auto& entry : table.entries)
+                if (!entry.record)
+                    failures.push_back(std::string(type) + " " + std::to_string(entry.assetID) + ": " + AssetLoading::Describe(entry.diagnostic));
+        };
+        append(_rigFamilies, "RigFamily"); append(_skeletons, "Skeleton"); append(_animationClips, "Clip"); append(_animationSets, "Set"); append(_animationGraphs, "Graph"); append(_boneMasks, "Mask"); append(_ikRigs, "IKRig"); append(_retargetProfiles, "RetargetProfile"); append(_animationBounds, "Bounds");
+        return failures;
+    }
 
     AnimationAssetRegistryStats AnimationAssetRegistry::GetStats() const
     {

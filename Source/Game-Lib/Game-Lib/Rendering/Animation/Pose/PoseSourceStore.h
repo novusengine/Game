@@ -73,6 +73,7 @@ namespace Animation
         std::array<PoseIKDebugOperation, 4> debugIKOperations = {};
         u32 debugIKOperationCount = 0;
         u64 poseGeneration = 1;
+        u64 motionGeneration = 1;
         u64 sampleTimeMicroseconds = 0;
         FileFormat::AssetID boundsClipAssetID = FileFormat::INVALID_ASSET_ID;
         vec3 conservativeBoundsExpansion = {};
@@ -135,8 +136,10 @@ namespace Animation
         bool SetDebugJointWeights(PoseSourceHandle handle, std::span<const f32> weights);
         bool SetDebugIKOperations(PoseSourceHandle handle, std::span<const PoseIKDebugOperation> operations);
         bool Invalidate(PoseSourceHandle handle);
+        bool RebindSkeleton(PoseSourceHandle handle, AnimationLoading::SkeletonHandle skeleton);
         void BeginDemandFrame(u64 frame);
         bool MarkDemand(PoseSourceHandle handle, u64 frame);
+        void CommitDemandFrame();
         PoseAttachmentHandle CreateAttachment(PoseSourceHandle parent, const AnimationLoading::SkeletonAssetView& skeletonView, u64 semanticID, bool visualOnly = true, const vec3& childBoundsExtent = {});
         bool DestroyAttachment(PoseAttachmentHandle handle);
         void ResolveAttachments(u64 frame);

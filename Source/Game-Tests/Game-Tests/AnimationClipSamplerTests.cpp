@@ -189,6 +189,9 @@ TEST_CASE("Semantic attachments and batched joint queries use CPU pose transform
 
     std::array<AnimationFormat::LocalTransform, 3> pose = {joints[0].restTransform, joints[1].restTransform, joints[2].restTransform};
     pose[0].translation = vec3(5.0f, 0.0f, 0.0f);
+    store.CommitDemandFrame();
+    store.BeginDemandFrame(2);
+    REQUIRE(store.MarkDemand(poseSource, 2));
     REQUIRE(store.SetLocalPose(poseSource, pose, skeleton));
     store.ResolveAttachments(2);
     CheckVec3(store.GetAttachment(attachment)->previousTransform[3], vec3(1.0f, 3.0f, 0.0f));

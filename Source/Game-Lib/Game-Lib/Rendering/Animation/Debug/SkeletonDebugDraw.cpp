@@ -99,8 +99,9 @@ namespace Animation
             return;
         EvaluateReference();
 
-        mat4x4 worldTransform(1.0f);
-        if (CVAR_AnimationDebugSkeletonUseSelection.Get() != 0)
+        const bool livePose = CVAR_AnimationDebugSkeletonPose.Get() != 0 && !_stats.currentPoseFallback;
+        mat4x4 worldTransform = livePose ? _currentWorldTransform : mat4x4(1.0f);
+        if (!livePose && CVAR_AnimationDebugSkeletonUseSelection.Get() != 0)
         {
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
             if (registries && registries->gameRegistry)
@@ -122,12 +123,13 @@ namespace Animation
         }
     }
 
-    bool SkeletonDebugDraw::SetCurrentLocalPose(FileFormat::AssetID skeletonAssetID, std::span<const FileFormat::Animation::LocalTransform> localPose, u64 sampleTimeMicroseconds)
+    bool SkeletonDebugDraw::SetCurrentLocalPose(FileFormat::AssetID skeletonAssetID, std::span<const FileFormat::Animation::LocalTransform> localPose, u64 sampleTimeMicroseconds, const mat4x4& worldTransform)
     {
         if (CVAR_AnimationDebugSkeletonEnabled.Get() == 0 || skeletonAssetID != Util::AssetPath::Hash(NormalizeSkeletonPath(CVAR_AnimationDebugSkeletonPath.Get())))
             return false;
         _currentLocalPose.assign(localPose.begin(), localPose.end());
         _sampleTimeMicroseconds = sampleTimeMicroseconds;
+        _currentWorldTransform = worldTransform;
         return true;
     }
 
@@ -173,7 +175,7 @@ namespace Animation
         if (path.empty())
             return false;
         const FileFormat::AssetID pathID = Util::AssetPath::Hash(path);
-        if (!_skeletonHandle || pathID != _skeletonPathID)
+        if (!_skeletonHandle || pathID != _skeletonPathID || _assets->GetAssetID(_skeletonHandle) != pathID)
         {
             ReleaseSkeleton();
             _loadedPath = path;
@@ -224,6 +226,11 @@ namespace Animation
         }
         if (path.empty() || _stats.currentPoseFallback)
             return;
+        if (_referenceHandle && _assets->GetAssetID(_referenceHandle) != Util::AssetPath::Hash(path))
+        {
+            _assets->Release(_referenceHandle);
+            _referenceHandle = {};
+        }
         if (!_referenceHandle)
             _referenceHandle = _assets->LoadAnimationClip(Util::AssetPath::Hash(path));
         const auto* reference = _assets->Get(_referenceHandle);
@@ -251,6 +258,11 @@ namespace Animation
     {
         if (_skeleton->root.rigFamilyAssetID == FileFormat::INVALID_ASSET_ID)
             return;
+        if (_familyHandle && _assets->GetAssetID(_familyHandle) != _skeleton->root.rigFamilyAssetID)
+        {
+            _assets->Release(_familyHandle);
+            _familyHandle = {};
+        }
         if (!_familyHandle)
         {
             _familyHandle = _assets->LoadRigFamily(_skeleton->root.rigFamilyAssetID);

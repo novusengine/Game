@@ -1,10 +1,12 @@
 #include "ControllerPosePlayer.h"
+#include "Game-Lib/Rendering/Animation/Asset/AnimationAssetDocument.h"
 
 #include "Game-Lib/Rendering/Animation/Asset/AnimationAssetValidator.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationPose.h"
 #include "Game-Lib/Rendering/Animation/Pose/AnimationIK.h"
 
 #include <Base/Util/StringUtils.h>
+#include <tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -16,7 +18,7 @@ namespace Animation
     {
         const bool familySet = setView.root.declaredPoseDomainType == FileFormat::Animation::PoseDomainType::RigFamily;
         const bool needsBridge = familySet && setView.root.declaredPoseDomainAssetID != skeletonView.root.rigFamilyAssetID;
-        if (!skeleton || !animationSet || !graph || (!familySet && setView.root.declaredPoseDomainAssetID != _assets->GetAssetID(skeleton)) || (needsBridge && retargetProfileAssetID == FileFormat::INVALID_ASSET_ID))
+        if (!skeleton || !animationSet || !graph || (!familySet && setView.root.declaredPoseDomainAssetID != _assets->GetRetainedAssetID(skeleton)) || (needsBridge && retargetProfileAssetID == FileFormat::INVALID_ASSET_ID))
             return {};
         FamilyPoseBinding targetBinding;
         FamilyPoseBridge bridge;
@@ -25,7 +27,7 @@ namespace Animation
         if (familySet)
         {
             const auto handle = _assets->LoadRigFamily(skeletonView.root.rigFamilyAssetID);
-            const auto* family = _assets->Get(handle);
+            const auto* family = _assets->GetRetained(handle);
             bool valid = family && targetBinding.Initialize(skeletonView, *family);
             familyJointCount = family ? static_cast<u32>(family->joints.size()) : 0;
             targetFamilyJointCount = familyJointCount;
@@ -33,8 +35,8 @@ namespace Animation
             {
                 const auto sourceHandle = _assets->LoadRigFamily(setView.root.declaredPoseDomainAssetID);
                 const auto profileHandle = _assets->LoadRetargetProfile(retargetProfileAssetID);
-                const auto* source = _assets->Get(sourceHandle);
-                const auto* profile = _assets->Get(profileHandle);
+                const auto* source = _assets->GetRetained(sourceHandle);
+                const auto* profile = _assets->GetRetained(profileHandle);
                 valid = source && profile && profile->root.sourceRigFamilyAssetID == setView.root.declaredPoseDomainAssetID && profile->root.targetRigFamilyAssetID == skeletonView.root.rigFamilyAssetID && bridge.Initialize(*profile, *source, *family);
                 familyJointCount = source ? static_cast<u32>(source->joints.size()) : 0;
                 _assets->Release(profileHandle);
@@ -56,7 +58,7 @@ namespace Animation
                 continue;
             const AnimationLoading::AnimationClipHandle handle = _assets->LoadAnimationClip(variant.animationClipAssetID);
             AssetLoading::Diagnostic diagnostic;
-            const AnimationLoading::AnimationClipAssetView* view = _assets->Get(handle, &diagnostic);
+            const AnimationLoading::AnimationClipAssetView* view = _assets->GetRetained(handle, &diagnostic);
             std::shared_ptr<SourceDomain> sourceDomain;
             bool compatible = view != nullptr;
             if (view && familySet)
@@ -72,12 +74,12 @@ namespace Animation
                     sourceDomain->assetID = view->root.sourcePoseDomainAssetID;
                     sourceDomain->type = view->root.sourcePoseDomainType;
                     sourceDomain->family = _assets->LoadRigFamily(setView.root.declaredPoseDomainAssetID);
-                    const auto* family = _assets->Get(sourceDomain->family);
+                    const auto* family = _assets->GetRetained(sourceDomain->family);
                     compatible = family != nullptr;
                     if (compatible && sourceDomain->type == FileFormat::Animation::PoseDomainType::Skeleton)
                     {
                         sourceDomain->skeleton = _assets->LoadSkeleton(sourceDomain->assetID);
-                        const auto* source = _assets->Get(sourceDomain->skeleton);
+                        const auto* source = _assets->GetRetained(sourceDomain->skeleton);
                         compatible = source && source->root.rigFamilyAssetID == setView.root.declaredPoseDomainAssetID && sourceDomain->binding.Initialize(*source, *family);
                         if (compatible)
                             sourceDomain->samplingJoints.assign(source->joints.begin(), source->joints.end());
@@ -139,7 +141,7 @@ namespace Animation
             for (const auto& record : clips)
             {
                 const auto* domain = record.domain.get();
-                if (!domain || (domain->type == FileFormat::Animation::PoseDomainType::Skeleton && domain->assetID == _assets->GetAssetID(skeleton)))
+                if (!domain || (domain->type == FileFormat::Animation::PoseDomainType::Skeleton && domain->assetID == _assets->GetRetainedAssetID(skeleton)))
                     continue;
                 u32 targetUses = 0;
                 bool base = false;
@@ -163,7 +165,7 @@ namespace Animation
         auto resolveMask = [&](const AnimationLoading::BoneMaskAssetView& mask, std::vector<f32>& weights)
         {
             if (mask.root.poseDomainType == FileFormat::Animation::PoseDomainType::Skeleton)
-                return ResolveBoneMask(mask, FileFormat::Animation::PoseDomainType::Skeleton, _assets->GetAssetID(skeleton), static_cast<u32>(skeletonView.joints.size()), weights);
+                return ResolveBoneMask(mask, FileFormat::Animation::PoseDomainType::Skeleton, _assets->GetRetainedAssetID(skeleton), static_cast<u32>(skeletonView.joints.size()), weights);
             std::vector<f32> canonical;
             if (!familySet || !ResolveBoneMask(mask, FileFormat::Animation::PoseDomainType::RigFamily, skeletonView.root.rigFamilyAssetID, targetFamilyJointCount, canonical))
                 return false;
@@ -177,7 +179,7 @@ namespace Animation
             if (layer.maskAssetID == FileFormat::INVALID_ASSET_ID || std::any_of(masks.begin(), masks.end(), [&layer](const MaskRecord& mask) { return mask.assetID == layer.maskAssetID; }))
                 continue;
             const AnimationLoading::BoneMaskHandle handle = _assets->LoadBoneMask(layer.maskAssetID);
-            const AnimationLoading::BoneMaskAssetView* view = _assets->Get(handle);
+            const AnimationLoading::BoneMaskAssetView* view = _assets->GetRetained(handle);
             MaskRecord mask = {layer.maskAssetID, handle};
             if (!view || !resolveMask(*view, mask.weights))
             {
@@ -196,7 +198,7 @@ namespace Animation
             if (actionSlot.maskAssetID == FileFormat::INVALID_ASSET_ID || std::any_of(masks.begin(), masks.end(), [&actionSlot](const MaskRecord& mask) { return mask.assetID == actionSlot.maskAssetID; }))
                 continue;
             const AnimationLoading::BoneMaskHandle handle = _assets->LoadBoneMask(actionSlot.maskAssetID);
-            const AnimationLoading::BoneMaskAssetView* view = _assets->Get(handle);
+            const AnimationLoading::BoneMaskAssetView* view = _assets->GetRetained(handle);
             MaskRecord mask = {actionSlot.maskAssetID, handle};
             if (!view || !resolveMask(*view, mask.weights))
             {
@@ -216,8 +218,8 @@ namespace Animation
             if (std::any_of(ikRigs.begin(), ikRigs.end(), [&operation](const IKRigRecord& rig) { return rig.assetID == operation.rigAssetID; }))
                 continue;
             const AnimationLoading::IKRigHandle handle = _assets->LoadIKRig(operation.rigAssetID);
-            const AnimationLoading::IKRigAssetView* view = _assets->Get(handle);
-            bool valid = view && view->root.skeletonAssetID == _assets->GetAssetID(skeleton);
+            const AnimationLoading::IKRigAssetView* view = _assets->GetRetained(handle);
+            bool valid = view && view->root.skeletonAssetID == _assets->GetRetainedAssetID(skeleton);
             for (const FileFormat::Animation::IKSolver& solver : view ? view->solvers : std::span<const FileFormat::Animation::IKSolver>())
             {
                 if (solver.chainIndex >= view->chains.size() || solver.goalSpace != FileFormat::Animation::IKGoalSpace::Model)
@@ -251,7 +253,7 @@ namespace Animation
         vec3 conservativeBoundsExpansion = {};
         for (const IKRigRecord& rig : ikRigs)
         {
-            const AnimationLoading::IKRigAssetView* view = _assets->Get(rig.handle);
+            const AnimationLoading::IKRigAssetView* view = _assets->GetRetained(rig.handle);
             conservativeBoundsExpansion = glm::max(conservativeBoundsExpansion, view->root.conservativeExtentExpansion);
         }
         if (!_poseSources->SetConservativeBoundsExpansion(poseSource, conservativeBoundsExpansion))
@@ -265,7 +267,7 @@ namespace Animation
             _poseSources->Destroy(poseSource);
             return {};
         }
-        const AnimatorHandle animator = _controllers.Create({_assets->GetAssetID(skeleton), FileFormat::INVALID_ASSET_ID, graph, stableSeed});
+        const AnimatorHandle animator = _controllers.Create({_assets->GetRetainedAssetID(skeleton), FileFormat::INVALID_ASSET_ID, graph, stableSeed});
         if (!animator || !_controllers.BindAnimationData(animator, setView, domains))
         {
             if (animator)
@@ -296,6 +298,8 @@ namespace Animation
         slot.targetFamily = familySet ? _assets->LoadRigFamily(skeletonView.root.rigFamilyAssetID) : AnimationLoading::RigFamilyHandle{};
         slot.retargetProfile = needsBridge ? _assets->LoadRetargetProfile(retargetProfileAssetID) : AnimationLoading::RetargetProfileHandle{};
         slot.animator = animator;
+        slot.graph = graph;
+        slot.stableSeed = stableSeed;
         slot.poseSource = poseSource;
         slot.clips = std::move(clips);
         slot.masks = std::move(masks);
@@ -317,11 +321,83 @@ namespace Animation
         return ControllerPlaybackHandle::Create(slotIndex, slot.generation);
     }
 
+    bool ControllerPosePlayer::QueueGraph(ControllerPlaybackHandle handle, std::shared_ptr<const CompiledAnimationGraph> graph, std::string& error)
+    {
+        error.clear();
+        Slot* slot = GetSlot(handle);
+        if (!slot || !graph)
+        {
+            error = "Controller or compiled graph is unavailable";
+            return false;
+        }
+        const auto* set = _assets->GetRetained(slot->animationSet);
+        if (!set)
+        {
+            error = "The animation set is unavailable";
+            return false;
+        }
+        const auto skeleton = _assets->LoadSkeleton(_assets->GetRetainedAssetID(slot->skeleton));
+        const auto animationSet = _assets->LoadAnimationSet(_assets->GetRetainedAssetID(slot->animationSet));
+        const auto* skeletonView = _assets->GetRetained(skeleton);
+        const auto* setView = _assets->GetRetained(animationSet);
+        const auto seed = slot->stableSeed;
+        const auto profile = _assets->GetRetainedAssetID(slot->retargetProfile);
+        const auto candidate = skeletonView && setView ? Create(skeleton, animationSet, *skeletonView, *setView, graph, seed, profile) : ControllerPlaybackHandle{};
+        if (!candidate)
+        {
+            _assets->Release(skeleton);
+            _assets->Release(animationSet);
+            error = "Replacement resource binding failed; running graph unchanged";
+            return false;
+        }
+        // Creating the candidate can grow the slot vector.
+        slot = GetSlot(handle);
+        const auto* resources = GetSlot(candidate);
+        const auto* replacementSet = _assets->GetRetained(resources->animationSet);
+        const auto resolves = [&](u64 semantic) { return static_cast<bool>(ResolveAnimationSlot(*replacementSet, resources->clipDomains, semantic, seed)); };
+        bool resolved = true;
+        for (const auto& state : graph->states) resolved &= state.kind != GraphStateKind::Clip || resolves(state.clipSlotSemanticID);
+        for (const auto& sample : graph->blendSamples) resolved &= resolves(sample.clipSlotSemanticID);
+        for (const auto& layer : graph->layers) resolved &= resolves(layer.clipSlotSemanticID);
+        for (const auto& action : graph->actionSlots) resolved &= resolves(action.clipSlotSemanticID);
+        for (const auto& operation : graph->ikOperations)
+        {
+            const auto* rig = FindIKRig(*resources, operation.rigAssetID);
+            const auto* view = rig ? _assets->GetRetained(rig->handle) : nullptr;
+            resolved &= view && std::any_of(view->solvers.begin(), view->solvers.end(), [&](const auto& solver) { return solver.semanticID == operation.solverSemanticID; });
+        }
+        if (!resolved)
+        {
+            Destroy(candidate);
+            error = "Replacement has unresolved clip slots or IK solvers; running graph unchanged";
+            return false;
+        }
+        if (slot->pendingResources)
+            Destroy(slot->pendingResources);
+        slot->pendingResources = candidate;
+        slot->pendingResourcesCompatible = true;
+        slot->pendingGraph = std::move(graph);
+        return true;
+    }
+
+    bool ControllerPosePlayer::GetGraphPublication(ControllerPlaybackHandle handle, u64& contentHash, bool& pending, AnimationGraphMigration& migration) const
+    {
+        const Slot* slot = GetSlot(handle);
+        if (!slot || !slot->graph)
+            return false;
+        contentHash = slot->graph->contentHash;
+        pending = slot->pendingGraph != nullptr;
+        migration = slot->migration;
+        return true;
+    }
+
     bool ControllerPosePlayer::Destroy(ControllerPlaybackHandle handle)
     {
         Slot* slot = GetSlot(handle);
         if (!slot)
             return false;
+        if (slot->pendingResources)
+            Destroy(slot->pendingResources);
         _poseToController.erase(slot->poseSource.GetRawValue());
         _controllers.Destroy(slot->animator);
         _poseSources->Destroy(slot->poseSource);
@@ -344,14 +420,125 @@ namespace Animation
         return true;
     }
 
+    bool ControllerPosePlayer::QueueAsset(AnimationDocumentType type, FileFormat::AssetID assetID, std::span<const u8> payload, std::string& error)
+    {
+        AnimationAssetDocument validation;
+        if (assetID == FileFormat::INVALID_ASSET_ID || !validation.Open(type, payload, error)) return false;
+        if (_pendingAsset) { error = "An asset publication is already queued"; return false; }
+        for (const auto& slot : _slots)
+            if (slot.live && slot.pendingGraph) { error = "Wait for the queued graph publication"; return false; }
+        _pendingAsset = std::make_unique<AssetPublication>(AssetPublication{type, assetID, {payload.begin(), payload.end()}});
+        _assetPublicationStatus = "Publication queued";
+        return true;
+    }
+
+    void ControllerPosePlayer::PublishPendingAsset()
+    {
+        ZoneScopedN("Animation asset publication");
+        if (!_pendingAsset) return;
+        auto publication = std::move(_pendingAsset);
+        // Registry snapshots share immutable bytes. Only the editor transaction copies tables.
+        auto previous = *_assets;
+        switch (publication->type)
+        {
+            case AnimationDocumentType::Skeleton: _assets->Release(_assets->PublishSkeleton(publication->assetID, publication->payload)); break;
+            case AnimationDocumentType::RigFamily: _assets->Release(_assets->PublishRigFamily(publication->assetID, publication->payload)); break;
+            case AnimationDocumentType::Clip: _assets->Release(_assets->PublishAnimationClip(publication->assetID, publication->payload)); break;
+            case AnimationDocumentType::Set: _assets->Release(_assets->PublishAnimationSet(publication->assetID, publication->payload)); break;
+            case AnimationDocumentType::Mask: _assets->Release(_assets->PublishBoneMask(publication->assetID, publication->payload)); break;
+            case AnimationDocumentType::IK: _assets->Release(_assets->PublishIKRig(publication->assetID, publication->payload)); break;
+        }
+        std::vector<ControllerPlaybackHandle> live;
+        for (u32 i = 0; i < _slots.size(); ++i)
+            if (_slots[i].live) live.push_back(ControllerPlaybackHandle::Create(i, _slots[i].generation));
+        std::string error;
+        bool valid = true;
+        for (const auto handle : live)
+        {
+            const auto graph = GetSlot(handle)->graph;
+            if (!QueueGraph(handle, graph, error)) { valid = false; break; }
+            auto* slot = GetSlot(handle);
+            const auto* candidate = GetSlot(slot->pendingResources);
+            const auto* oldSkeleton = _assets->GetRetained(slot->skeleton);
+            const auto* newSkeleton = _assets->GetRetained(candidate->skeleton);
+            valid = oldSkeleton && newSkeleton && oldSkeleton->joints.size() == newSkeleton->joints.size();
+            for (u32 i = 0; valid && i < oldSkeleton->joints.size(); ++i)
+                valid = oldSkeleton->joints[i].semanticID == newSkeleton->joints[i].semanticID && oldSkeleton->joints[i].parentJointIndex == newSkeleton->joints[i].parentJointIndex;
+            if (!valid) { error = "Live skeleton topology changed; rebind the model before applying"; break; }
+            slot->pendingResourcesCompatible = publication->type != AnimationDocumentType::Skeleton && publication->type != AnimationDocumentType::RigFamily;
+            if (slot->clipDomains.size() != candidate->clipDomains.size()) slot->pendingResourcesCompatible = false;
+            for (const auto& domain : slot->clipDomains)
+            {
+                const auto next = std::find_if(candidate->clipDomains.begin(), candidate->clipDomains.end(), [&](const auto& value) { return value.clipAssetID == domain.clipAssetID; });
+                if (next == candidate->clipDomains.end() || next->domainType != domain.domainType || next->domainAssetID != domain.domainAssetID || next->durationMicroseconds != domain.durationMicroseconds) slot->pendingResourcesCompatible = false;
+            }
+        }
+        if (!valid)
+        {
+            for (const auto handle : live)
+            {
+                auto* slot = GetSlot(handle);
+                if (slot->pendingResources) Destroy(slot->pendingResources);
+                slot->pendingResources = {};
+                slot->pendingGraph.reset();
+            }
+            *_assets = std::move(previous);
+            _assetPublicationStatus = "Rejected; running assets unchanged: " + error;
+            return;
+        }
+        const bool reset = std::any_of(live.begin(), live.end(), [&](auto handle) { return !GetSlot(handle)->pendingResourcesCompatible; });
+        _assetPublicationStatus = reset ? "Published; pose-domain/timing change resets state and cancels actions" : "Published; compatible controller state preserved";
+    }
+
     void ControllerPosePlayer::Advance(f64 deltaSeconds, bool applyTimeScale)
     {
+        ZoneScopedN("Animation controller advance and publication");
+        PublishPendingAsset();
+        // Publication happens before controller evaluation and render-frame pose requests.
+        for (Slot& slot : _slots)
+        {
+            if (!slot.live || !slot.pendingGraph)
+                continue;
+            if (_controllers.ReplaceGraph(slot.animator, FileFormat::INVALID_ASSET_ID, slot.pendingGraph, &slot.migration, slot.pendingResourcesCompatible))
+            {
+                const auto candidateHandle = slot.pendingResources;
+                Slot* candidate = GetSlot(candidateHandle);
+                if (candidate)
+                {
+                    std::swap(slot.skeleton, candidate->skeleton);
+                    std::swap(slot.animationSet, candidate->animationSet);
+                    _poseSources->RebindSkeleton(slot.poseSource, slot.skeleton);
+                    std::swap(slot.clips, candidate->clips);
+                    std::swap(slot.masks, candidate->masks);
+                    std::swap(slot.ikRigs, candidate->ikRigs);
+                    std::swap(slot.clipDomains, candidate->clipDomains);
+                    std::swap(slot.targetBinding, candidate->targetBinding);
+                    std::swap(slot.bridge, candidate->bridge);
+                    std::swap(slot.targetFamily, candidate->targetFamily);
+                    std::swap(slot.retargetProfile, candidate->retargetProfile);
+                    slot.hasBridge = candidate->hasBridge;
+                    slot.familyJointCount = candidate->familyJointCount;
+                    slot.correctRetargetChains = candidate->correctRetargetChains;
+                    const auto* set = _assets->GetRetained(slot.animationSet);
+                    _controllers.BindAnimationData(slot.animator, *set, slot.clipDomains);
+                    vec3 expansion = {};
+                    for (const auto& rig : slot.ikRigs)
+                        expansion = glm::max(expansion, _assets->GetRetained(rig.handle)->root.conservativeExtentExpansion);
+                    _poseSources->SetConservativeBoundsExpansion(slot.poseSource, expansion);
+                    slot.pendingResources = {};
+                    Destroy(candidateHandle);
+                }
+                slot.graph = std::move(slot.pendingGraph);
+                slot.lastRecipeHash = 0;
+                _poseSources->Invalidate(slot.poseSource);
+            }
+        }
         _controllers.Advance(deltaSeconds, applyTimeScale);
         for (Slot& slot : _slots)
         {
             if (!slot.live)
                 continue;
-            const AnimationLoading::AnimationSetAssetView* set = _assets->Get(slot.animationSet);
+            const AnimationLoading::AnimationSetAssetView* set = _assets->GetRetained(slot.animationSet);
             if (!set)
                 continue;
             FileFormat::AssetID clipAssetID = FileFormat::INVALID_ASSET_ID;
@@ -370,14 +557,24 @@ namespace Animation
             return false;
         Slot& slot = _slots[found->second];
         ++_stats.poseRequests;
-        const AnimationLoading::SkeletonAssetView* skeleton = _assets->Get(slot.skeleton);
-        const AnimationLoading::AnimationSetAssetView* animationSet = _assets->Get(slot.animationSet);
-        if (!skeleton || !animationSet || (slot.targetFamily && !_assets->Get(slot.targetFamily)) || (slot.retargetProfile && !_assets->Get(slot.retargetProfile)))
+        const bool succeeded = EvaluateRequestedPose(slot);
+        if (!succeeded)
+            _poseSources->Invalidate(poseSource);
+        return succeeded;
+    }
+
+    bool ControllerPosePlayer::EvaluateRequestedPose(Slot& slot, PoseRecipe* diagnosticRecipe)
+    {
+        ZoneScopedN("Animation recipe evaluation");
+        const AnimationLoading::SkeletonAssetView* skeleton = _assets->GetRetained(slot.skeleton);
+        const AnimationLoading::AnimationSetAssetView* animationSet = _assets->GetRetained(slot.animationSet);
+        if (!skeleton || !animationSet || (slot.targetFamily && !_assets->GetRetained(slot.targetFamily)) || (slot.retargetProfile && !_assets->GetRetained(slot.retargetProfile)))
         {
             ++_stats.failures;
             return false;
         }
         const PoseRecipe recipe = _controllers.RequestPose(slot.animator, *animationSet, slot.clipDomains, slot.continuityPose);
+        if (diagnosticRecipe) *diagnosticRecipe = recipe;
         std::array<std::pair<FileFormat::AssetID, FileFormat::Animation::PoseDomainType>, 10> activeDomains;
         u32 activeCount = 0;
         bool validDomains = true;
@@ -386,7 +583,7 @@ namespace Animation
             const auto* clip = FindClip(slot, clipID);
             if (!clip) { validDomains = false; return; }
             const auto record = std::find_if(slot.clips.begin(), slot.clips.end(), [clipID](const auto& value) { return value.assetID == clipID; });
-            if (record != slot.clips.end() && record->domain && (!_assets->Get(record->domain->family) || (record->domain->skeleton && !_assets->Get(record->domain->skeleton))))
+            if (record != slot.clips.end() && record->domain && (!_assets->GetRetained(record->domain->family) || (record->domain->skeleton && !_assets->GetRetained(record->domain->skeleton))))
                 validDomains = false;
             const auto key = std::pair(clip->root.sourcePoseDomainAssetID, clip->root.sourcePoseDomainType);
             if (std::find(activeDomains.begin(), activeDomains.begin() + activeCount, key) == activeDomains.begin() + activeCount)
@@ -546,9 +743,10 @@ namespace Animation
         slot.continuityPose = composed;
         for (u32 operationIndex = 0; operationIndex < recipe.ikOperationCount; ++operationIndex)
         {
+            ZoneNamedN(ikZone, "Animation target IK and limits", true);
             const PoseRecipeIKOperation& operation = recipe.ikOperations[operationIndex];
             const IKRigRecord* rigRecord = FindIKRig(slot, operation.rigAssetID);
-            const AnimationLoading::IKRigAssetView* rig = rigRecord ? _assets->Get(rigRecord->handle) : nullptr;
+            const AnimationLoading::IKRigAssetView* rig = rigRecord ? _assets->GetRetained(rigRecord->handle) : nullptr;
             if (!rig)
             {
                 ++_stats.failures;
@@ -611,6 +809,8 @@ namespace Animation
             {
                 const vec3 rootPosition = vec3(slot.ikWorkspace.modelTransforms[chainJoints[0]][3]);
                 polePosition = rootPosition + chain.preferredBendDirection;
+                if (chain.poleJointIndex < skeleton->joints.size())
+                    polePosition = vec3(slot.ikWorkspace.modelTransforms[chain.poleJointIndex][3]);
                 const u32 maximumIterations = std::max(1u, static_cast<u32>(solver->maximumIterations));
                 f32 bestError = std::numeric_limits<f32>::infinity();
                 IKSolveResult bestSolve;
@@ -656,7 +856,22 @@ namespace Animation
                 return false;
             }
             if (jointLimitClamped)
+            {
                 slot.ikWorkspace.current = false;
+                if (!UpdateModelTransforms(skeleton->joints, composed, 0, slot.ikWorkspace.modelTransforms))
+                    return false;
+                slot.ikWorkspace.current = true;
+                if (solver->type == FileFormat::Animation::IKSolverType::TwoBone || solver->type == FileFormat::Animation::IKSolverType::IterativeChain)
+                    solve.finalError = glm::length(vec3(mat4x4(slot.ikWorkspace.modelTransforms[chain.effectorJointIndex]) * vec4(effectorLocalPoint, 1.0f)) - goalModel);
+                else
+                {
+                    const auto& transform = slot.ikWorkspace.modelTransforms[chainJoints.front()];
+                    const vec3 axis = glm::normalize(vec3(mat4x4(transform) * vec4(chain.preferredBendDirection, 0.0f)));
+                    const vec3 direction = goalModel - vec3(transform[3]);
+                    solve.finalError = glm::dot(direction, direction) > 1.0e-8f ? glm::acos(std::clamp(glm::dot(axis, glm::normalize(direction)), -1.0f, 1.0f)) : 0.0f;
+                }
+                solve.status = IKSolveStatus::Clamped;
+            }
             ++_stats.ikOperations;
             if (solve.status == IKSolveStatus::Clamped || rigGoalClamped || jointLimitClamped)
                 ++_stats.ikClampedGoals;
@@ -687,19 +902,20 @@ namespace Animation
 
     bool ControllerPosePlayer::SampleTargetPose(Slot& slot, std::span<const PoseRecipeSample> samples, const AnimationLoading::SkeletonAssetView& target, std::vector<FileFormat::Animation::LocalTransform>& output, std::span<const PoseRecipeLayer> sourceLayers)
     {
+        ZoneScopedN("Animation sampling blend and retarget");
         if (samples.empty())
             return false;
         const PoseRecipeSample& sample = samples.front();
         const auto record = std::find_if(slot.clips.begin(), slot.clips.end(), [&sample](const ClipRecord& value) { return value.assetID == sample.clipAssetID; });
         if (record == slot.clips.end())
             return false;
-        const auto* clip = _assets->Get(record->handle);
+        const auto* clip = _assets->GetRetained(record->handle);
         if (!clip)
             return false;
         const bool additive = (clip->root.flags & FileFormat::Animation::AnimationClipFlags_Additive) != 0;
         output.resize(target.joints.size());
-        const bool native = !record->domain || (record->domain->type == FileFormat::Animation::PoseDomainType::Skeleton && record->domain->assetID == _assets->GetAssetID(slot.skeleton));
-        if (!native && (!_assets->Get(record->domain->family) || (record->domain->skeleton && !_assets->Get(record->domain->skeleton))))
+        const bool native = !record->domain || (record->domain->type == FileFormat::Animation::PoseDomainType::Skeleton && record->domain->assetID == _assets->GetRetainedAssetID(slot.skeleton));
+        if (!native && (!_assets->GetRetained(record->domain->family) || (record->domain->skeleton && !_assets->GetRetained(record->domain->skeleton))))
             return false;
         AnimationLoading::SkeletonAssetView source;
         source.joints = native ? target.joints : std::span<const FileFormat::Animation::SkeletonJoint>(record->domain->samplingJoints);
@@ -738,7 +954,7 @@ namespace Animation
                         canonicalWeights[binding.familyJointIndex] = mask->weights[binding.skeletonJointIndex];
                     if (slot.hasBridge)
                     {
-                        const auto* profile = _assets->Get(slot.retargetProfile);
+                        const auto* profile = _assets->GetRetained(slot.retargetProfile);
                         if (!profile)
                             return false;
                         std::vector<f32> sourceCanonicalWeights(slot.familyJointCount, 0.0f);
@@ -750,7 +966,7 @@ namespace Animation
                     if (record->domain->type == FileFormat::Animation::PoseDomainType::RigFamily)
                         sourceWeights = std::move(canonicalWeights);
                     else
-                        for (const auto& binding : _assets->Get(record->domain->skeleton)->familyBindings)
+                        for (const auto& binding : _assets->GetRetained(record->domain->skeleton)->familyBindings)
                             sourceWeights[binding.skeletonJointIndex] = canonicalWeights[binding.familyJointIndex];
                 }
             }
@@ -769,6 +985,7 @@ namespace Animation
             return true;
         }
         const SourceDomain& domain = *record->domain;
+        ZoneNamedN(retargetZone, "Animation family conversion and chain correction", true);
         std::vector<FileFormat::Animation::LocalTransform> canonical(slot.familyJointCount);
         if (domain.type == FileFormat::Animation::PoseDomainType::RigFamily)
             canonical = std::move(sourcePose);
@@ -848,6 +1065,6 @@ namespace Animation
     const AnimationLoading::AnimationClipAssetView* ControllerPosePlayer::FindClip(const Slot& slot, FileFormat::AssetID assetID) const
     {
         const auto found = std::find_if(slot.clips.begin(), slot.clips.end(), [assetID](const ClipRecord& clip) { return clip.assetID == assetID; });
-        return found != slot.clips.end() ? _assets->Get(found->handle) : nullptr;
+        return found != slot.clips.end() ? _assets->GetRetained(found->handle) : nullptr;
     }
 }

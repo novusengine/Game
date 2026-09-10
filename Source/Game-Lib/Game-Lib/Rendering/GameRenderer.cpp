@@ -999,7 +999,7 @@ void GameRenderer::CreateRenderTargets()
 
     Renderer::ImageDesc motionDesc = packedNormalsDesc;
     motionDesc.debugName = "MotionVectors";
-    motionDesc.clearUInts = uvec4(std::numeric_limits<u32>::max());
+    motionDesc.clearUInts = uvec4(0x7E007E00u);
     _resources.motionVectors = _renderer->CreateImage(motionDesc);
 
     // Scene color rendertarget

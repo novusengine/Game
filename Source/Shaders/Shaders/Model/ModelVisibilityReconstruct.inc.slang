@@ -42,6 +42,7 @@ struct ReconstructedModelPixel
     float3 worldPosition;
 #ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
     float3 previousWorldPosition;
+    bool motionValid;
 #endif
     float3 worldNormal;
     float3 faceNormal;
@@ -95,6 +96,7 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
     float3 worldPositions[3];
 #ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
     float3 previousWorldPositions[3];
+    result.motionValid = true;
 #endif
     float3 worldNormals[3];
     float2 uvs[3];
@@ -110,7 +112,11 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
             _resolvedModelVertexAttributes[result.model.vertexAttributeBase + result.lod.vertexAttributeOffset + vertexIndex];
         worldPositions[i] = mul(float4(localPosition, 1.0f), result.instance.currentWorld).xyz;
 #ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
-        previousWorldPositions[i] = mul(float4(localPosition, 1.0f), result.instance.previousWorld).xyz;
+        bool skinning = (result.lod.flags & 1u) != 0u;
+        bool previousValid = deformed && deformation.previousPositionOffset != 0xFFFFFFFFu;
+        result.motionValid = result.motionValid && (!skinning || (previousValid && (result.instance.flags & (1u << 9u)) != 0u));
+        float3 previousPosition = previousValid ? _resolvedModelDeformedPositions[deformation.previousPositionOffset + vertexIndex].xyz : localPosition;
+        previousWorldPositions[i] = mul(float4(previousPosition, 1.0f), result.instance.previousWorld).xyz;
 #endif
         worldNormals[i] = normalize(mul(float4(DecodeOctahedralSnorm(attributes.x), 0.0f), result.instance.currentWorld).xyz);
         uvs[i] = DecodeHalf2(attributes.z);

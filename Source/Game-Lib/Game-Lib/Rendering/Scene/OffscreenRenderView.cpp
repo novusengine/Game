@@ -29,6 +29,8 @@ namespace RenderScenes
             _renderer->DestroyImage(_visibility);
         if (_normals != Renderer::ImageID::Invalid())
             _renderer->DestroyImage(_normals);
+        if (_motion != Renderer::ImageID::Invalid())
+            _renderer->DestroyImage(_motion);
         if (_color != Renderer::ImageID::Invalid())
             _renderer->DestroyImage(_color);
         if (_transparencyAccumulation != Renderer::ImageID::Invalid())
@@ -41,6 +43,7 @@ namespace RenderScenes
             _renderer->DestroyDepthImage(_depth);
         _visibility = Renderer::ImageID::Invalid();
         _normals = Renderer::ImageID::Invalid();
+        _motion = Renderer::ImageID::Invalid();
         _color = Renderer::ImageID::Invalid();
         _transparencyAccumulation = Renderer::ImageID::Invalid();
         _transparencyRevealage = Renderer::ImageID::Invalid();
@@ -75,6 +78,9 @@ namespace RenderScenes
         imageDesc.clearUInts = uvec4(0u);
         imageDesc.debugName = _desc.debugName + " Normals";
         _normals = _renderer->CreateImage(imageDesc);
+        imageDesc.clearUInts = uvec4(0x7E007E00u);
+        imageDesc.debugName = _desc.debugName + " Motion";
+        _motion = _renderer->CreateImage(imageDesc);
 
         imageDesc.format = _renderer->GetSwapChainImageFormat();
         imageDesc.clearColor = Color(0.035f, 0.035f, 0.045f, 1.0f);
@@ -107,6 +113,7 @@ namespace RenderScenes
 
         _desc.visibilityTarget = _visibility;
         _desc.normalTarget = _normals;
+        _desc.motionTarget = _motion;
         _desc.colorTarget = _color;
         _desc.transparencyAccumulationTarget = _transparencyAccumulation;
         _desc.transparencyRevealageTarget = _transparencyRevealage;

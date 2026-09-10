@@ -15,9 +15,10 @@
 
 namespace ModelPipeline
 {
+    AutoCVar_Int CVAR_AnimationMotionDebug(CVarCategory::Client | CVarCategory::Rendering, "animationMotionDebug", "motion view: 0 off, 1 direction/magnitude, 2 validity (green valid, magenta invalid)", 0, CVarFlags::DoNotSave);
     ModelVisibilityResolvePass::ModelVisibilityResolvePass(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
         : _renderer(renderer), _preEffectsSet(Renderer::DescriptorSetSlot::PER_PASS),
-          _velocitySet(Renderer::DescriptorSetSlot::PER_PASS), _highlightSet(Renderer::DescriptorSetSlot::PER_PASS)
+          _velocitySet(Renderer::DescriptorSetSlot::PER_PASS), _highlightSet(Renderer::DescriptorSetSlot::PER_PASS), _motionDebugSet(Renderer::DescriptorSetSlot::PER_PASS)
     {
         Renderer::ComputePipelineDesc desc;
         Renderer::ComputeShaderDesc shader;
@@ -45,6 +46,38 @@ namespace ModelPipeline
         _velocitySet.Init(renderer);
         _highlightSet.RegisterPipeline(renderer, _highlightPipeline);
         _highlightSet.Init(renderer);
+        shader.shaderEntry = gameRenderer->GetShaderEntry("Model/MotionDebug.cs"_h, "Model/MotionDebug.cs");
+        desc.debugName = "Animation Motion Debug";
+        desc.computeShader = renderer->LoadShader(shader);
+        _motionDebugPipeline = renderer->CreatePipeline(desc);
+        _motionDebugSet.RegisterPipeline(renderer, _motionDebugPipeline);
+        _motionDebugSet.Init(renderer);
+    }
+
+    void ModelVisibilityResolvePass::AddMotionDebugPass(Renderer::RenderGraph* renderGraph, const RenderScenes::RenderView& view)
+    {
+        if (CVAR_AnimationMotionDebug.Get() == 0 || view.GetMotionTarget() == Renderer::ImageID::Invalid())
+            return;
+        struct Data { Renderer::ImageResource motion; Renderer::ImageResource visibility; Renderer::ImageMutableResource color; Renderer::DescriptorSetResource set; };
+        renderGraph->AddPass<Data>("Animation Motion Debug: " + view.GetDebugName(),
+            [this, &view](Data& data, Renderer::RenderGraphBuilder& builder) {
+                data.motion = builder.Read(view.GetMotionTarget(), Renderer::PipelineType::COMPUTE);
+                data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
+                data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+                data.set = builder.Use(_motionDebugSet);
+                return true;
+            },
+            [this, &view](Data& data, Renderer::RenderGraphResources&, Renderer::CommandList& commands) {
+                commands.BeginPipeline(_motionDebugPipeline);
+                data.set.Bind("_debugMotion"_h, data.motion);
+                data.set.Bind("_debugVisibility"_h, data.visibility);
+                data.set.Bind("_debugColor"_h, data.color);
+                commands.BindDescriptorSet(data.set, 0);
+                struct Constants { uvec2 dimensions; u32 mode; u32 padding; } constants = {view.GetDimensions(), static_cast<u32>(CVAR_AnimationMotionDebug.Get()), 0};
+                commands.PushConstant(&constants, 0, sizeof(constants));
+                commands.Dispatch((constants.dimensions.x + 7u) / 8u, (constants.dimensions.y + 7u) / 8u, 1u);
+                commands.EndPipeline(_motionDebugPipeline);
+            }, Renderer::RenderPassFlags::None);
     }
 
     void ModelVisibilityResolvePass::BindCommon(Renderer::DescriptorSet& set, CommonBindings& bindings,
@@ -147,8 +180,6 @@ namespace ModelPipeline
         const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        if (view.GetNormalTarget() == Renderer::ImageID::Invalid())
-            return;
         struct Data
         {
             Renderer::ImageResource visibility;
@@ -158,6 +189,8 @@ namespace ModelPipeline
         };
         renderGraph->AddPass<Data>("Model PreEffects: " + view.GetDebugName(),
             [this, &resources, &view, &work, &geometry, &scene](Data& data, Renderer::RenderGraphBuilder& builder) {
+                if (view.GetNormalTarget() == Renderer::ImageID::Invalid())
+                    return false;
                 data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
                 const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
                 data.normals = builder.Write(view.GetNormalTarget(), Renderer::PipelineType::COMPUTE, loadMode);
@@ -199,7 +232,7 @@ namespace ModelPipeline
         renderGraph->AddPass<VelocityData>("Model Velocity: " + view.GetDebugName(),
             [this, &resources, &view, &work, &geometry, &scene](VelocityData& data, Renderer::RenderGraphBuilder& builder) {
                 data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
-                data.motion = builder.Write(view.GetMotionTarget(), Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+                data.motion = builder.Write(view.GetMotionTarget(), Renderer::PipelineType::COMPUTE, view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD);
                 builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
                 RegisterCommonUsage(builder, work, geometry, scene);
                 data.globalSet = builder.Use(resources.globalDescriptorSet);

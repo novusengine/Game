@@ -39,6 +39,10 @@ function api.SetInput(name : string, value : number)
     inputs[name] = value
 end
 
+function api.NotifyGraphChanged()
+    revision = integer.add(revision, 1i)
+end
+
 function api.GetSnapshot() : Snapshot
     return {
         entity = entity,

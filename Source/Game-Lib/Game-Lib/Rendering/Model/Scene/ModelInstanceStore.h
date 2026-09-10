@@ -26,7 +26,8 @@ namespace ModelScene
         ModelInstanceFlagPendingPublication = 1u << 5u,
         ModelInstanceFlagDynamicShadowCaster = 1u << 6u,
         ModelInstanceFlagForceTransparent = 1u << 7u,
-        ModelInstanceFlagCastsShadows = 1u << 8u
+        ModelInstanceFlagCastsShadows = 1u << 8u,
+        ModelInstanceFlagDeformationMotionValid = 1u << 9u
     };
 
     struct ModelInstanceGPURecord
@@ -73,6 +74,7 @@ namespace ModelScene
         RenderScenes::GeometryGroupMaskHandle geometryGroupMask;
         MeshletHistoryRange meshletHistory;
         Animation::PoseSourceHandle poseSource;
+        u64 lastDeformationFrame = 0;
     };
 
     struct ModelInstanceStoreStats
@@ -110,6 +112,7 @@ namespace ModelScene
         bool InvalidateReplay(RenderScenes::ModelInstanceHandle handle);
         bool SetPoseSource(RenderScenes::ModelInstanceHandle handle, Animation::PoseSourceHandle poseSource);
         bool SetDeformationHandle(RenderScenes::ModelInstanceHandle handle, u32 deformationHandle);
+        bool MarkDeformationFrame(RenderScenes::ModelInstanceHandle handle, u64 frame, bool succeeded);
         void AdvanceFrame();
         void PublishPending();
         void SyncToGPU(Renderer::Renderer* renderer);

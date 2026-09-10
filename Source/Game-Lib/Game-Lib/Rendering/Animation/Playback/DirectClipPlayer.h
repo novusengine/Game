@@ -10,6 +10,7 @@
 
 namespace Animation
 {
+    enum class AnimationDocumentType : u8;
     class DirectPlaybackHandle
     {
       public:
@@ -62,6 +63,7 @@ namespace Animation
         bool GetState(DirectPlaybackHandle handle, DirectPlaybackState& state) const;
         PoseSourceHandle GetPoseSource(DirectPlaybackHandle handle) const;
         void Advance(f32 deltaTime);
+        bool ValidatePublication(AnimationDocumentType type, FileFormat::AssetID assetID, std::span<const u8> payload, std::string& error) const;
         bool RequestPose(PoseSourceHandle poseSource);
         const DirectPlaybackStats& GetStats() const { return _stats; }
 
@@ -95,5 +97,6 @@ namespace Animation
         std::vector<u32> _freeSlots;
         robin_hood::unordered_flat_map<u64, u32> _poseToController;
         DirectPlaybackStats _stats;
+        u32 _assetRevision = 0;
     };
 }
