@@ -11,6 +11,14 @@ namespace
 {
     AutoCVar_Float CVAR_AnimationControllerTimeScale(CVarCategory::Client | CVarCategory::Rendering, "animationControllerTimeScale", "Animation V2 controller time scale", 1.0f, CVarFlags::EditFloatDrag | CVarFlags::DoNotSave);
 
+    u64 ClipTime(std::span<const Animation::AnimationClipDomainRecord> clips, FileFormat::AssetID assetID, u64 timeMicroseconds)
+    {
+        const auto clip = std::find_if(clips.begin(), clips.end(), [assetID](const auto& value) { return value.clipAssetID == assetID; });
+        if (clip == clips.end() || clip->durationMicroseconds == 0)
+            return 0;
+        return clip->looping ? timeMicroseconds % clip->durationMicroseconds : std::min(timeMicroseconds, clip->durationMicroseconds);
+    }
+
     template <typename T>
     void Append(std::vector<u8>& bytes, const T& value)
     {
@@ -510,6 +518,7 @@ namespace Animation
             std::vector<FileFormat::Animation::AnimationEvent> events;
             std::vector<u8> eventPayloadBytes;
             bool looping = false;
+            FileFormat::AssetID compatibleFamilyAssetID = FileFormat::INVALID_ASSET_ID;
         };
 
         AnimationControllerConfig config;
@@ -815,7 +824,7 @@ namespace Animation
         std::vector<AnimationClipDomainRecord> boundDomains;
         boundDomains.reserve(slot->boundClips.size());
         for (const Slot::BoundClip& clip : slot->boundClips)
-            boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping});
+            boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping, clip.compatibleFamilyAssetID});
         const ResolvedAnimationSlot resolved = ResolveAnimationSlot(boundSet, boundDomains, actionSlot->clipSlotSemanticID, slot->config.stableSeed ^ semanticID ^ serial);
         if (!resolved)
             return {};
@@ -906,6 +915,7 @@ namespace Animation
             bound.events.assign(clip.events.begin(), clip.events.end());
             bound.eventPayloadBytes.assign(clip.eventPayloadBytes.begin(), clip.eventPayloadBytes.end());
             bound.looping = clip.looping;
+            bound.compatibleFamilyAssetID = clip.compatibleFamilyAssetID;
             slot->boundClips.push_back(std::move(bound));
         }
         return true;
@@ -1100,7 +1110,7 @@ namespace Animation
                         std::vector<AnimationClipDomainRecord> boundDomains;
                         boundDomains.reserve(slot.boundClips.size());
                         for (const Slot::BoundClip& clip : slot.boundClips)
-                            boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping});
+                            boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping, clip.compatibleFamilyAssetID});
                         const ResolvedAnimationSlot eventLeader = ResolveAnimationSlot(boundSet, boundDomains, eventState.clipSlotSemanticID, slot.config.stableSeed ^ eventState.sourceGUID, slot.variations[eventStateIndex]);
                         if (eventLeader)
                         {
@@ -1115,7 +1125,7 @@ namespace Animation
                 std::vector<AnimationClipDomainRecord> boundDomains;
                 boundDomains.reserve(slot.boundClips.size());
                 for (const Slot::BoundClip& clip : slot.boundClips)
-                    boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping});
+                    boundDomains.push_back({clip.clipAssetID, clip.domainType, clip.domainAssetID, clip.durationMicroseconds, clip.synchronizationMarkers, clip.events, clip.eventPayloadBytes, clip.looping, clip.compatibleFamilyAssetID});
                 for (u32 layerIndex = 0; layerIndex < slot.config.graph->layers.size(); ++layerIndex)
                 {
                     const CompiledGraphLayer& layer = slot.config.graph->layers[layerIndex];
@@ -1313,7 +1323,7 @@ namespace Animation
                 if (!resolved)
                     return;
                 slot->variations[stateIndex] = resolved.stableVariationID;
-                recipe.samples[recipe.sampleCount++] = {resolved.clipAssetID, state.durationMicroseconds == 0 ? 0 : timeMicroseconds % state.durationMicroseconds, weight, resolved.stableVariationID};
+                recipe.samples[recipe.sampleCount++] = {resolved.clipAssetID, ClipTime(clips, resolved.clipAssetID, timeMicroseconds), weight, resolved.stableVariationID};
                 return;
             }
 
@@ -1605,7 +1615,7 @@ namespace Animation
             return true;
         slot->variations[slot->currentState] = resolved.stableVariationID;
         clipAssetID = resolved.clipAssetID;
-        timeMicroseconds = state.durationMicroseconds == 0 ? 0 : slot->stateTimeMicroseconds % state.durationMicroseconds;
+        timeMicroseconds = ClipTime(clips, resolved.clipAssetID, slot->stateTimeMicroseconds);
         supportsTightBounds = true;
         return true;
     }

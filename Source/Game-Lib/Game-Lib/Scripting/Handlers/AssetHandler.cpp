@@ -1809,6 +1809,7 @@ namespace Scripting::Asset
         else try
         {
             Animation::PoseRecipe recipe;
+            RefreshGraphPublication(*deformation, *binding);
             const bool hasRecipe = binding->controller && deformation->CaptureControllerRecipe(binding->controller, recipe);
             const auto* pose = deformation->GetPoseSource(binding->poseSource);
             if (!pose) throw std::runtime_error("Preview pose is unavailable");

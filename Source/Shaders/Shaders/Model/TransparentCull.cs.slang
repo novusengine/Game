@@ -70,19 +70,21 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
         AddStat(MODEL_TRANSPARENT_STAT_TESTED_TRIANGLES, ModelMeshletTriangleCount(meshlet));
         float4 sphere = TransformSphere(meshlet.boundsCenter, meshlet.boundsRadius, instance.currentWorld);
         Camera camera = _cameras[_constants.viewIndex];
-        if (!ModelSphereInsideFrustum(camera, sphere))
+        // Bind-pose meshlet bounds and cones cannot reject deformed geometry.
+        bool staticGeometry = instance.deformationHandle == 0xFFFFFFFFu;
+        if (staticGeometry && !ModelSphereInsideFrustum(camera, sphere))
         {
             AddStat(MODEL_TRANSPARENT_STAT_REJECTED_FRUSTUM_MESHLETS, 1u);
             visible = false;
         }
-        else if (_constants.enableConeCulling != 0u && (chunk.binIndex & 1u) == 0u &&
+        else if (staticGeometry && _constants.enableConeCulling != 0u && (chunk.binIndex & 1u) == 0u &&
                  ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter, meshlet.boundsRadius,
                                      instance.currentWorld, camera.cullingEyePosition.xyz))
         {
             AddStat(MODEL_TRANSPARENT_STAT_REJECTED_CONE_MESHLETS, 1u);
             visible = false;
         }
-        else if (_constants.enableOcclusionCulling != 0u)
+        else if (staticGeometry && _constants.enableOcclusionCulling != 0u)
         {
             float3 boundsMin = sphere.xyz - sphere.www;
             float3 boundsMax = sphere.xyz + sphere.www;

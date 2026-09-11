@@ -154,6 +154,36 @@ TEST_CASE("AnimationSet resolves semantic slots and deterministic weighted varia
     CHECK(Animation::ResolveAnimationSlot(invalid, CLIPS, 0x9999, 0).resolution == Animation::AnimationSlotResolution::InvalidSet);
 }
 
+TEST_CASE("Clip recipes and bounds follow the resolved clip clock rather than the graph duration", "[AnimationController][ClipClock]")
+{
+    SetFixture fixture;
+    auto graph = MakeGraph();
+    graph.states[0].durationMicroseconds = 60000000;
+    const auto compiled = Animation::CompileAnimationGraph(graph);
+    REQUIRE(compiled);
+    auto clips = CLIPS;
+    const bool looping = GENERATE(false, true);
+    for (auto& clip : clips) clip.looping = looping;
+    Animation::AnimationControllerStore store;
+    const auto animator = store.Create({SKELETON, 1, compiled.graph, 77});
+    REQUIRE(animator);
+    for (const u64 time : {0ull, 9933332ull, 9933333ull, 9933334ull, 59999999ull, 60000000ull, 60000001ull, 100000000ull})
+    {
+        REQUIRE(store.Seek(animator, time));
+        const auto recipe = store.RequestPose(animator, fixture.view, clips);
+        REQUIRE(recipe.sampleCount == 1);
+        const u64 expected = looping ? time % clips[0].durationMicroseconds : std::min(time, clips[0].durationMicroseconds);
+        CHECK(recipe.samples[0].timeMicroseconds == expected);
+        FileFormat::AssetID boundsClip = FileFormat::INVALID_ASSET_ID;
+        u64 boundsTime = 0;
+        bool tight = false;
+        REQUIRE(store.GetBoundsMetadata(animator, fixture.view, clips, boundsClip, boundsTime, tight));
+        CHECK(tight);
+        CHECK(boundsClip == recipe.samples[0].clipAssetID);
+        CHECK(boundsTime == expected);
+    }
+}
+
 TEST_CASE("Graph compiler is deterministic compact and rejects invalid replacement input", "[AnimationController][AnimationGraph]")
 {
     const Animation::GraphCompileResult first = Animation::CompileAnimationGraph(MakeGraph());
@@ -730,6 +760,56 @@ TEST_CASE("State events scan loop wraps offscreen from one deterministic leader"
     REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
     CHECK(store.GetAuthoritativeEvents(animator)[0].eventTypeID == 0x6100);
     CHECK(store.GetStats().poseRequests == 0);
+}
+
+TEST_CASE("Family-compatible concrete clips retain state layer and action events", "[AnimationController][Events][FamilyEvents]")
+{
+    const bool withLayer = GENERATE(false, true);
+    constexpr u64 familyID = 0x9001;
+    constexpr u64 actionID = 0x9002;
+    const std::array<FileFormat::Animation::AnimationEvent, 1> events = {{{1000, 0x6100, 0x7100, 0, 0, 2}}};
+    const std::array<u8, 2> payload = {0xAB, 0xCD};
+    auto clips = CLIPS;
+    for (auto& clip : clips)
+    {
+        clip.compatibleFamilyAssetID = familyID;
+        clip.events = events;
+        clip.eventPayloadBytes = payload;
+    }
+    SetFixture fixture;
+    fixture.view.root.declaredPoseDomainType = FileFormat::Animation::PoseDomainType::RigFamily;
+    fixture.view.root.declaredPoseDomainAssetID = familyID;
+    Animation::EditableAnimationGraph graph;
+    graph.states = {{1, IDLE, 60000000}};
+    graph.entryStateGUID = 1;
+    graph.actionSlots = {{actionID, WALK, FileFormat::INVALID_ASSET_ID, 200000, 0, 0, Animation::AnimationLayerType::Override, 1, true, true, "Family action"}};
+    if (withLayer)
+    {
+        Animation::EditableGraphLayer layer;
+        layer.sourceGUID = 2;
+        layer.clipSlotSemanticID = RUN;
+        layer.durationMicroseconds = 800000;
+        layer.constantWeight = 1.0f;
+        layer.emitEvents = true;
+        graph.layers.push_back(layer);
+    }
+    const auto compiled = Animation::CompileAnimationGraph(graph);
+    REQUIRE(compiled);
+    Animation::AnimationControllerStore store;
+    const auto animator = store.Create({SKELETON + 1, 1, compiled.graph, 42});
+    REQUIRE(animator);
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    REQUIRE(store.RequestPose(animator, fixture.view, clips).sampleCount == 1);
+    store.Advance(1.0 / 60.0, false);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == (withLayer ? 2 : 1));
+    CHECK(store.GetAuthoritativeEvents(animator)[0].payload == std::vector<u8>{0xAB, 0xCD});
+    REQUIRE(store.StartAction(animator, actionID));
+    store.Advance(1.0 / 60.0, false);
+    REQUIRE(store.GetAuthoritativeEvents(animator).size() == 1);
+    CHECK(store.GetAuthoritativeEvents(animator)[0].payloadTypeID == 0x7100);
+    for (auto& clip : clips) clip.compatibleFamilyAssetID = FileFormat::INVALID_ASSET_ID;
+    REQUIRE(store.BindAnimationData(animator, fixture.view, clips));
+    REQUIRE_FALSE(store.StartAction(animator, actionID));
 }
 
 TEST_CASE("Seek and reverse-time updates follow explicit no-replay policies", "[AnimationController][Events][Seek]")

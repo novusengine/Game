@@ -74,7 +74,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     ModelRecord model = _modelRecords[instance.modelIndex];
     Camera camera = _cameras[_constants.viewIndex];
     float4 worldBounds = TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld);
-    if (!ModelSphereInsideFrustum(camera, worldBounds))
+    if (instance.deformationHandle == 0xFFFFFFFFu && !ModelSphereInsideFrustum(camera, worldBounds))
     {
         AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
         return;

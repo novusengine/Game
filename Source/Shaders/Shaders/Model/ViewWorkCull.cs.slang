@@ -170,17 +170,20 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
             triangleCount = ModelMeshletTriangleCount(meshlet);
             float4 sphere = TransformSphere(meshlet.boundsCenter, meshlet.boundsRadius, instance.currentWorld);
             Camera camera = _cameras[_constants.viewIndex];
-            if (!ModelSphereInsideFrustum(camera, sphere))
+            // Cooked meshlet bounds and cones describe the bind pose. Animated
+            // instances already passed conservative animation-bounds demand.
+            bool staticGeometry = instance.deformationHandle == 0xFFFFFFFFu;
+            if (staticGeometry && !ModelSphereInsideFrustum(camera, sphere))
             {
                 cullReason = MODEL_CULL_REASON_FRUSTUM;
             }
-            else if (_constants.enableConeCulling != 0u && (rasterClass & 1u) == 0u &&
+            else if (staticGeometry && _constants.enableConeCulling != 0u && (rasterClass & 1u) == 0u &&
                      ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter, meshlet.boundsRadius,
                                          instance.currentWorld, camera.cullingEyePosition.xyz))
             {
                 cullReason = MODEL_CULL_REASON_CONE;
             }
-            else if (_constants.enableOcclusionCulling != 0u)
+            else if (staticGeometry && _constants.enableOcclusionCulling != 0u)
             {
                 float3 boundsMin = sphere.xyz - sphere.www;
                 float3 boundsMax = sphere.xyz + sphere.www;

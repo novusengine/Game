@@ -109,7 +109,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     ModelRecord model = _shadowModels[instance.modelIndex];
     Camera camera = _cameras[clipmapIndex + 1u];
     float4 worldBounds = TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld);
-    if (!ModelSphereInsideFrustum(camera, worldBounds))
+    if (instance.deformationHandle == 0xFFFFFFFFu && !ModelSphereInsideFrustum(camera, worldBounds))
     {
         AddStat(frameIndex, MODEL_SHADOW_STAT_REJECTED_INSTANCES, 1u);
         return;

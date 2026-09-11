@@ -2,6 +2,7 @@
 #include "Game-Lib/Rendering/Animation/Asset/AnimationAssetValidator.h"
 #include "AnimationIK.h"
 #include "AnimationPose.h"
+#include "Game-Lib/Rendering/Animation/Controller/AnimationSemantic.h"
 
 #include <Base/Util/StringUtils.h>
 #include <algorithm>
@@ -104,6 +105,8 @@ namespace Animation
             if (authored.numJointIndices != 3)
                 continue;
             Chain chain;
+            chain.semanticID = authored.semanticID;
+            chain.isLeg = authored.semanticID == HashAnimationSemantic("humanoid-chain", "left_leg") || authored.semanticID == HashAnimationSemantic("humanoid-chain", "right_leg");
             bool mapped = true;
             f32 familyLength = 0;
             for (u32 index = 0; index < 3; ++index)
@@ -124,6 +127,10 @@ namespace Animation
                 continue;
             chain.familyRestEffector = vec3(familyRest.modelTransforms[chain.familyEffector][3]);
             chain.targetRestEffector = vec3(targetRest.modelTransforms[chain.target[2]][3]);
+            chain.anchor = _parents[chain.target[0]];
+            const mat4x4 anchor = chain.anchor < 0 ? mat4x4(1) : mat4x4(targetRest.modelTransforms[chain.anchor]);
+            chain.restEffectorInAnchor = vec3(glm::inverse(anchor) * vec4(chain.targetRestEffector, 1));
+            chain.restAnchorBasis = mat3x3(anchor);
             chain.proportion = chain.reach / familyLength;
             _chains.push_back(chain);
         }
@@ -133,6 +140,82 @@ namespace Animation
         _signature = XXHash64::hash(family.chainJointIndices.data(), family.chainJointIndices.size_bytes(), _signature);
         _signature = XXHash64::hash(_bindings.data(), _bindings.size() * sizeof(_bindings[0]), _signature);
         _signature = XXHash64::hash(_propagation.data(), _propagation.size() * sizeof(FileFormat::Animation::SkeletonPropagationRule), _signature);
+        return true;
+    }
+
+    bool FamilyPoseBinding::CorrectStance(const FamilyPoseBinding& sourceBinding, std::span<const Transform> source, std::span<Transform> target) const
+    {
+        if (source.size() != sourceBinding._joints.size() || target.size() != _joints.size()) return false;
+        const auto sourceModel = EvaluatePose(sourceBinding._joints, source);
+        if (!sourceModel) return false;
+        struct FootGoal { const Chain* chain; vec3 position; };
+        std::array<FootGoal, 4> goals;
+        u32 numGoals = 0;
+        for (const auto& chain : _chains)
+        {
+            // These are authored humanoid family roles, not imported bone names.
+            if (!chain.isLeg) continue;
+            const auto from = std::find_if(sourceBinding._chains.begin(), sourceBinding._chains.end(), [&](const auto& value) { return value.semanticID == chain.semanticID; });
+            if (from == sourceBinding._chains.end() || from->anchor < 0 || chain.anchor < 0) continue;
+            // A planted foot must not inherit the animated pelvis translation or rotation.
+            // Both skeletons use the shared model axes, so transfer the ground-space path.
+            const vec3 sourceFoot = vec3(sourceModel.modelTransforms[from->target[2]][3]);
+            const vec3 sourceRest = from->targetRestEffector;
+            const vec3 targetRest = chain.targetRestEffector;
+            const f32 scale = chain.reach / from->reach;
+            vec3 goal = targetRest + (sourceFoot - sourceRest) * scale;
+            // Lateral stance scales with the neutral stance width, not leg length.
+            // Signed positions preserve deliberate crossed steps as well as open stances.
+            if (std::abs(sourceRest.x) > 0.0001f && sourceRest.x * targetRest.x > 0)
+                goal.x = sourceFoot.x * (targetRest.x / sourceRest.x);
+            goals[numGoals++] = {&chain, goal};
+        }
+        // Find a shared pelvis height at which both legs can reach, without moving the
+        // foot goals or stretching bones. Only adjust anchors shared by authored legs.
+        const auto initialModel = EvaluatePose(_joints, target);
+        if (!initialModel) return false;
+        for (u32 index = 0; index < numGoals; ++index)
+        {
+            const i32 anchor = goals[index].chain->anchor;
+            bool processed = false;
+            for (u32 previous = 0; previous < index; ++previous) processed |= goals[previous].chain->anchor == anchor;
+            if (processed) continue;
+            f32 lower = -FLT_MAX, upper = FLT_MAX;
+            for (u32 foot = index; foot < numGoals; ++foot)
+            {
+                const auto& chain = *goals[foot].chain;
+                if (chain.anchor != anchor) continue;
+                const vec3 delta = vec3(initialModel.modelTransforms[chain.target[0]][3]) - goals[foot].position;
+                const f32 verticalSquared = chain.reach * chain.reach - delta.x * delta.x - delta.z * delta.z;
+                if (verticalSquared < 0) continue; // No vertical adjustment can reach this goal.
+                const f32 vertical = std::sqrt(verticalSquared);
+                lower = std::max(lower, -vertical - delta.y);
+                upper = std::min(upper, vertical - delta.y);
+            }
+            if (lower > upper) continue;
+            const vec4 offset(0, std::clamp(0.0f, lower, upper), 0, 0);
+            const i32 parent = _parents[anchor];
+            target[anchor].translation += vec3(parent < 0 ? offset : glm::inverse(mat4x4(initialModel.modelTransforms[parent])) * offset);
+        }
+        for (u32 index = 0; index < numGoals; ++index)
+        {
+            const auto& chain = *goals[index].chain;
+            const vec3 goal = goals[index].position;
+            const auto targetModel = EvaluatePose(_joints, target);
+            if (!targetModel) return false;
+            const vec3 pole = vec3(targetModel.modelTransforms[chain.target[1]][3]);
+            auto rotation = [](const mat4a& transform)
+            {
+                mat3x3 basis(transform);
+                for (u32 axis = 0; axis < 3; ++axis) basis[axis] = glm::normalize(basis[axis]);
+                return glm::normalize(glm::quat_cast(basis));
+            };
+            const quat footRotation = rotation(targetModel.modelTransforms[chain.target[2]]);
+            if (!SolveTwoBoneIK(_joints, chain.target[0], chain.target[1], chain.target[2], goal, pole, chain.reach, 1.0f, target)) return false;
+            const auto corrected = EvaluatePose(_joints, target);
+            if (!corrected) return false;
+            target[chain.target[2]].rotation = glm::normalize(glm::inverse(rotation(corrected.modelTransforms[chain.target[1]])) * footRotation);
+        }
         return true;
     }
 
@@ -147,7 +230,7 @@ namespace Animation
         return true;
     }
 
-    bool FamilyPoseBinding::FromFamily(std::span<const Transform> familyPose, std::span<Transform> target, bool additive, bool correctChains) const
+    bool FamilyPoseBinding::FromFamily(std::span<const Transform> familyPose, std::span<Transform> target, bool additive, bool correctChains, const FamilyPoseBinding* sourceBinding, std::span<const Transform> sourcePose) const
     {
         if (_rest.empty() || target.size() != _rest.size() || familyPose.size() != _canonical.size())
             return false;
@@ -182,6 +265,8 @@ namespace Animation
                 return false;
             for (const auto& chain : _chains)
             {
+                if (sourceBinding && chain.isLeg)
+                    continue;
                 const auto targetModel = EvaluatePose(_joints, target);
                 if (!targetModel)
                     return false;
@@ -190,6 +275,8 @@ namespace Animation
                 if (!SolveTwoBoneIK(_joints, chain.target[0], chain.target[1], chain.target[2], goal, pole, chain.reach, 1.0f, target))
                     return false;
             }
+            if (sourceBinding && !CorrectStance(*sourceBinding, sourcePose, target))
+                return false;
         }
         for (const auto& rule : _propagation)
         {

@@ -227,6 +227,9 @@ TEST_CASE("Animation bounds validate and select tight or explicit conservative f
     CHECK(selected.segmentIndex == 0);
     selected = AnimationLoading::SelectAnimationBounds(&valid.view, 10, 20, 30, 750'000, true, staticFallback);
     CHECK(selected.segmentIndex == 1);
+    selected = AnimationLoading::SelectAnimationBounds(&valid.view, 10, 20, 30, 1000000, true, staticFallback);
+    CHECK(selected.selection == AnimationLoading::AnimationBoundsSelection::ClipFallback);
+    CHECK(selected.bounds.extents == valid.view.clips[0].fallbackBounds.extents);
     selected = AnimationLoading::SelectAnimationBounds(&valid.view, 10, 20, 30, 250'000, false, staticFallback);
     CHECK(selected.selection == AnimationLoading::AnimationBoundsSelection::ClipFallback);
     selected = AnimationLoading::SelectAnimationBounds(&valid.view, 10, 99, 30, 250'000, true, staticFallback);

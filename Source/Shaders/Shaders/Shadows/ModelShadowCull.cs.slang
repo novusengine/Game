@@ -157,12 +157,14 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 
     float4 sphere = TransformSphere(meshlet.boundsCenter, meshlet.boundsRadius, instance.currentWorld);
     Camera camera = _cameras[clipmapIndex + 1u];
-    if (!ModelSphereInsideFrustum(camera, sphere))
+    // Bind-pose meshlet bounds do not contain animated shadow casters.
+    bool staticGeometry = instance.deformationHandle == 0xFFFFFFFFu;
+    if (staticGeometry && !ModelSphereInsideFrustum(camera, sphere))
     {
         AddStat(MODEL_SHADOW_STAT_REJECTED_FRUSTUM, 1u);
         return;
     }
-    if (!IntersectsPages(sphere, clipmapIndex, dynamicCaster))
+    if (staticGeometry && !IntersectsPages(sphere, clipmapIndex, dynamicCaster))
     {
         AddStat(MODEL_SHADOW_STAT_REJECTED_PAGE, 1u);
         return;

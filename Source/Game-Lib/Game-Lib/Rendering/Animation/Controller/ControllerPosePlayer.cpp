@@ -998,7 +998,8 @@ namespace Animation
                 return false;
             canonical = std::move(bridged);
         }
-        if (!slot.targetBinding.FromFamily(canonical, output, additive, slot.correctRetargetChains))
+        const FamilyPoseBinding* sourceBinding = !slot.hasBridge && domain.type == FileFormat::Animation::PoseDomainType::Skeleton ? &domain.binding : nullptr;
+        if (!slot.targetBinding.FromFamily(canonical, output, additive, slot.correctRetargetChains, sourceBinding, sourcePose))
             return false;
         ++_stats.familyConversions;
         return true;

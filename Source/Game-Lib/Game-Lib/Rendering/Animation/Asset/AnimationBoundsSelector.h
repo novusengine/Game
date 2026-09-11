@@ -49,6 +49,10 @@ namespace AnimationLoading
                 return {hasGlobalFallback ? conservativeFallback : clip.fallbackBounds, AnimationBoundsSelection::ClipFallback, clipIndex};
             const FileFormat::Animation::AnimatedBoundsSegment& last = asset->segments[clip.segmentOffset + clip.numSegments - 1u];
             const u64 duration = last.endTimeMicroseconds;
+            // A clamped non-looping endpoint must not select the first segment.
+            // Looping controllers already publish zero at their seam.
+            if (timeMicroseconds == duration)
+                return {clip.fallbackBounds, AnimationBoundsSelection::ClipFallback, clipIndex};
             const u32 mappedTime = duration == 0 ? 0 : static_cast<u32>(timeMicroseconds % duration);
             for (u32 local = 0; local < clip.numSegments; ++local)
             {

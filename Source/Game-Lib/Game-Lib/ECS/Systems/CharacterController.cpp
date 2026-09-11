@@ -74,6 +74,7 @@ AutoCVar_Float CVAR_CharacterControllerFallCommitDistance(CVarCategory::Client |
 AutoCVar_Float CVAR_CharacterControllerFallCommitTime(CVarCategory::Client | CVarCategory::Physics, "characterControllerFallCommitTime", "character controller unsupported-to-fall time threshold", 0.5f, CVarFlags::EditFloatDrag);
 AutoCVar_Int CVAR_CharacterControllerDebugDraw(CVarCategory::Client | CVarCategory::Physics, "characterControllerDebugDraw", "draws character controller debug vectors", 0, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_CharacterControllerDebugVelocityScale(CVarCategory::Client | CVarCategory::Physics, "characterControllerDebugVelocityScale", "character controller debug velocity vector scale", 0.25f, CVarFlags::EditFloatDrag);
+AutoCVar_Int CVAR_CharacterControllerSpawnLocalMoverModel(CVarCategory::Client, "characterControllerSpawnLocalMoverModel", "load the local mover DisplayID 50 model while preserving controller and camera setup", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
 
 namespace
 {
@@ -1715,7 +1716,8 @@ namespace ECS::Systems
 
             transformSystem.SetWorldPosition(state.moverEntity, vec3(0.0f));
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            modelLoader->LoadDisplayIDForEntity(state.moverEntity, moverModel, Database::Unit::DisplayInfoType::Creature, 50);
+            if (CVAR_CharacterControllerSpawnLocalMoverModel.Get() != 0)
+                modelLoader->LoadDisplayIDForEntity(state.moverEntity, moverModel, Database::Unit::DisplayInfoType::Creature, 50);
             registry.emplace_or_replace<Components::PlayerTag>(state.moverEntity);
         }
         else

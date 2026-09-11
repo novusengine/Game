@@ -246,7 +246,9 @@ namespace Animation
         for (u32 index = 0; index < sampled.size(); ++index)
         {
             const f32 positionError = glm::length(vec3(expected.modelTransforms[index][3]) - vec3(_evaluatedPose.modelTransforms[index][3]));
-            const f32 angularError = glm::degrees(2.0f * std::acos(std::clamp(std::abs(glm::dot(sampled[index].rotation, _currentLocalPose[index].rotation)), 0.0f, 1.0f)));
+            // atan2 retains precision near identical rotations; acos(dot) amplifies roundoff.
+            const quat rotationDelta = glm::normalize(glm::inverse(sampled[index].rotation) * _currentLocalPose[index].rotation);
+            const f32 angularError = glm::degrees(2.0f * std::atan2(glm::length(vec3(rotationDelta.x, rotationDelta.y, rotationDelta.z)), std::abs(rotationDelta.w)));
             _referenceErrors[index] = std::max(positionError / 0.001f, angularError / 0.1f);
             _stats.maximumReferencePositionError = std::max(_stats.maximumReferencePositionError, positionError);
             _stats.maximumReferenceAngleError = std::max(_stats.maximumReferenceAngleError, angularError);

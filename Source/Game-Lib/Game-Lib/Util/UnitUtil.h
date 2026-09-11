@@ -76,7 +76,7 @@ namespace Util::Unit
     void RefreshSkinTexture(entt::registry& registry, entt::entity entity, ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, const ::ECS::Components::DisplayInfo& displayInfo, ::ECS::Components::UnitCustomization& unitCustomization, const ::ECS::Components::Model& model);
 
 #if 0
-    // TODO: AnimationV2 replace the legacy WoW animation-ID selection helpers with controller parameters and authored graph transitions.
+    // TODO: AnimationV2 replace the legacy M2 animation-ID selection helpers with controller parameters and authored graph transitions.
     ::Animation::Defines::Type GetIdleAnimation(bool isSwimming, bool stealthed);
     ::Animation::Defines::Type GetMoveForwardAnimation(f32 speed, bool isSwimming, bool stealthed);
     ::Animation::Defines::Type GetMoveBackwardAnimation(bool isSwimming);

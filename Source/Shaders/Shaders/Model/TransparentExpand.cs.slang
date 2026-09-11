@@ -99,7 +99,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         return;
     ModelRecord model = _transparentModels[instance.modelIndex];
     Camera camera = _cameras[_constants.viewIndex];
-    if (!ModelSphereInsideFrustum(camera, TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld)))
+    if (instance.deformationHandle == 0xFFFFFFFFu && !ModelSphereInsideFrustum(camera, TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld)))
     {
         AddStat(MODEL_TRANSPARENT_STAT_REJECTED_INSTANCES, 1u);
         return;
